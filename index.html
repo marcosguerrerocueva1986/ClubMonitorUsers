@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Mi Club</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mi Club">
+<meta name="theme-color" content="#14231A">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({ appId: "94fc2cb8-f935-4abc-b237-ea9d81c1eb81" });
+  });
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pitch-0:#0E1712; --pitch-1:#14231A; --pitch-2:#1C2E20; --pitch-3:#28402F;
+    --line:#33502F; --chalk:#E9EEE3; --chalk-dim:#9FB09A; --gold:#FFD23F; --gold-dim:#8C7A2A;
+    --red:#E85D4C; --green-ok:#6FCF97; --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(1200px 600px at 50% -10%, #1A2C1F 0%, var(--pitch-1) 55%), var(--pitch-1);
+    color:var(--chalk); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;
+    height:100vh; height:100dvh; overflow:hidden;
+  }
+  #appRoot{ display:none; flex-direction:column; height:100vh; height:100dvh; }
+  h1,h2,h3,.disp{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:0.02em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:inherit;}
+
+  header.top{ flex-shrink:0; background:linear-gradient(180deg, var(--pitch-1) 70%, transparent); padding:18px 20px 14px; border-bottom:1px solid var(--line); }
+  header.top h1{font-size:20px;margin:0;font-weight:600;color:var(--chalk);}
+  header.top .sub{font-size:12px;color:var(--chalk-dim);margin-top:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.03em;}
+  .centerline{height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 10px, transparent 10px 18px);margin-top:12px;border-radius:2px;}
+
+  main{ flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:18px 16px calc(24px + env(safe-area-inset-bottom)); max-width:520px;margin:0 auto; width:100%; box-sizing:border-box; }
+  .screen{display:none;animation:fade .25s ease;}
+  .screen.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  .card{ background:var(--pitch-2); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
+  .card-title{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .card-title h3{margin:0;font-size:18px;color:var(--chalk);}
+  .badge{ font-family:'IBM Plex Mono',monospace;font-size:11px;padding:3px 8px;border-radius:20px; text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap; }
+  .badge.confirmando,.badge.confirmado{background:rgba(111,207,151,.15);color:var(--green-ok);border:1px solid rgba(111,207,151,.3);}
+  .badge.en_juego{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
+  .badge.cancelado,.badge.sin_confirmar{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
+  .meta{color:var(--chalk-dim);font-size:14px;margin-top:6px;line-height:1.6;}
+  .meta b{color:var(--chalk);font-weight:600;}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+
+  button{ font-family:'Inter',sans-serif;font-weight:600;font-size:14px; border:1px solid var(--line);background:var(--pitch-3);color:var(--chalk); padding:12px 14px;border-radius:10px;cursor:pointer;transition:.15s; }
+  button:active{transform:scale(.97);}
+  button.primary{background:var(--gold);color:var(--pitch-0);border-color:var(--gold);}
+  button.danger{background:transparent;color:var(--red);border-color:rgba(232,93,76,.4);}
+  button.block{width:100%;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  button.sm{padding:8px 12px;font-size:13px;}
+
+  input,select{ width:100%;font-family:'Inter',sans-serif;font-size:16px; background:var(--pitch-0);border:1px solid var(--line);color:var(--chalk); padding:12px 12px;border-radius:10px;margin-top:6px; }
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:var(--gold);}
+  label{display:block;font-size:12px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.04em;margin-top:14px;}
+  label:first-child{margin-top:0;}
+
+  nav.tabs{ flex-shrink:0; display:flex;background:var(--pitch-2);border-top:1px solid var(--line); padding:8px 8px calc(8px + env(safe-area-inset-bottom)); }
+  nav.tabs button{ flex:1;background:none;border:none;color:var(--chalk-dim); display:flex;flex-direction:column;align-items:center;gap:3px; font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em; padding:6px 0;border-radius:10px; }
+  nav.tabs button .ic{font-size:20px;}
+  nav.tabs button.active{color:var(--gold);background:rgba(255,210,63,.08);}
+
+  .empty{text-align:center;padding:48px 16px;color:var(--chalk-dim);}
+  .empty .ic{font-size:40px;display:block;margin-bottom:10px;}
+
+  .toast{ position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(20px); background:var(--pitch-3);border:1px solid var(--line);color:var(--chalk); padding:12px 18px;border-radius:12px;font-size:14px;z-index:100; opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center; }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{border-color:rgba(232,93,76,.5);color:#FFB4A8;}
+
+  #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;padding:24px;}
+  .login-card{width:100%;max-width:340px;text-align:center;}
+  .login-card .mark{font-size:52px;margin-bottom:6px;}
+  .login-card h1{font-size:24px;margin:0 0 4px;}
+  .login-card p{color:var(--chalk-dim);font-size:14px;margin:0 0 22px;}
+
+  .overlay{ position:fixed;inset:0;background:rgba(6,10,7,.7);backdrop-filter:blur(3px); z-index:50;display:flex;align-items:center;justify-content:center; padding:20px; }
+  .sheet{ width:100%;max-width:480px;background:var(--pitch-2);border:1px solid var(--line); border-radius:20px;padding:20px 20px calc(20px + env(safe-area-inset-bottom)); max-height:min(85vh, 85dvh);overflow-y:auto;-webkit-overflow-scrolling:touch; animation:pop .18s ease; }
+  @keyframes pop{from{transform:scale(.96);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .sheet-head h2{margin:0;font-size:20px;}
+  .sheet-close{background:none;border:none;color:var(--chalk-dim);font-size:22px;padding:4px 8px;}
+
+  .field-line{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);gap:12px;}
+  .field-line:last-child{border-bottom:none;}
+  .field-line .fl-label{font-size:14px;color:var(--chalk-dim);}
+  .field-line .fl-value{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--chalk);}
+
+  .spinner{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;margin:30px auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .qr-box{text-align:center;padding:10px 0;}
+  .qr-box img{width:220px;height:220px;border-radius:12px;background:#fff;padding:10px;}
+  .alert-card{background:rgba(232,93,76,.12);border:1px solid rgba(232,93,76,.35);border-radius:var(--radius);padding:14px;margin-bottom:12px;color:#FFB4A8;font-size:14px;line-height:1.5;}
+  .ok-card{background:rgba(111,207,151,.12);border:1px solid rgba(111,207,151,.35);border-radius:var(--radius);padding:14px;margin-bottom:12px;color:var(--green-ok);font-size:14px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="mark">⚽</div>
+    <h1>Mi Club</h1>
+    <p id="loginSubtitle">Ingresa tu número de celular (el mismo con el que escribes al grupo)</p>
+    <input type="tel" id="loginTelefono" placeholder="0991234567" autocomplete="tel" inputmode="tel">
+    <button class="primary block" style="margin-top:14px" onclick="intentarLogin()">Continuar</button>
+
+    <div id="registroFields" style="display:none;text-align:left;margin-top:18px">
+      <label>Nombres</label>
+      <input id="regNombres" placeholder="Juan">
+      <label>Apellidos</label>
+      <input id="regApellidos" placeholder="Pérez García">
+      <label>Cédula</label>
+      <input id="regCedula" placeholder="1712345678" inputmode="numeric">
+      <label>Correo</label>
+      <input id="regCorreo" placeholder="juan@correo.com" type="email">
+      <button class="primary block" style="margin-top:16px" onclick="completarRegistro()">Registrarme</button>
+    </div>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none">
+  <header class="top">
+    <h1 id="saludoHeader">Hola 👋</h1>
+    <div class="sub" id="screenSub">MIS PARTIDOS</div>
+    <div class="centerline"></div>
+  </header>
+
+  <main>
+    <div class="screen active" id="screen-partidos">
+      <div id="partidosList"><div class="spinner"></div></div>
+    </div>
+
+    <div class="screen" id="screen-deuda">
+      <div id="deudaContent"><div class="spinner"></div></div>
+    </div>
+
+    <div class="screen" id="screen-docs">
+      <div class="card">
+        <div class="card-title"><h3>📖 Instructivo de uso</h3></div>
+        <p class="meta">Cómo confirmar asistencia, pagar y más.</p>
+        <button class="block" style="margin-top:10px" onclick="verDocumento('instructivo','Instructivo_Jugadores.pdf')">Descargar</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>📋 Código de conducta</h3></div>
+        <p class="meta">Reglamento de régimen interno del club.</p>
+        <button class="block" style="margin-top:10px" onclick="verDocumento('codigo_conducta','Codigo_Conducta.pdf')">Descargar</button>
+      </div>
+    </div>
+
+    <div class="screen" id="screen-perfil">
+      <div id="perfilContent"><div class="spinner"></div></div>
+    </div>
+  </main>
+
+  <nav class="tabs">
+    <button class="active" data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic">⚽</span>Partidos</button>
+    <button data-tab="deuda" onclick="cambiarTab('deuda')"><span class="ic">💳</span>Mi cuenta</button>
+    <button data-tab="docs" onclick="cambiarTab('docs')"><span class="ic">📖</span>Info</button>
+    <button data-tab="perfil" onclick="cambiarTab('perfil')"><span class="ic">👤</span>Perfil</button>
+  </nav>
+</div>
+
+<script>
+const API_URL = 'https://primary-production-7ef315.up.railway.app/webhook/jugador-api';
+function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+function safeSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+let TOKEN = safeGet('jugador_token');
+let PERFIL = null;
+let currentTab = 'partidos';
+
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  setTimeout(()=>{ t.className='toast'; }, 2600);
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function api(accion, extra){
+  const body = Object.assign({ token: TOKEN, accion }, extra || {});
+  try{
+    const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json();
+    if(!data.success){ toast(data.error || 'Error', true); return null; }
+    return data.data !== undefined ? data.data : true;
+  }catch(e){
+    toast('No se pudo conectar. Revisa tu internet.', true);
+    return null;
+  }
+}
+
+let telefonoPendiente = '';
+
+async function intentarLogin(){
+  const tel = document.getElementById('loginTelefono').value.trim();
+  if(!tel){ toast('Ingresa tu número', true); return; }
+  telefonoPendiente = tel;
+  const res = await api('login_jugador', { telefono: tel });
+  if(res===null) return;
+  if(res.registrado){
+    TOKEN = res.token;
+    safeSet('jugador_token', TOKEN);
+    entrarApp();
+  } else {
+    document.getElementById('loginSubtitle').textContent = 'No te encontramos. Completa tus datos para registrarte:';
+    document.getElementById('registroFields').style.display = 'block';
+    document.querySelector('#loginScreen button.primary').style.display = 'none';
+    document.getElementById('loginTelefono').disabled = true;
+  }
+}
+
+async function completarRegistro(){
+  const body = {
+    telefono: telefonoPendiente,
+    nombres: document.getElementById('regNombres').value.trim(),
+    apellidos: document.getElementById('regApellidos').value.trim(),
+    cedula: document.getElementById('regCedula').value.trim(),
+    correo: document.getElementById('regCorreo').value.trim(),
+  };
+  if(!body.nombres || !body.apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('registrar_jugador_pwa', body);
+  if(res===null) return;
+  TOKEN = res.token;
+  safeSet('jugador_token', TOKEN);
+  toast('¡Registrado!');
+  entrarApp();
+}
+
+async function entrarApp(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appRoot').style.display='flex';
+  const perfil = await api('obtener_mi_perfil_jugador');
+  if(perfil){
+    PERFIL = perfil;
+    document.getElementById('saludoHeader').textContent = 'Hola, ' + (perfil.nombres||'').split(' ')[0] + ' 👋';
+    if(perfil.jugadorId && window.OneSignalDeferred){
+      OneSignalDeferred.push(async function(OneSignal){
+        try{ await OneSignal.login(String(perfil.jugadorId)); }catch(e){}
+      });
+    }
+  }
+  cargarPartidos();
+}
+
+if(TOKEN){
+  // Sesion guardada: intentamos cargar directo, si falla (token invalido) volvemos al login
+  api('obtener_mi_perfil_jugador').then(res=>{
+    if(res!==null){ entrarApp(); }
+    else { safeSet('jugador_token',''); TOKEN=''; }
+  });
+}
+
+function cambiarTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+  const subs = {partidos:'MIS PARTIDOS', deuda:'MI CUENTA', docs:'INFORMACIÓN', perfil:'MI PERFIL'};
+  document.getElementById('screenSub').textContent = subs[tab];
+  if(tab==='partidos') cargarPartidos();
+  if(tab==='deuda') cargarDeuda();
+  if(tab==='perfil') cargarPerfil();
+}
+
+function fechaCorta(f){
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d = new Date(f);
+  return dias[d.getUTCDay()]+' '+String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();
+}
+
+async function cargarPartidos(){
+  const list = document.getElementById('partidosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const partidos = await api('ver_mis_partidos_jugador');
+  if(partidos===null) return;
+  if(partidos.length===0){
+    list.innerHTML = '<div class="empty"><span class="ic">⚽</span>No hay partidos activos por ahora.</div>';
+    return;
+  }
+  list.innerHTML = partidos.map(p=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${p.alias ? esc(p.alias) : 'Partido'}</h3>
+        <span class="badge ${p.miEstado}">${p.miEstado==='confirmado' ? 'Voy' : (p.miEstado==='cancelado' ? 'No voy' : 'Sin confirmar')}</span>
+      </div>
+      <div class="meta">
+        📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
+        📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
+      </div>
+      <div class="row-actions">
+        ${p.miEstado==='confirmado' ? `
+          <button class="sm primary" onclick="verMiQR(${p.id})">📲 Mi código QR</button>
+          <button class="sm danger" onclick="cancelarPartido(${p.id})">No voy</button>
+        ` : `
+          <button class="sm primary" onclick="confirmarPartido(${p.id})">✅ Voy</button>
+        `}
+        <button class="sm" onclick='abrirOpciones(${p.id}, ${JSON.stringify(p.alias||"Partido")}, ${p.miEstado==="confirmado"})'>⚙️ Opciones</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function confirmarPartido(partidoId){
+  const res = await api('confirmar_mi_partido_jugador', { partidoId });
+  if(res===null) return;
+  toast('¡Confirmado!');
+  cargarPartidos();
+  if(res.token) mostrarQR(res.token);
+}
+
+async function cancelarPartido(partidoId){
+  if(!confirm('¿Seguro que no vas a este partido?')) return;
+  const res = await api('cancelar_mi_partido_jugador', { partidoId });
+  if(res===null) return;
+  toast('Listo, avisado');
+  cargarPartidos();
+}
+
+async function verMiQR(partidoId){
+  const res = await api('ver_mi_qr_jugador', { partidoId });
+  if(res===null) return;
+  if(!res.token){ toast('Aún no tienes código para este partido', true); return; }
+  mostrarQR(res.token);
+}
+
+function mostrarQR(token){
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent('https://wa.me/15122281262?text=ASISTIO-' + token);
+  const html = `
+    <div class="sheet-head"><h2>Tu código QR</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="qr-box"><img src="${url}" alt="Código QR"></div>
+    <p style="color:var(--chalk-dim);font-size:13px;text-align:center">Muéstralo en la entrada de la cancha. Es válido solo para este partido y se usa una vez.</p>
+  `;
+  abrirSheet(html);
+}
+
+function abrirOpciones(partidoId, alias, confirmado){
+  const html = `
+    <div class="sheet-head"><h2>Opciones</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;margin-top:-4px">${esc(alias)}</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+      ${confirmado ? `
+        <button class="block" onclick='abrirInvitados(${partidoId}, ${JSON.stringify(alias)})'>🎟️ Gestionar mis invitados</button>
+        <button class="block" onclick="verMiQR(${partidoId})">📲 Ver mi código QR</button>
+        <button class="block danger" onclick="cancelarPartido(${partidoId})">No voy a este partido</button>
+      ` : `
+        <p style="color:var(--chalk-dim);font-size:14px">Primero confirma "Voy" para poder gestionar invitados o ver tu código.</p>
+      `}
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+let invitadosCache = { partidoId: null, data: [] };
+
+async function abrirInvitados(partidoId, alias){
+  const data = await api('ver_mis_invitados_partido_jugador', { partidoId });
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  const html = `
+    <div class="sheet-head"><h2>Mis invitados</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">${esc(alias)}</p>
+    <div id="listaInvitadosJugador">${renderInvitadosJugador(data)}</div>
+    <label style="margin-top:18px">Agregar invitado</label>
+    <input id="nuevoInvitadoNombre" placeholder="Nombre completo">
+    <button class="primary block" style="margin-top:10px" onclick="agregarInvitadoJugador(${partidoId})">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+function renderInvitadosJugador(data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim);font-size:14px">Aún no tienes invitados en este partido.</p>';
+  return data.map(inv=>`
+    <div class="field-line">
+      <div class="fl-value">${esc(inv.nombre)}</div>
+      <button class="sm danger" onclick="quitarInvitadoJugador(${inv.id})">Quitar</button>
+    </div>
+  `).join('');
+}
+
+async function agregarInvitadoJugador(partidoId){
+  const nombre = document.getElementById('nuevoInvitadoNombre').value.trim();
+  if(!nombre){ toast('Escribe el nombre del invitado', true); return; }
+  const res = await api('agregar_invitado_partido_jugador', { partidoId, nombre });
+  if(res===null) return;
+  toast('Invitado agregado');
+  const data = await api('ver_mis_invitados_partido_jugador', { partidoId });
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  document.getElementById('listaInvitadosJugador').innerHTML = renderInvitadosJugador(data);
+  document.getElementById('nuevoInvitadoNombre').value = '';
+  cargarPartidos();
+}
+
+async function quitarInvitadoJugador(invitadoId){
+  if(!confirm('¿Quitar a este invitado?')) return;
+  const res = await api('quitar_invitado_partido_jugador', { invitadoId });
+  if(res===null) return;
+  toast('Invitado quitado');
+  const data = await api('ver_mis_invitados_partido_jugador', { partidoId: invitadosCache.partidoId });
+  if(data===null) return;
+  invitadosCache.data = data;
+  document.getElementById('listaInvitadosJugador').innerHTML = renderInvitadosJugador(data);
+  cargarPartidos();
+}
+async function cargarDeuda(){
+  const cont = document.getElementById('deudaContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const d = await api('ver_pendientes_pago_jugador');
+  if(d===null) return;
+  const p = d.pendientes || {};
+  let html = '';
+
+  if(d.saldoAFavor > 0){
+    html += `
+      <div class="card" style="border-color:rgba(255,210,63,.5);background:linear-gradient(180deg, rgba(255,210,63,.10), var(--pitch-2) 60%)">
+        <div class="fl-label">💰 TIENES SALDO A FAVOR</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:28px;color:var(--gold);font-weight:700;margin:4px 0">$${Number(d.saldoAFavor).toFixed(2)}</div>
+        <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5;margin:0 0 12px">Esto es dinero que pagaste de más en algún momento y que todavía no se ha usado. Puedes aplicarlo a cualquier deuda pendiente cuando quieras.</p>
+        <button class="primary block sm" onclick="abrirUsarSaldoFavor()">Usar mi saldo a favor</button>
+      </div>
+    `;
+  }
+
+  if(p.deuda_mensualidad > 0){
+    html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
+  } else {
+    html += `<div class="ok-card">✓ Tu mensualidad está al día.</div>`;
+  }
+  if((p.multas_propias||[]).length>0){
+    html += `<div class="alert-card">⚠️ Tienes ${p.multas_propias.length} multa(s) propia(s) pendiente(s) — $${p.total_multas_propias}</div>`;
+  }
+  if((p.multas_invitados||[]).length>0){
+    html += `<div class="alert-card">⚠️ Tienes ${p.multas_invitados.length} multa(s) por invitados pendiente(s) — $${p.total_multas_invitados}</div>`;
+  }
+  if((p.invitados_pendientes||[]).length>0){
+    html += `<div class="card"><div class="card-title"><h3>🎟️ Invitados sin pagar</h3></div><p class="meta">${p.invitados_pendientes.length} invitado(s) pendiente(s) por un total de $${p.total_invitados}</p></div>`;
+  }
+
+  html += `
+    <div class="card">
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6;margin:0 0 12px">
+        📸 <b>¿Ya hiciste una transferencia al club?</b><br>
+        Sube aquí la foto de tu comprobante. Nosotros leemos el monto automáticamente y tú eliges a qué deuda aplicarlo — sin necesidad de escribir a nadie por WhatsApp.
+      </p>
+      <button class="primary block" onclick="abrirSubirComprobante()">📤 Subir comprobante de pago</button>
+    </div>
+  `;
+  cont.innerHTML = html;
+}
+
+/* ============================================================
+   FLUJO DE PAGOS: subir comprobante -> confirmar datos ->
+   elegir a qué deuda aplicarlo -> ver resultado
+   ============================================================ */
+let pagoState = { pagoId: null, montoDisponible: 0, origenSaldoFavor: false };
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function abrirSubirComprobante(){
+  const html = `
+    <div class="sheet-head"><h2>Subir comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">
+      <b>Paso 1 de 3.</b> Toma una foto clara de tu comprobante de transferencia (o elige una foto que ya tengas guardada en tu celular).<br><br>
+      El sistema va a leer el monto y los datos automáticamente. En el siguiente paso podrás revisar y corregir esa información antes de continuar.
+    </p>
+    <label>Foto del comprobante</label>
+    <input type="file" id="comprobanteFile" accept="image/*" capture="environment">
+    <button class="primary block" style="margin-top:16px" onclick="analizarComprobante()">Analizar comprobante</button>
+    <div id="comprobanteLoading" style="display:none;text-align:center;margin-top:16px">
+      <div class="spinner"></div>
+      <p style="color:var(--chalk-dim);font-size:13px">Leyendo tu comprobante, un momento...</p>
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function analizarComprobante(){
+  const input = document.getElementById('comprobanteFile');
+  if(!input.files || !input.files[0]){ toast('Primero elige o toma una foto', true); return; }
+  document.getElementById('comprobanteLoading').style.display = 'block';
+  let base64;
+  try{ base64 = await fileToBase64(input.files[0]); }
+  catch(e){ toast('No se pudo leer la foto, intenta de nuevo', true); document.getElementById('comprobanteLoading').style.display='none'; return; }
+  const res = await api('analizar_comprobante_jugador', { imagenBase64: base64 });
+  document.getElementById('comprobanteLoading').style.display = 'none';
+  if(res===null) return;
+  if(res.duplicado){
+    toast('Este comprobante ya había sido usado antes', true);
+    return;
+  }
+  mostrarConfirmarComprobante(res);
+}
+
+function mostrarConfirmarComprobante(datos){
+  const avisoNoDetectado = !datos.esComprobante ? `
+    <div class="alert-card">⚠️ No pudimos leer esta foto como un comprobante de pago válido. Vuelve atrás y sube una foto más clara, o contacta al administrador del club si el problema sigue.</div>
+  ` : '';
+  const html = `
+    <div class="sheet-head"><h2>Confirma los datos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${avisoNoDetectado}
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6"><b>Paso 2 de 3.</b> Esto es lo que leímos automáticamente de tu comprobante. Si algo no coincide con tu pago real, toca "Tomar otra foto" — por seguridad, estos datos no se pueden editar manualmente.</p>
+    <label>Monto pagado (en dólares)</label>
+    <input id="confMonto" type="number" step="0.01" inputmode="decimal" value="${datos.monto || ''}" readonly style="opacity:.75">
+    <label>Banco</label>
+    <input id="confBanco" value="${esc(datos.banco || '')}" readonly style="opacity:.75">
+    <label>Número de comprobante</label>
+    <input id="confNumero" value="${esc(datos.numeroComprobante || '')}" readonly style="opacity:.75">
+    <label>Fecha de la transferencia</label>
+    <input id="confFecha" value="${esc(datos.fechaComprobante || '')}" readonly style="opacity:.75">
+    <button class="primary block" style="margin-top:18px" onclick="confirmarYRegistrarPago()">Confirmar y continuar</button>
+    <button class="block" style="margin-top:8px" onclick="abrirSubirComprobante()">📸 Tomar otra foto</button>
+  `;
+  abrirSheet(html);
+}
+
+async function confirmarYRegistrarPago(){
+  const monto = parseFloat(document.getElementById('confMonto').value);
+  const banco = document.getElementById('confBanco').value.trim();
+  const numeroComprobante = document.getElementById('confNumero').value.trim();
+  const fecha = document.getElementById('confFecha').value.trim();
+  if(!monto || monto<=0){ toast('Escribe un monto válido', true); return; }
+  if(!numeroComprobante){ toast('Falta el número de comprobante', true); return; }
+  if(!fecha){ toast('Falta la fecha de la transferencia', true); return; }
+  const res = await api('registrar_pago_comprobante_jugador', { monto, banco, numeroComprobante, fecha });
+  if(res===null) return;
+  pagoState = { pagoId: res.pagoId, montoDisponible: Number(res.monto), origenSaldoFavor: false };
+  await abrirDistribuirPago();
+}
+
+async function abrirUsarSaldoFavor(){
+  const d = await api('ver_pendientes_pago_jugador');
+  if(d===null) return;
+  if(!d.saldoAFavor || d.saldoAFavor<=0){ toast('No tienes saldo a favor disponible', true); return; }
+  pagoState = { pagoId: null, montoDisponible: Number(d.saldoAFavor), origenSaldoFavor: true };
+  mostrarDistribucion(d.pendientes);
+}
+
+async function abrirDistribuirPago(){
+  const d = await api('ver_pendientes_pago_jugador');
+  if(d===null) return;
+  mostrarDistribucion(d.pendientes);
+}
+
+function mostrarDistribucion(p){
+  const filas = [];
+  if(p.deuda_mensualidad > 0){
+    const etiqueta = p.meses_atraso > 0 ? p.meses_atraso+' mes(es) atrasado(s)' : 'mes actual';
+    filas.push({tipo:'mensualidad', label:'Mensualidad ('+etiqueta+')', monto:p.deuda_mensualidad});
+  }
+  if((p.invitados_pendientes||[]).length > 0){
+    filas.push({tipo:'invitado', label:'🎟️ Invitados pendientes ('+p.invitados_pendientes.length+')', monto:p.total_invitados});
+  }
+  if((p.multas_propias||[]).length > 0){
+    filas.push({tipo:'multas_propias', label:'⚠️ Multas propias ('+p.multas_propias.length+')', monto:p.total_multas_propias});
+  }
+  if((p.multas_invitados||[]).length > 0){
+    filas.push({tipo:'multas_invitados', label:'⚠️ Multas por invitados ('+p.multas_invitados.length+')', monto:p.total_multas_invitados});
+  }
+  (p.partidos_especiales||[]).forEach(pe=>{
+    filas.push({tipo:'partido_especial', label:'Partido especial: '+esc(pe.alias||''), monto:pe.monto, partidoId:pe.partido_id, conceptoMonto:pe.monto});
+  });
+
+  const html = `
+    <div class="sheet-head"><h2>¿A qué lo aplicamos?</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px"><b>Paso 3 de 3.</b> Elige un concepto para tu pago.</p>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">TIENES DISPONIBLE PARA PAGAR</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:32px;color:var(--gold);font-weight:700">$${pagoState.montoDisponible.toFixed(2)}</div>
+    </div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">👉 <b>Toca el concepto</b> al que quieres aplicar este dinero. Si sobra algo después, te preguntaremos qué hacer con el resto — no se pierde nada, siempre queda guardado a tu nombre.</p>
+    ${filas.length===0 ? '<div class="ok-card">✓ No tienes deudas pendientes en este momento. Este monto se guardará como saldo a favor.</div>' : filas.map((f)=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${f.label}</div>
+          <div class="fl-label">Debes: $${f.monto}</div>
+        </div>
+        <button class="sm primary" onclick='aplicarPagoConcepto(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Aplicar aquí</button>
+      </div>
+    `).join('')}
+    ${filas.length===0 ? `<button class="primary block" style="margin-top:12px" onclick="guardarComoSaldoFavor(${pagoState.montoDisponible})">Guardar como saldo a favor</button>` : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function aplicarPagoConcepto(f){
+  const montoAAplicar = Math.min(pagoState.montoDisponible, Number(f.monto));
+  const sobranteFrontend = pagoState.montoDisponible - montoAAplicar;
+  const body = {
+    tipoConcepto: f.tipo,
+    monto: montoAAplicar,
+    origenSaldoFavor: pagoState.origenSaldoFavor,
+    pagoId: pagoState.pagoId,
+    partidoId: f.partidoId,
+    conceptoMonto: f.conceptoMonto,
+  };
+  const res = await api('aplicar_pago_jugador', body);
+  if(res===null) return;
+  if(res.pagoId) pagoState.pagoId = res.pagoId;
+  pagoState.origenSaldoFavor = false;
+  res.restante = sobranteFrontend + Number(res.restante || 0);
+  mostrarResultadoPago(res);
+}
+
+function mostrarResultadoPago(res){
+  const restante = Number(res.restante || 0);
+  let html = `
+    <div class="sheet-head"><h2>Resultado de tu pago</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="ok-card">✓ ${esc(res.mensaje)}</div>
+  `;
+  if(restante > 0.009){
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">Todavía te quedan <b>$${restante.toFixed(2)}</b> de este pago sin usar. Elige qué quieres hacer con ese dinero:</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+        <button class="block primary" onclick="continuarConRestante(${restante})">Aplicarlo a otra deuda ahora mismo</button>
+        <button class="block" onclick="guardarComoSaldoFavor(${restante})">Guardarlo como saldo a favor para más adelante</button>
+      </div>
+    `;
+  } else {
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;text-align:center;margin-top:8px">Tu pago quedó aplicado por completo. ¡Gracias!</p>
+      <button class="primary block" style="margin-top:12px" onclick="cerrarSheet(); cargarDeuda();">Listo</button>
+    `;
+  }
+  abrirSheet(html);
+}
+
+async function continuarConRestante(restante){
+  pagoState.montoDisponible = restante;
+  await abrirDistribuirPago();
+}
+
+async function guardarComoSaldoFavor(restante){
+  const res = await api('guardar_restante_saldo_favor_jugador', { pagoId: pagoState.pagoId, monto: restante });
+  if(res===null) return;
+  toast('Guardado como saldo a favor');
+  cerrarSheet();
+  cargarDeuda();
+}
+
+async function verDocumento(slug, filename){
+  const res = await api('ver_documento_jugador', { slug });
+  if(res===null) return;
+  if(!res.contenido_base64){ toast('Documento no disponible', true); return; }
+  try{
+    const byteChars = atob(res.contenido_base64);
+    const byteNumbers = new Array(byteChars.length);
+    for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.filename || filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 3000);
+  }catch(e){
+    toast('No se pudo abrir el documento', true);
+  }
+}
+
+async function cargarPerfil(){
+  const cont = document.getElementById('perfilContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  if(!PERFIL){ PERFIL = await api('obtener_mi_perfil_jugador'); }
+  let pushHtml = `
+    <div class="card" id="pushCard">
+      <div class="card-title"><h3>🔔 Notificaciones</h3></div>
+      <p class="meta" id="pushEstadoTexto">Revisando el estado...</p>
+      <button class="primary block" id="pushBtn" style="margin-top:10px;display:none" onclick="activarNotificaciones()">Activar notificaciones</button>
+    </div>
+  `;
+  cont.innerHTML = pushHtml + `
+    <div class="card">
+      <label>Nombres</label>
+      <input id="perfilNombres" value="${esc(PERFIL?.nombres||'')}">
+      <label>Apellidos</label>
+      <input id="perfilApellidos" value="${esc(PERFIL?.apellidos||'')}">
+      <label>Cédula</label>
+      <input id="perfilCedula" value="${esc(PERFIL?.cedula||'')}">
+      <label>Correo</label>
+      <input id="perfilCorreo" value="${esc(PERFIL?.correo||'')}" type="email">
+      <button class="primary block" style="margin-top:16px" onclick="guardarPerfil()">Guardar cambios</button>
+    </div>
+    <button class="block danger" onclick="cerrarSesion()">Cerrar sesión en este dispositivo</button>
+  `;
+  actualizarEstadoPush();
+}
+
+function esInstaladaComoApp(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function esIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+async function actualizarEstadoPush(){
+  const textoEl = document.getElementById('pushEstadoTexto');
+  const btnEl = document.getElementById('pushBtn');
+  if(!textoEl) return;
+
+  if(esIOS() && !esInstaladaComoApp()){
+    textoEl.innerHTML = '📲 En iPhone, primero debes agregar esta página a tu pantalla de inicio para poder recibir notificaciones: toca el botón <b>Compartir</b> en Safari y luego <b>"Agregar a inicio"</b>. Después, abre la app desde ese ícono y vuelve aquí.';
+    btnEl.style.display = 'none';
+    return;
+  }
+
+  if(!('Notification' in window)){
+    textoEl.textContent = 'Tu navegador no soporta notificaciones push.';
+    btnEl.style.display = 'none';
+    return;
+  }
+
+  if(Notification.permission === 'granted'){
+    textoEl.textContent = '✓ Las notificaciones están activadas. Te avisaremos cuando confirmes un partido, entre otras cosas importantes.';
+    btnEl.style.display = 'none';
+  } else if(Notification.permission === 'denied'){
+    textoEl.textContent = '🚫 Bloqueaste las notificaciones para esta app. Para activarlas, entra a la configuración de tu navegador para este sitio y permite las notificaciones.';
+    btnEl.style.display = 'none';
+  } else {
+    textoEl.textContent = 'Activa las notificaciones para enterarte al instante cuando confirmes un partido y puedas ver tu código QR, sin tener que estar revisando la app.';
+    btnEl.style.display = 'block';
+  }
+}
+
+async function activarNotificaciones(){
+  if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema de notificaciones', true); return; }
+  OneSignalDeferred.push(async function(OneSignal){
+    try{
+      if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
+      await OneSignal.Notifications.requestPermission();
+      if(Notification.permission === 'granted'){
+        await api('marcar_push_habilitado_jugador');
+        toast('¡Notificaciones activadas!');
+      }
+    }catch(e){
+      toast('No se pudo activar. Intenta desde la configuración de tu navegador.', true);
+    }
+    actualizarEstadoPush();
+  });
+}
+
+async function guardarPerfil(){
+  const body = {
+    nombres: document.getElementById('perfilNombres').value.trim(),
+    apellidos: document.getElementById('perfilApellidos').value.trim(),
+    cedula: document.getElementById('perfilCedula').value.trim(),
+    correo: document.getElementById('perfilCorreo').value.trim(),
+  };
+  const res = await api('actualizar_mis_datos_jugador', body);
+  if(res===null) return;
+  toast('Datos actualizados');
+}
+
+function cerrarSesion(){
+  if(!confirm('¿Cerrar sesión en este dispositivo?')) return;
+  safeSet('jugador_token','');
+  location.reload();
+}
+
+function abrirSheet(html){
+  cerrarSheet();
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'sheetOverlay';
+  overlay.onclick = (e)=>{ if(e.target===overlay) cerrarSheet(); };
+  overlay.innerHTML = `<div class="sheet">${html}</div>`;
+  document.body.appendChild(overlay);
+}
+function cerrarSheet(){
+  const el = document.getElementById('sheetOverlay');
+  if(el) el.remove();
+}
+</script>
+</body>
+</html>
