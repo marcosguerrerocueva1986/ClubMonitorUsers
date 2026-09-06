@@ -754,9 +754,9 @@ async function activarNotificaciones(){
   if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema de notificaciones', true); return; }
   OneSignalDeferred.push(async function(OneSignal){
     try{
-      if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
       await OneSignal.Notifications.requestPermission();
       if(Notification.permission === 'granted'){
+        if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
         await api('marcar_push_habilitado_jugador');
         toast('¡Notificaciones activadas!');
       }
