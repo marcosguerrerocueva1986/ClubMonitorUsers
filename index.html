@@ -783,9 +783,26 @@ async function activarNotificaciones(){
       if(Notification.permission === 'granted'){
         if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
         await OneSignal.User.PushSubscription.optIn();
-        await new Promise(r => setTimeout(r, 800));
-        await api('marcar_push_habilitado_jugador');
-        toast('¡Notificaciones activadas! optedIn=' + OneSignal.User.PushSubscription.optedIn + ' id=' + (OneSignal.User.PushSubscription.id || 'sin-id'));
+
+        // El cambio a optedIn=true puede tardar unos segundos en confirmarse.
+        // Reintentamos varias veces en vez de revisar una sola vez.
+        let optedIn = false;
+        let token = null;
+        for(let intento = 0; intento < 8; intento++){
+          await new Promise(r => setTimeout(r, 700));
+          optedIn = OneSignal.User.PushSubscription.optedIn === true;
+          token = OneSignal.User.PushSubscription.token;
+          if(optedIn) break;
+          try{ await OneSignal.User.PushSubscription.optIn(); }catch(e){}
+        }
+
+        const id = OneSignal.User.PushSubscription.id || 'sin-id';
+        if(optedIn){
+          await api('marcar_push_habilitado_jugador');
+          toast('¡Notificaciones activadas correctamente!');
+        } else {
+          toast('optedIn sigue en false tras 8 intentos. id=' + id + ' token=' + (token || 'SIN TOKEN'), true);
+        }
       } else {
         toast('El navegador no concedió el permiso (estado: ' + Notification.permission + ')', true);
       }
