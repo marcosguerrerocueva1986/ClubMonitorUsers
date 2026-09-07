@@ -352,14 +352,40 @@ async function verMiQR(partidoId){
   mostrarQR(res.token);
 }
 
-function mostrarQR(token){
-  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent('https://wa.me/15122281262?text=ASISTIO-' + token);
+function mostrarQR(token, nombreContexto){
+  const waLink = 'https://wa.me/15122281262?text=ASISTIO-' + token;
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent(waLink);
   const html = `
-    <div class="sheet-head"><h2>Tu código QR</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <div class="qr-box"><img src="${url}" alt="Código QR"></div>
+    <div class="sheet-head"><h2>${nombreContexto ? esc(nombreContexto) : 'Tu código QR'}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="qr-box"><img id="qrImgActual" src="${url}" alt="Código QR"></div>
     <p style="color:var(--chalk-dim);font-size:13px;text-align:center">Muéstralo en la entrada de la cancha. Es válido solo para este partido y se usa una vez.</p>
+    <button class="primary block" style="margin-top:12px" onclick='compartirQR(${JSON.stringify(url)}, ${JSON.stringify(waLink)}, ${JSON.stringify(nombreContexto||'')})'>📤 Compartir</button>
   `;
   abrirSheet(html);
+}
+
+async function compartirQR(imgUrl, waLink, nombreContexto){
+  try{
+    if(navigator.share){
+      // Intentamos compartir la imagen real del QR si el navegador lo permite
+      try{
+        const resp = await fetch(imgUrl);
+        const blob = await resp.blob();
+        const file = new File([blob], 'codigo-qr.png', { type: blob.type || 'image/png' });
+        if(navigator.canShare && navigator.canShare({ files: [file] })){
+          await navigator.share({ files: [file], title: 'Mi código QR', text: nombreContexto ? ('Código QR — ' + nombreContexto) : 'Mi código QR' });
+          return;
+        }
+      }catch(e){ /* si falla compartir la imagen, seguimos con el link como respaldo */ }
+      await navigator.share({ title: 'Mi código QR', text: (nombreContexto ? nombreContexto + ' — ' : '') + 'Aquí está mi código de asistencia', url: waLink });
+    } else {
+      // Respaldo si el navegador no soporta compartir: copiar el link
+      await navigator.clipboard.writeText(waLink);
+      toast('Link copiado — pégalo en WhatsApp para compartirlo');
+    }
+  }catch(e){
+    if(e && e.name !== 'AbortError'){ toast('No se pudo compartir', true); }
+  }
 }
 
 function abrirOpciones(partidoId, alias, confirmado){
@@ -401,7 +427,10 @@ function renderInvitadosJugador(data){
   return data.map(inv=>`
     <div class="field-line">
       <div class="fl-value">${esc(inv.nombre)}</div>
-      <button class="sm danger" onclick="quitarInvitadoJugador(${inv.id})">Quitar</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${inv.token ? `<button class="sm primary" onclick='mostrarQR(${JSON.stringify(inv.token)}, ${JSON.stringify(inv.nombre)})'>📱 QR</button>` : ''}
+        <button class="sm danger" onclick="quitarInvitadoJugador(${inv.id})">Quitar</button>
+      </div>
     </div>
   `).join('');
 }
@@ -451,7 +480,11 @@ async function cargarDeuda(){
   }
 
   if(p.deuda_mensualidad > 0){
-    html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
+    if(p.meses_atraso >= 1){
+      html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
+    } else {
+      html += `<div class="alert-card">📅 Tu mensualidad de este mes está pendiente — debes $${p.deuda_mensualidad}</div>`;
+    }
   } else {
     html += `<div class="ok-card">✓ Tu mensualidad está al día.</div>`;
   }
@@ -473,15 +506,35 @@ async function cargarDeuda(){
       </p>
       <button class="primary block" onclick="abrirSubirComprobante()">📤 Subir comprobante de pago</button>
     </div>
+    <button class="block" onclick="verMisUltimosPagos()">🧾 Ver mis últimos pagos</button>
   `;
   cont.innerHTML = html;
+}
+
+async function verMisUltimosPagos(){
+  const pagos = await api('ver_mis_ultimos_pagos_jugador');
+  if(pagos===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Mis últimos pagos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Últimos ${pagos.length} pago(s), del más reciente al más antiguo.</p>
+    ${pagos.length===0 ? '<p style="color:var(--chalk-dim)">Aún no tienes pagos registrados.</p>' : pagos.map(p=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${esc(p.motivo)}</div>
+          <div class="fl-label">${fechaCorta(p.fecha)}</div>
+        </div>
+        <div class="fl-value" style="color:var(--gold)">$${p.monto}</div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
 }
 
 /* ============================================================
    FLUJO DE PAGOS: subir comprobante -> confirmar datos ->
    elegir a qué deuda aplicarlo -> ver resultado
    ============================================================ */
-let pagoState = { pagoId: null, montoDisponible: 0, origenSaldoFavor: false };
+let pagoState = { pagoId: null, montoDisponible: 0, origenSaldoFavor: false, montoOriginal: 0 };
 
 function fileToBase64(file){
   return new Promise((resolve, reject) => {
@@ -559,7 +612,7 @@ async function confirmarYRegistrarPago(){
   if(!fecha){ toast('Falta la fecha de la transferencia', true); return; }
   const res = await api('registrar_pago_comprobante_jugador', { monto, banco, numeroComprobante, fecha });
   if(res===null) return;
-  pagoState = { pagoId: res.pagoId, montoDisponible: Number(res.monto), origenSaldoFavor: false };
+  pagoState = { pagoId: res.pagoId, montoDisponible: Number(res.monto), origenSaldoFavor: false, montoOriginal: Number(res.monto) };
   await abrirDistribuirPago();
 }
 
@@ -639,6 +692,9 @@ async function aplicarPagoConcepto(f){
 
 function mostrarResultadoPago(res){
   const restante = Number(res.restante || 0);
+  const botonCompartir = pagoState.montoOriginal > 0 ? `
+    <button class="block" style="margin-top:8px" onclick="compartirComprobanteGrupo()">📤 Avisar al grupo de WhatsApp</button>
+  ` : '';
   let html = `
     <div class="sheet-head"><h2>Resultado de tu pago</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     <div class="ok-card">✓ ${esc(res.mensaje)}</div>
@@ -650,14 +706,23 @@ function mostrarResultadoPago(res){
         <button class="block primary" onclick="continuarConRestante(${restante})">Aplicarlo a otra deuda ahora mismo</button>
         <button class="block" onclick="guardarComoSaldoFavor(${restante})">Guardarlo como saldo a favor para más adelante</button>
       </div>
+      ${botonCompartir}
     `;
   } else {
     html += `
       <p style="color:var(--chalk-dim);font-size:14px;text-align:center;margin-top:8px">Tu pago quedó aplicado por completo. ¡Gracias!</p>
-      <button class="primary block" style="margin-top:12px" onclick="cerrarSheet(); cargarDeuda();">Listo</button>
+      ${botonCompartir}
+      <button class="primary block" style="margin-top:8px" onclick="cerrarSheet(); cargarDeuda();">Listo</button>
     `;
   }
   abrirSheet(html);
+}
+
+function compartirComprobanteGrupo(){
+  const nombre = (PERFIL && PERFIL.nombres) ? PERFIL.nombres.split(' ')[0] : '';
+  const texto = `✅ Hola, soy ${nombre}. Envié mi comprobante de pago por $${pagoState.montoOriginal.toFixed(2)} — ya quedó registrado y aplicado en la app del club.`;
+  const url = 'https://wa.me/?text=' + encodeURIComponent(texto);
+  window.open(url, '_blank');
 }
 
 async function continuarConRestante(restante){
