@@ -808,8 +808,10 @@ async function activarNotificaciones(){
         await api('marcar_push_habilitado_jugador');
         toast('¡Notificaciones activadas correctamente!');
         actualizarEstadoPush();
-      }catch(e){
-        toast('Error al registrar el dispositivo', true);
+      }catch(e) {
+        console.error("Detalle completo del error:", e);
+        toast('Error: ' + (e.message || "Fallo interno, revisa F12"), true);
+        actualizarEstadoPush();
       }
     });
   } else {
