@@ -743,15 +743,35 @@ async function actualizarEstadoPush(){
     return;
   }
 
-  if(Notification.permission === 'granted'){
-    textoEl.textContent = '✓ Las notificaciones están activadas. Te avisaremos cuando confirmes un partido, entre otras cosas importantes.';
-    btnEl.style.display = 'none';
-  } else if(Notification.permission === 'denied'){
+  if(Notification.permission === 'denied'){
     textoEl.textContent = '🚫 Bloqueaste las notificaciones para esta app. Para activarlas, entra a la configuración de tu navegador para este sitio y permite las notificaciones.';
     btnEl.style.display = 'none';
-  } else {
+    return;
+  }
+
+  if(Notification.permission !== 'granted'){
     textoEl.textContent = 'Activa las notificaciones para enterarte al instante cuando confirmes un partido y puedas ver tu código QR, sin tener que estar revisando la app.';
     btnEl.style.display = 'block';
+    btnEl.textContent = 'Activar notificaciones';
+    return;
+  }
+
+  // El navegador dice "granted", pero eso NO garantiza que OneSignal
+  // tenga la suscripcion marcada como activa (optedIn). Verificamos el
+  // estado real de OneSignal antes de decidir que todo esta bien.
+  if(window.OneSignalDeferred){
+    OneSignalDeferred.push(async function(OneSignal){
+      let optedIn = false;
+      try{ optedIn = OneSignal.User.PushSubscription.optedIn === true; }catch(e){}
+      if(optedIn){
+        textoEl.textContent = '✓ Las notificaciones están activadas. Te avisaremos cuando confirmes un partido, entre otras cosas importantes.';
+        btnEl.style.display = 'none';
+      } else {
+        textoEl.textContent = '⚠️ Tu navegador permite notificaciones, pero la suscripción todavía no quedó activa del lado del servidor. Toca el botón para completarla.';
+        btnEl.style.display = 'block';
+        btnEl.textContent = 'Reactivar notificaciones';
+      }
+    });
   }
 }
 
@@ -763,11 +783,14 @@ async function activarNotificaciones(){
       if(Notification.permission === 'granted'){
         if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
         await OneSignal.User.PushSubscription.optIn();
+        await new Promise(r => setTimeout(r, 800));
         await api('marcar_push_habilitado_jugador');
-        toast('¡Notificaciones activadas!');
+        toast('¡Notificaciones activadas! optedIn=' + OneSignal.User.PushSubscription.optedIn + ' id=' + (OneSignal.User.PushSubscription.id || 'sin-id'));
+      } else {
+        toast('El navegador no concedió el permiso (estado: ' + Notification.permission + ')', true);
       }
     }catch(e){
-      toast('No se pudo activar. Intenta desde la configuración de tu navegador.', true);
+      toast('Error real: ' + (e && e.message ? e.message : JSON.stringify(e)), true);
     }
     actualizarEstadoPush();
   });
