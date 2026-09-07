@@ -247,14 +247,20 @@ async function completarRegistro(){
 async function entrarApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='flex';
+  
   const perfil = await api('obtener_mi_perfil_jugador');
+  
   if(perfil){
     PERFIL = perfil;
     document.getElementById('saludoHeader').textContent = 'Hola, ' + (perfil.nombres||'').split(' ')[0] + ' 👋';
+    
     if(perfil.jugadorId && window.OneSignalDeferred){
       OneSignalDeferred.push(async function(OneSignal){
         try{
+          // Login silencioso en segundo plano
           await OneSignal.login(String(perfil.jugadorId));
+          
+          // Solo activamos si el permiso ya fue concedido previamente
           if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
             await OneSignal.User.PushSubscription.optIn();
           }
@@ -776,41 +782,40 @@ async function actualizarEstadoPush(){
 }
 
 async function activarNotificaciones(){
-  if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema de notificaciones', true); return; }
-  OneSignalDeferred.push(async function(OneSignal){
-    try{
-      await OneSignal.Notifications.requestPermission();
-      if(Notification.permission === 'granted'){
-        if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
+  if(typeof Notification === 'undefined'){
+    toast('Tu navegador no soporta notificaciones', true);
+    return;
+  }
+
+  // 1. Pedimos el permiso NATIVO del navegador inmediatamente al hacer clic.
+  // Esto mantiene vivo el "User Gesture" y evita el error "No Push Token".
+  const permiso = await Notification.requestPermission();
+
+  if(permiso === 'granted'){
+    if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
+
+    OneSignalDeferred.push(async function(OneSignal){
+      try{
+        // 2. Vinculamos al usuario con su ID ANTES de activar la suscripción
+        if(PERFIL && PERFIL.jugadorId){ 
+          await OneSignal.login(String(PERFIL.jugadorId)); 
+        }
+        
+        // 3. Habilitamos la suscripción push
         await OneSignal.User.PushSubscription.optIn();
-
-        // El cambio a optedIn=true puede tardar unos segundos en confirmarse.
-        // Reintentamos varias veces en vez de revisar una sola vez.
-        let optedIn = false;
-        let token = null;
-        for(let intento = 0; intento < 8; intento++){
-          await new Promise(r => setTimeout(r, 700));
-          optedIn = OneSignal.User.PushSubscription.optedIn === true;
-          token = OneSignal.User.PushSubscription.token;
-          if(optedIn) break;
-          try{ await OneSignal.User.PushSubscription.optIn(); }catch(e){}
-        }
-
-        const id = OneSignal.User.PushSubscription.id || 'sin-id';
-        if(optedIn){
-          await api('marcar_push_habilitado_jugador');
-          toast('¡Notificaciones activadas correctamente!');
-        } else {
-          toast('optedIn sigue en false tras 8 intentos. id=' + id + ' token=' + (token || 'SIN TOKEN'), true);
-        }
-      } else {
-        toast('El navegador no concedió el permiso (estado: ' + Notification.permission + ')', true);
+        
+        // 4. Confirmamos a tu base de datos y actualizamos la UI
+        await api('marcar_push_habilitado_jugador');
+        toast('¡Notificaciones activadas correctamente!');
+        actualizarEstadoPush();
+      }catch(e){
+        toast('Error al registrar el dispositivo', true);
       }
-    }catch(e){
-      toast('Error real: ' + (e && e.message ? e.message : JSON.stringify(e)), true);
-    }
+    });
+  } else {
+    toast('Permiso denegado por el navegador', true);
     actualizarEstadoPush();
-  });
+  }
 }
 
 async function guardarPerfil(){
