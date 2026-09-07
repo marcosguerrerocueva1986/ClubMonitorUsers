@@ -253,7 +253,12 @@ async function entrarApp(){
     document.getElementById('saludoHeader').textContent = 'Hola, ' + (perfil.nombres||'').split(' ')[0] + ' 👋';
     if(perfil.jugadorId && window.OneSignalDeferred){
       OneSignalDeferred.push(async function(OneSignal){
-        try{ await OneSignal.login(String(perfil.jugadorId)); }catch(e){}
+        try{
+          await OneSignal.login(String(perfil.jugadorId));
+          if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+            await OneSignal.User.PushSubscription.optIn();
+          }
+        }catch(e){}
       });
     }
   }
@@ -757,6 +762,7 @@ async function activarNotificaciones(){
       await OneSignal.Notifications.requestPermission();
       if(Notification.permission === 'granted'){
         if(PERFIL && PERFIL.jugadorId){ await OneSignal.login(String(PERFIL.jugadorId)); }
+        await OneSignal.User.PushSubscription.optIn();
         await api('marcar_push_habilitado_jugador');
         toast('¡Notificaciones activadas!');
       }
