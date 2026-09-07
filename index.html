@@ -251,16 +251,26 @@ async function entrarApp(){
   if(perfil){
     PERFIL = perfil;
     document.getElementById('saludoHeader').textContent = 'Hola, ' + (perfil.nombres||'').split(' ')[0] + ' 👋';
-    if(perfil.jugadorId && window.OneSignalDeferred){
-      OneSignalDeferred.push(async function(OneSignal){
-        try{
-          await OneSignal.login(String(perfil.jugadorId));
-          if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
-            await OneSignal.User.PushSubscription.optIn();
-          }
-        }catch(e){}
-      });
+   if(perfil.jugadorId && window.OneSignalDeferred){
+  OneSignalDeferred.push(async function(OneSignal){
+    try {
+      // 1. Identificamos al jugador en OneSignal
+      await OneSignal.login(String(perfil.jugadorId));
+      
+      if(typeof Notification !== 'undefined'){
+        if (Notification.permission === 'granted') {
+          // 2A. Si ya había dado permiso antes, aseguramos que la suscripción esté activa
+          await OneSignal.User.PushSubscription.optIn();
+        } else if (Notification.permission === 'default') {
+          // 2B. CRÍTICO: Si nunca se le ha preguntado, mostramos el cuadro de diálogo
+          await OneSignal.Slidedown.promptPush();
+        }
+      }
+    } catch(e) {
+      console.error("Error al registrar en OneSignal:", e);
     }
+  });
+}
   }
   cargarPartidos();
 }
