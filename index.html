@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Mi Club</title>
 <link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mi Club">
@@ -180,6 +182,15 @@
 
 <script>
 const API_URL = 'https://primary-production-7ef315.up.railway.app/webhook/jugador-api';
+
+// Acciones ya migradas a funciones propias de Vercel (paso a paso).
+// Cada entrada aqui apunta a un archivo bajo /api/. Todo lo que NO
+// este en este mapa sigue llamando a n8n exactamente como antes.
+const ACCIONES_VERCEL = {
+  'obtener_mi_perfil_jugador': '/api/perfil',
+  'ver_mis_partidos_jugador': '/api/partidos',
+};
+
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
 function safeSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 let TOKEN = safeGet('jugador_token');
@@ -196,8 +207,9 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;
 
 async function api(accion, extra){
   const body = Object.assign({ token: TOKEN, accion }, extra || {});
+  const url = ACCIONES_VERCEL[accion] || API_URL;
   try{
-    const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json();
     if(!data.success){ toast(data.error || 'Error', true); return null; }
     return data.data !== undefined ? data.data : true;
@@ -257,10 +269,7 @@ async function entrarApp(){
     if(perfil.jugadorId && window.OneSignalDeferred){
       OneSignalDeferred.push(async function(OneSignal){
         try{
-          // Login silencioso en segundo plano
           await OneSignal.login(String(perfil.jugadorId));
-          
-          // Solo activamos si el permiso ya fue concedido previamente
           if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
             await OneSignal.User.PushSubscription.optIn();
           }
@@ -272,7 +281,6 @@ async function entrarApp(){
 }
 
 if(TOKEN){
-  // Sesion guardada: intentamos cargar directo, si falla (token invalido) volvemos al login
   api('obtener_mi_perfil_jugador').then(res=>{
     if(res!==null){ entrarApp(); }
     else { safeSet('jugador_token',''); TOKEN=''; }
@@ -367,7 +375,6 @@ function mostrarQR(token, nombreContexto){
 async function compartirQR(imgUrl, waLink, nombreContexto){
   try{
     if(navigator.share){
-      // Intentamos compartir la imagen real del QR si el navegador lo permite
       try{
         const resp = await fetch(imgUrl);
         const blob = await resp.blob();
@@ -376,10 +383,9 @@ async function compartirQR(imgUrl, waLink, nombreContexto){
           await navigator.share({ files: [file], title: 'Mi código QR', text: nombreContexto ? ('Código QR — ' + nombreContexto) : 'Mi código QR' });
           return;
         }
-      }catch(e){ /* si falla compartir la imagen, seguimos con el link como respaldo */ }
+      }catch(e){}
       await navigator.share({ title: 'Mi código QR', text: (nombreContexto ? nombreContexto + ' — ' : '') + 'Aquí está mi código de asistencia', url: waLink });
     } else {
-      // Respaldo si el navegador no soporta compartir: copiar el link
       await navigator.clipboard.writeText(waLink);
       toast('Link copiado — pégalo en WhatsApp para compartirlo');
     }
@@ -530,10 +536,6 @@ async function verMisUltimosPagos(){
   abrirSheet(html);
 }
 
-/* ============================================================
-   FLUJO DE PAGOS: subir comprobante -> confirmar datos ->
-   elegir a qué deuda aplicarlo -> ver resultado
-   ============================================================ */
 let pagoState = { pagoId: null, montoDisponible: 0, origenSaldoFavor: false, montoOriginal: 0 };
 
 function fileToBase64(file){
@@ -827,9 +829,6 @@ async function actualizarEstadoPush(){
     return;
   }
 
-  // El navegador dice "granted", pero eso NO garantiza que OneSignal
-  // tenga la suscripcion marcada como activa (optedIn). Verificamos el
-  // estado real de OneSignal antes de decidir que todo esta bien.
   if(window.OneSignalDeferred){
     OneSignalDeferred.push(async function(OneSignal){
       let optedIn = false;
@@ -851,25 +850,15 @@ async function activarNotificaciones(){
     toast('Tu navegador no soporta notificaciones', true);
     return;
   }
-
-  // 1. Pedimos el permiso NATIVO del navegador inmediatamente al hacer clic.
-  // Esto mantiene vivo el "User Gesture" y evita el error "No Push Token".
   const permiso = await Notification.requestPermission();
-
   if(permiso === 'granted'){
     if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
-
     OneSignalDeferred.push(async function(OneSignal){
       try{
-        // 2. Vinculamos al usuario con su ID ANTES de activar la suscripción
         if(PERFIL && PERFIL.jugadorId){ 
           await OneSignal.login(String(PERFIL.jugadorId)); 
         }
-        
-        // 3. Habilitamos la suscripción push
         await OneSignal.User.PushSubscription.optIn();
-        
-        // 4. Confirmamos a tu base de datos y actualizamos la UI
         await api('marcar_push_habilitado_jugador');
         toast('¡Notificaciones activadas correctamente!');
         actualizarEstadoPush();
