@@ -889,6 +889,11 @@ async function guardarPerfil(){
   };
   const res = await api('actualizar_mis_datos_jugador', body);
   if(res===null) return;
+  // Actualizamos la copia local (PERFIL) con lo que acabamos de guardar,
+  // para que al volver a esta pestaña se vea el dato nuevo sin necesidad
+  // de otra llamada al servidor.
+  if(PERFIL){ PERFIL = Object.assign({}, PERFIL, body); }
+  document.getElementById('saludoHeader').textContent = 'Hola, ' + (body.nombres||'').split(' ')[0] + ' 👋';
   toast('Datos actualizados');
 }
 
