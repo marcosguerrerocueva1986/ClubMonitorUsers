@@ -1,7 +1,9 @@
 {
+  "id": "/admin.html",
   "name": "Panel del Club",
   "short_name": "Panel Club",
   "start_url": "/admin.html",
+  "scope": "/admin.html",
   "display": "standalone",
   "background_color": "#14231A",
   "theme_color": "#14231A",
