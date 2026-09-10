@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Panel Club</title>
+<link rel="manifest" href="/admin-manifest.json">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Panel Club">
+<meta name="theme-color" content="#14231A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pitch-0:#0E1712;
+    --pitch-1:#14231A;
+    --pitch-2:#1C2E20;
+    --pitch-3:#28402F;
+    --line:#33502F;
+    --chalk:#E9EEE3;
+    --chalk-dim:#9FB09A;
+    --gold:#FFD23F;
+    --gold-dim:#8C7A2A;
+    --red:#E85D4C;
+    --green-ok:#6FCF97;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #1A2C1F 0%, var(--pitch-1) 55%),
+      var(--pitch-1);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    height:100vh;
+    height:100dvh;
+    overflow:hidden;
+  }
+  #appRoot{
+    display:none;
+    flex-direction:column;
+    height:100vh;
+    height:100dvh;
+  }
+  h1,h2,h3,.disp{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:0.02em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:inherit;}
+
+  header.top{
+    flex-shrink:0;
+    background:linear-gradient(180deg, var(--pitch-1) 70%, transparent);
+    padding:18px 20px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  header.top .brand{
+    display:flex;align-items:baseline;gap:10px;
+  }
+  header.top .brand .mark{color:var(--gold);font-size:22px;}
+  header.top h1{font-size:22px;margin:0;font-weight:600;color:var(--chalk);}
+  header.top .sub{font-size:12px;color:var(--chalk-dim);margin-top:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.03em;}
+  .centerline{height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 10px, transparent 10px 18px);margin-top:12px;border-radius:2px;}
+
+  main{
+    flex:1 1 auto;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:18px 16px calc(24px + env(safe-area-inset-bottom));
+    max-width:640px;margin:0 auto;
+    width:100%;
+    box-sizing:border-box;
+  }
+  .screen{display:none;animation:fade .25s ease;}
+  .screen.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  .card{
+    background:var(--pitch-2);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .card-title{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .card-title h3{margin:0;font-size:18px;color:var(--chalk);}
+  .badge{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;padding:3px 8px;border-radius:20px;
+    text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;
+  }
+  .badge.cerrado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
+  .badge.confirmando{background:rgba(111,207,151,.15);color:var(--green-ok);border:1px solid rgba(111,207,151,.3);}
+  .badge.en_juego{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
+  .badge.cancelado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
+  .badge.admin{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
+  .badge.controlador{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
+  .meta{color:var(--chalk-dim);font-size:14px;margin-top:6px;line-height:1.6;}
+  .meta b{color:var(--chalk);font-weight:600;}
+
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  button{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:14px;
+    border:1px solid var(--line);background:var(--pitch-3);color:var(--chalk);
+    padding:10px 14px;border-radius:10px;cursor:pointer;transition:.15s;
+  }
+  button:active{transform:scale(.97);}
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  button.primary{background:var(--gold);color:var(--pitch-0);border-color:var(--gold);}
+  button.danger{background:transparent;color:var(--red);border-color:rgba(232,93,76,.4);}
+  button.ghost{background:transparent;}
+  button.block{width:100%;}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  button.sm{padding:7px 10px;font-size:13px;}
+
+  input,select{
+    width:100%;font-family:'Inter',sans-serif;font-size:15px;
+    background:var(--pitch-0);border:1px solid var(--line);color:var(--chalk);
+    padding:11px 12px;border-radius:10px;margin-top:6px;
+  }
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:var(--gold);}
+  label{display:block;font-size:12px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.04em;margin-top:14px;}
+  label:first-child{margin-top:0;}
+
+  .fab{
+    position:fixed;right:20px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;
+    width:56px;height:56px;border-radius:50%;
+    background:var(--gold);color:var(--pitch-0);border:none;
+    font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 20px rgba(0,0,0,.4);
+  }
+
+  nav.tabs{
+    flex-shrink:0;
+    display:flex;background:var(--pitch-2);border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+  }
+  nav.tabs button{
+    flex:1;background:none;border:none;color:var(--chalk-dim);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;
+    padding:6px 0;border-radius:10px;
+  }
+  nav.tabs button .ic{font-size:20px;}
+  nav.tabs button.active{color:var(--gold);background:rgba(255,210,63,.08);}
+
+  .empty{text-align:center;padding:48px 16px;color:var(--chalk-dim);}
+  .empty .ic{font-size:40px;display:block;margin-bottom:10px;}
+
+  .toast{
+    position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(20px);
+    background:var(--pitch-3);border:1px solid var(--line);color:var(--chalk);
+    padding:12px 18px;border-radius:12px;font-size:14px;z-index:100;
+    opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{border-color:rgba(232,93,76,.5);color:#FFB4A8;}
+
+  #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;}
+  .login-card{width:100%;max-width:340px;text-align:center;}
+  .login-card .mark{font-size:52px;margin-bottom:6px;}
+  .login-card h1{font-size:26px;margin:0 0 4px;}
+  .login-card p{color:var(--chalk-dim);font-size:14px;margin:0 0 22px;}
+
+  .search-wrap{position:relative;margin-bottom:14px;}
+  .search-wrap input{padding-left:38px;}
+  .search-wrap .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--chalk-dim);}
+
+  .overlay{
+    position:fixed;inset:0;background:rgba(6,10,7,.7);backdrop-filter:blur(3px);
+    z-index:50;display:flex;align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .sheet{
+    width:100%;max-width:520px;background:var(--pitch-2);border:1px solid var(--line);
+    border-radius:20px;padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+    max-height:min(85vh, 85dvh);overflow-y:auto;-webkit-overflow-scrolling:touch;
+    animation:pop .18s ease;
+  }
+  @keyframes pop{from{transform:scale(.96);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .sheet-head h2{margin:0;font-size:20px;}
+  .sheet-close{background:none;border:none;color:var(--chalk-dim);font-size:22px;padding:4px 8px;}
+
+  .toggle-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);}
+  .toggle-row:last-child{border-bottom:none;}
+  .toggle-row span{font-size:15px;}
+  .switch{position:relative;width:46px;height:26px;flex-shrink:0;}
+  .switch input{opacity:0;width:0;height:0;}
+  .switch .track{position:absolute;inset:0;background:var(--pitch-0);border:1px solid var(--line);border-radius:20px;transition:.2s;cursor:pointer;}
+  .switch .track:before{content:"";position:absolute;width:18px;height:18px;left:3px;top:2px;background:var(--chalk-dim);border-radius:50%;transition:.2s;}
+  .switch input:checked + .track{background:rgba(255,210,63,.2);border-color:var(--gold);}
+  .switch input:checked + .track:before{transform:translateX(20px);background:var(--gold);}
+
+  .field-line{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);gap:12px;}
+  .field-line:last-child{border-bottom:none;}
+  .field-line .fl-label{font-size:14px;color:var(--chalk-dim);}
+  .field-line .fl-value{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--chalk);}
+  .field-line button{flex-shrink:0;}
+
+  .spinner{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;margin:30px auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .stat-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;text-align:center;}
+  .stat-card .num{font-family:'Oswald',sans-serif;font-size:26px;font-weight:700;color:var(--gold);line-height:1.1;}
+  .stat-card .lbl{font-size:11px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.04em;margin-top:4px;}
+  .bar-row{margin-bottom:12px;}
+  .bar-row:last-child{margin-bottom:0;}
+  .bar-row .bar-label{display:flex;justify-content:space-between;font-size:13px;color:var(--chalk-dim);margin-bottom:5px;}
+  .bar-track{background:var(--pitch-0);border-radius:8px;height:10px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:8px;transition:width .3s;}
+  .card.debt{border-color:rgba(232,93,76,.5);background:linear-gradient(180deg, rgba(232,93,76,.10), var(--pitch-2) 60%);}
+  .badge.debt{background:rgba(232,93,76,.2);color:#FFB4A8;border:1px solid rgba(232,93,76,.5);}
+  .alert-card{background:rgba(232,93,76,.12);border:1px solid rgba(232,93,76,.35);border-radius:var(--radius);padding:14px;margin-bottom:12px;color:#FFB4A8;font-size:14px;line-height:1.5;}
+
+  .club-logo{display:block;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.35);}
+  .login-card .club-logo{width:96px;height:96px;margin:0 auto 6px;}
+  header.top .brand .club-logo{width:30px;height:30px;}
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>Panel del Club</h1>
+    <p>Ingresa la clave de administrador</p>
+    <input type="password" id="loginInput" placeholder="Clave" autocomplete="off" autocapitalize="off">
+    <button class="primary block" style="margin-top:14px" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none">
+  <header class="top">
+    <div class="brand"><h1>Panel del Club</h1></div>
+    <div class="sub" id="screenSub">PANEL DE PAGOS</div>
+    <div class="centerline"></div>
+  </header>
+
+  <main>
+    <div class="screen active" id="screen-dashboard">
+      <div id="dashboardContent"><div class="spinner"></div></div>
+    </div>
+
+    <div class="screen" id="screen-partidos">
+      <div id="partidosList"><div class="spinner"></div></div>
+    </div>
+
+    <div class="screen" id="screen-jugadores">
+      <div class="search-wrap">
+        <span class="ic">🔎</span>
+        <input id="buscarJugador" placeholder="Buscar por nombre o teléfono" oninput="debounceBuscarJugadores()">
+      </div>
+      <div id="jugadoresList"><div class="spinner"></div></div>
+    </div>
+
+    <div class="screen" id="screen-parametros">
+      <div id="parametrosList"><div class="spinner"></div></div>
+    </div>
+  </main>
+
+  <button class="fab" id="fabCrear" onclick="abrirCrearPartido()" title="Crear partido">＋</button>
+
+  <nav class="tabs">
+    <button class="active" data-tab="dashboard" onclick="cambiarTab('dashboard')"><span class="ic">📊</span>Dashboard</button>
+    <button data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic">⚽</span>Partidos</button>
+    <button data-tab="jugadores" onclick="cambiarTab('jugadores')"><span class="ic">👥</span>Jugadores</button>
+    <button data-tab="parametros" onclick="cambiarTab('parametros')"><span class="ic">⚙️</span>Parámetros</button>
+  </nav>
+</div>
+
+<script>
+const API_URL = '/api/admin';
+function safeStorageGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+function safeStorageSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+let CLAVE = safeStorageGet('clave_admin_app');
+let currentTab = 'partidos';
+let tiposCache = null;
+
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  setTimeout(()=>{ t.className='toast'; }, 2600);
+}
+
+async function api(accion, extra){
+  const body = Object.assign({ clave: CLAVE, accion }, extra || {});
+  try{
+    const res = await fetch(API_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!data.success){ toast(data.error || 'Error', true); return null; }
+    return data.data !== undefined ? data.data : true;
+  }catch(e){
+    toast('No se pudo conectar. Revisa tu internet.', true);
+    return null;
+  }
+}
+
+async function doLogin(){
+  const val = document.getElementById('loginInput').value.trim();
+  if(!val) return;
+  CLAVE = val;
+  const res = await api('obtener_parametros');
+  if(res){
+    safeStorageSet('clave_admin_app', CLAVE);
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appRoot').style.display='flex';
+    cargarDashboard();
+  } else {
+    CLAVE = '';
+  }
+}
+document.getElementById('loginInput').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+
+if(CLAVE){
+  api('obtener_parametros').then(res=>{
+    if(res){
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('appRoot').style.display='flex';
+      cargarDashboard();
+    }
+  });
+}
+
+function cambiarTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+  document.getElementById('fabCrear').style.display = (tab==='partidos' || tab==='jugadores') ? 'flex' : 'none';
+  document.getElementById('fabCrear').onclick = tab==='jugadores' ? abrirCrearJugadorManual : abrirCrearPartido;
+  document.getElementById('fabCrear').title = tab==='jugadores' ? 'Agregar jugador' : 'Crear partido';
+  const subs = {dashboard:'PANEL DE PAGOS', partidos:'PARTIDOS ACTIVOS', jugadores:'JUGADORES', parametros:'PARÁMETROS DEL CLUB'};
+  document.getElementById('screenSub').textContent = subs[tab];
+  if(tab==='dashboard') cargarDashboard();
+  if(tab==='partidos') cargarPartidos();
+  if(tab==='jugadores') cargarJugadores();
+  if(tab==='parametros') cargarParametros();
+}
+
+function fechaCorta(f){
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d = new Date(f);
+  return dias[d.getUTCDay()]+' '+String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();
+}
+
+async function cargarPartidos(){
+  const list = document.getElementById('partidosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const partidos = await api('listar_partidos');
+  if(partidos===null) return;
+  if(partidos.length===0){
+    list.innerHTML = '<div class="empty"><span class="ic">⚽</span>No hay partidos activos.<br>Toca + para crear uno.</div>';
+    return;
+  }
+  list.innerHTML = partidos.map(p=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${p.alias ? esc(p.alias) : 'Partido #'+p.id}</h3>
+        <span class="badge ${p.estado}">${p.estado}</span>
+      </div>
+      <div class="meta">
+        📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
+        📍 ${esc(p.lugar||'')}${p.costo_inscripcion ? ' &nbsp; · &nbsp; 💵 $'+p.costo_inscripcion : ''}
+      </div>
+      <div class="row-actions">
+
+        <button class="sm" onclick="abrirDetallesPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')}, '${p.estado}')">Detalles</button>
+
+        <button class="sm" onclick="abrirEditarPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')})">Editar</button>
+
+        <button class="sm primary" onclick="confirmarFinalizar(${p.id})">Terminar</button>
+
+
+        <button class="sm danger" onclick="confirmarAccionPartido('cancelar_partido', ${p.id}, 'cancelar este partido')">Cancelar</button>
+        <button class="sm danger" onclick="confirmarAccionPartido('eliminar_partido', ${p.id}, 'eliminar este partido')">Eliminar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function confirmarAccionPartido(accion, id, label){
+  if(!confirm('¿Seguro que quieres ' + label + '?')) return;
+  const res = await api(accion, {id});
+  if(res!==null){ toast('Listo'); cargarPartidos(); }
+}
+
+function abrirEditarPartido(id, aliasActual){
+  const html = `
+    <div class="sheet-head"><h2>Editar partido</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Campo</label>
+    <select id="editCampo">
+      <option value="FECHA">Fecha</option>
+      <option value="HORA">Hora</option>
+      <option value="LUGAR">Lugar</option>
+      <option value="ALIAS">Alias</option>
+    </select>
+    <label id="editValorLabel">Nuevo valor (DD/MM/AAAA)</label>
+    <input id="editValor" placeholder="25/08/2026">
+    <button class="primary block" style="margin-top:20px" onclick="guardarEditarPartido(${id})">Guardar cambio</button>
+  `;
+  abrirSheet(html);
+  document.getElementById('editCampo').addEventListener('change', e=>{
+    const hints = {FECHA:'Nuevo valor (DD/MM/AAAA)', HORA:'Nuevo valor (HH:MM)', LUGAR:'Nuevo lugar', ALIAS:'Nuevo alias (vacío para quitar)'};
+    document.getElementById('editValorLabel').textContent = hints[e.target.value];
+  });
+}
+
+async function guardarEditarPartido(id){
+  const campo = document.getElementById('editCampo').value;
+  const valor = document.getElementById('editValor').value.trim();
+  const res = await api('editar_partido', {id, campo, valor});
+  if(res!==null){ toast('Partido actualizado'); cerrarSheet(); cargarPartidos(); }
+}
+
+async function abrirCrearPartido(){
+  if(!tiposCache){
+    const t = await api('listar_tipos_partido');
+    if(t===null) return;
+    tiposCache = t;
+  }
+  const opts = tiposCache.map(t=>`<option value="${esc(t.nombre)}">${esc(t.nombre)}${t.costo_default ? ' ($'+t.costo_default+')' : ''}</option>`).join('');
+  const html = `
+    <div class="sheet-head"><h2>Crear partido</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Tipo</label>
+    <select id="nuevoTipo">${opts}</select>
+    <label>Fecha</label>
+    <input id="nuevoFecha" placeholder="25/08/2026">
+    <label>Hora</label>
+    <input id="nuevoHora" placeholder="10:00">
+    <label>Lugar</label>
+    <input id="nuevoLugar" placeholder="Cancha UE Atenas">
+    <label>Alias (opcional)</label>
+    <input id="nuevoAlias" placeholder="Clásico de agosto">
+    <label>Costo de inscripción (opcional, deja vacío para usar el default del tipo)</label>
+    <input id="nuevoCosto" placeholder="3" inputmode="decimal">
+    <button class="primary block" style="margin-top:20px" onclick="guardarCrearPartido()">Crear partido</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCrearPartido(){
+  const body = {
+    tipo: document.getElementById('nuevoTipo').value,
+    fecha: document.getElementById('nuevoFecha').value.trim(),
+    hora: document.getElementById('nuevoHora').value.trim(),
+    lugar: document.getElementById('nuevoLugar').value.trim(),
+    alias: document.getElementById('nuevoAlias').value.trim(),
+  };
+  const costo = document.getElementById('nuevoCosto').value.trim();
+  if(costo) body.costo = costo;
+  if(!body.fecha || !body.hora || !body.lugar){ toast('Completa fecha, hora y lugar', true); return; }
+  const res = await api('crear_partido', body);
+  if(res!==null){ toast('Partido creado y anunciado al grupo'); cerrarSheet(); cargarPartidos(); }
+}
+
+let buscarTimer = null;
+function debounceBuscarJugadores(){
+  clearTimeout(buscarTimer);
+  buscarTimer = setTimeout(cargarJugadores, 350);
+}
+
+async function cargarJugadores(){
+  const list = document.getElementById('jugadoresList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const busqueda = document.getElementById('buscarJugador').value.trim();
+  const jugadores = await api('listar_jugadores', {busqueda});
+  if(jugadores===null) return;
+  if(jugadores.length===0){
+    list.innerHTML = '<div class="empty"><span class="ic">👥</span>Sin resultados.</div>';
+    return;
+  }
+  list.innerHTML = jugadores.map(j=>`
+    <div class="card ${j.tieneDeuda ? 'debt' : ''}">
+      <div class="card-title">
+        <h3>${esc(j.nombres)} ${esc(j.apellidos)}</h3>
+        <span class="badge ${j.estado==='activo'?'confirmando':'cancelado'}">${esc(j.estado)}</span>
+      </div>
+      <div class="meta">📱 ${esc(j.telefono)}</div>
+      <div class="row-actions">
+        ${j.es_admin ? '<span class="badge admin">Admin</span>' : ''}
+        ${j.es_controlador ? '<span class="badge controlador">Controlador</span>' : ''}
+        ${j.autorizado_excepcion_pago ? '<span class="badge admin">⭐ Autorizado</span>' : ''}
+        ${j.tieneDeuda ? `<button class="sm" style="border-color:rgba(232,93,76,.5);color:#FFB4A8" onclick="abrirDeudaJugador(${j.id}, ${JSON.stringify(j.nombres+' '+j.apellidos).replace(/"/g,'&quot;')})">⚠️ Deuda</button>` : ''}
+      </div>
+      <div class="row-actions" style="margin-top:8px">
+        <button class="sm" onclick="verDetalleJugador(${j.id})">Detalles</button>
+        <button class="sm" onclick="verPagosJugador(${j.id}, ${JSON.stringify(j.nombres+' '+j.apellidos).replace(/"/g,'&quot;')})">💳 Pagos</button>
+        <button class="sm primary" onclick='abrirSubirComprobanteAdmin(${j.id}, ${JSON.stringify(j.nombres+" "+j.apellidos)})'>📤 Comprobante</button>
+        <button class="sm" style="margin-left:auto" onclick='abrirEditarJugador(${JSON.stringify(j).replace(/'/g,"&#39;")})'>Gestionar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ============================================================
+   AGREGAR JUGADOR MANUALMENTE
+   ============================================================ */
+function abrirCrearJugadorManual(){
+  const html = `
+    <div class="sheet-head"><h2>Agregar jugador</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.5">Usa esto para registrar a un jugador manualmente (por ejemplo, si ya te pasó su comprobante de pago pero todavía no se ha registrado él mismo). El teléfono y la cédula no pueden repetirse con otro jugador ya existente.</p>
+    <label>Nombres</label>
+    <input id="jmNombres" placeholder="Juan">
+    <label>Apellidos</label>
+    <input id="jmApellidos" placeholder="Pérez García">
+    <label>Cédula</label>
+    <input id="jmCedula" placeholder="1712345678" inputmode="numeric">
+    <label>Correo</label>
+    <input id="jmCorreo" placeholder="juan@correo.com" type="email">
+    <label>Teléfono (con el que escribirá al bot)</label>
+    <input id="jmTelefono" placeholder="0991234567" inputmode="tel">
+    <button class="primary block" style="margin-top:18px" onclick="guardarJugadorManual()">Crear jugador</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarJugadorManual(){
+  const body = {
+    nombres: document.getElementById('jmNombres').value.trim(),
+    apellidos: document.getElementById('jmApellidos').value.trim(),
+    cedula: document.getElementById('jmCedula').value.trim(),
+    correo: document.getElementById('jmCorreo').value.trim(),
+    telefono: document.getElementById('jmTelefono').value.trim(),
+  };
+  if(!body.nombres || !body.apellidos){ toast('Completa nombres y apellidos', true); return; }
+  if(!body.telefono){ toast('Completa el teléfono', true); return; }
+  const res = await api('crear_jugador_manual_app', body);
+  if(res===null) return;
+  toast('Jugador creado');
+  cerrarSheet();
+  cargarJugadores();
+}
+
+/* ============================================================
+   REGISTRAR PAGO CON FOTO (ADMIN, para cualquier jugador)
+   Mismo flujo de 3 pasos que en la app del jugador.
+   ============================================================ */
+let pagoAdminState = { jugadorId: null, nombreJugador: '', pagoId: null, montoDisponible: 0 };
+
+function fileToBase64Admin(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function abrirSubirComprobanteAdmin(jugadorId, nombreJugador){
+  pagoAdminState = { jugadorId, nombreJugador, pagoId: null, montoDisponible: 0 };
+  const html = `
+    <div class="sheet-head"><h2>Subir comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;margin-top:-4px">Para: <b>${esc(nombreJugador)}</b></p>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">
+      <b>Paso 1 de 3.</b> Sube la foto del comprobante que te envió este jugador (por WhatsApp, en persona, etc.).<br><br>
+      El sistema va a leer el monto y los datos automáticamente. En el siguiente paso podrás revisar y corregir esa información antes de continuar.
+    </p>
+    <label>Foto del comprobante</label>
+    <input type="file" id="comprobanteAdminFile" accept="image/*">
+    <button class="primary block" style="margin-top:16px" onclick="analizarComprobanteAdmin()">Analizar comprobante</button>
+    <div id="comprobanteAdminLoading" style="display:none;text-align:center;margin-top:16px">
+      <div class="spinner"></div>
+      <p style="color:var(--chalk-dim);font-size:13px">Leyendo el comprobante, un momento...</p>
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function analizarComprobanteAdmin(){
+  const input = document.getElementById('comprobanteAdminFile');
+  if(!input.files || !input.files[0]){ toast('Primero elige una foto', true); return; }
+  document.getElementById('comprobanteAdminLoading').style.display = 'block';
+  let base64;
+  try{ base64 = await fileToBase64Admin(input.files[0]); }
+  catch(e){ toast('No se pudo leer la foto, intenta de nuevo', true); document.getElementById('comprobanteAdminLoading').style.display='none'; return; }
+  const res = await api('analizar_comprobante_admin_app', { imagenBase64: base64 });
+  document.getElementById('comprobanteAdminLoading').style.display = 'none';
+  if(res===null) return;
+  if(res.duplicado){
+    toast('Este comprobante ya había sido usado antes', true);
+    return;
+  }
+  mostrarConfirmarComprobanteAdmin(res);
+}
+
+function mostrarConfirmarComprobanteAdmin(datos){
+  const avisoNoDetectado = !datos.esComprobante ? `
+    <div class="alert-card">⚠️ No estamos seguros de que esta foto sea un comprobante de pago válido. Revisa con cuidado los datos de abajo, o vuelve atrás y sube una foto más clara.</div>
+  ` : '';
+  const html = `
+    <div class="sheet-head"><h2>Confirma los datos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">Para: <b>${esc(pagoAdminState.nombreJugador)}</b></p>
+    ${avisoNoDetectado}
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6"><b>Paso 2 de 3.</b> Revisa que estos datos coincidan con el comprobante real. Corrige aquí mismo si algo está mal antes de continuar.</p>
+    <label>Monto pagado (en dólares)</label>
+    <input id="confAdminMonto" type="number" step="0.01" inputmode="decimal" value="${datos.monto || ''}">
+    <label>Banco</label>
+    <input id="confAdminBanco" value="${esc(datos.banco || '')}">
+    <label>Número de comprobante</label>
+    <input id="confAdminNumero" value="${esc(datos.numeroComprobante || '')}">
+    <label>Fecha de la transferencia (AAAA-MM-DD)</label>
+    <input id="confAdminFecha" value="${esc(datos.fechaComprobante || '')}" placeholder="2026-09-05">
+    <button class="primary block" style="margin-top:18px" onclick="confirmarYRegistrarPagoAdmin()">Confirmar y continuar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function confirmarYRegistrarPagoAdmin(){
+  const monto = parseFloat(document.getElementById('confAdminMonto').value);
+  const banco = document.getElementById('confAdminBanco').value.trim();
+  const numeroComprobante = document.getElementById('confAdminNumero').value.trim();
+  const fecha = document.getElementById('confAdminFecha').value.trim();
+  if(!monto || monto<=0){ toast('Escribe un monto válido', true); return; }
+  if(!numeroComprobante){ toast('Falta el número de comprobante', true); return; }
+  if(!fecha){ toast('Falta la fecha de la transferencia', true); return; }
+  const res = await api('registrar_pago_comprobante_admin_app', { jugadorId: pagoAdminState.jugadorId, monto, banco, numeroComprobante, fecha });
+  if(res===null) return;
+  pagoAdminState.pagoId = res.pagoId;
+  pagoAdminState.montoDisponible = Number(res.monto);
+  await abrirDistribuirPagoAdmin();
+}
+
+async function abrirDistribuirPagoAdmin(){
+  const d = await api('ver_pendientes_categorizado_app', { jugadorId: pagoAdminState.jugadorId });
+  if(d===null) return;
+  mostrarDistribucionAdmin(d);
+}
+
+function mostrarDistribucionAdmin(p){
+  const filas = [];
+  if(p.deuda_mensualidad > 0){
+    const etiqueta = p.meses_atraso > 0 ? p.meses_atraso+' mes(es) atrasado(s)' : 'mes actual';
+    filas.push({tipo:'mensualidad', label:'Mensualidad ('+etiqueta+')', monto:p.deuda_mensualidad});
+  }
+  if((p.invitados_pendientes||[]).length > 0){
+    filas.push({tipo:'invitado', label:'🎟️ Invitados pendientes ('+p.invitados_pendientes.length+')', monto:p.total_invitados});
+  }
+  if((p.multas_propias||[]).length > 0){
+    filas.push({tipo:'multas_propias', label:'⚠️ Multas propias ('+p.multas_propias.length+')', monto:p.total_multas_propias});
+  }
+  if((p.multas_invitados||[]).length > 0){
+    filas.push({tipo:'multas_invitados', label:'⚠️ Multas por invitados ('+p.multas_invitados.length+')', monto:p.total_multas_invitados});
+  }
+  (p.partidos_especiales||[]).forEach(pe=>{
+    filas.push({tipo:'partido_especial', label:'Partido especial: '+esc(pe.alias||''), monto:pe.monto, partidoId:pe.partido_id, conceptoMonto:pe.monto});
+  });
+
+  const html = `
+    <div class="sheet-head"><h2>¿A qué lo aplicamos?</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px"><b>Paso 3 de 3.</b> Para: <b>${esc(pagoAdminState.nombreJugador)}</b></p>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">DISPONIBLE PARA APLICAR</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:32px;color:var(--gold);font-weight:700">$${pagoAdminState.montoDisponible.toFixed(2)}</div>
+    </div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">👉 Toca el concepto al que quieres aplicar este pago. Si sobra algo, te preguntamos qué hacer con el resto.</p>
+    ${filas.length===0 ? '<div class="ok-card">✓ Este jugador no tiene deudas pendientes. El monto se guardará como saldo a favor.</div>' : filas.map((f)=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${f.label}</div>
+          <div class="fl-label">Debe: $${f.monto}</div>
+        </div>
+        <button class="sm primary" onclick='aplicarPagoConceptoAdmin(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Aplicar aquí</button>
+      </div>
+    `).join('')}
+    ${filas.length===0 ? `<button class="primary block" style="margin-top:12px" onclick="guardarComoSaldoFavorAdmin(${pagoAdminState.montoDisponible})">Guardar como saldo a favor</button>` : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function aplicarPagoConceptoAdmin(f){
+  const montoAAplicar = Math.min(pagoAdminState.montoDisponible, Number(f.monto));
+  const sobranteFrontend = pagoAdminState.montoDisponible - montoAAplicar;
+  const body = {
+    jugadorId: pagoAdminState.jugadorId,
+    pagoId: pagoAdminState.pagoId,
+    monto: montoAAplicar,
+    tipoConcepto: f.tipo,
+    partidoId: f.partidoId,
+    conceptoMonto: f.conceptoMonto,
+  };
+  const res = await api('aplicar_pago_comprobante_admin_app', body);
+  if(res===null) return;
+  res.restante = sobranteFrontend + Number(res.restante || 0);
+  mostrarResultadoPagoAdmin(res);
+}
+
+function mostrarResultadoPagoAdmin(res){
+  const restante = Number(res.restante || 0);
+  let html = `
+    <div class="sheet-head"><h2>Resultado</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="ok-card">✓ ${esc(res.mensaje)}</div>
+  `;
+  if(restante > 0.009){
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">Todavía quedan <b>$${restante.toFixed(2)}</b> de este pago sin usar. ¿Qué quieres hacer?</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+        <button class="block primary" onclick="continuarConRestanteAdmin(${restante})">Aplicarlo a otra deuda ahora</button>
+        <button class="block" onclick="guardarComoSaldoFavorAdmin(${restante})">Guardarlo como saldo a favor</button>
+      </div>
+    `;
+  } else {
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;text-align:center;margin-top:8px">El pago quedó aplicado por completo.</p>
+      <button class="primary block" style="margin-top:12px" onclick="cerrarSheet(); cargarJugadores();">Listo</button>
+    `;
+  }
+  abrirSheet(html);
+}
+
+async function continuarConRestanteAdmin(restante){
+  pagoAdminState.montoDisponible = restante;
+  await abrirDistribuirPagoAdmin();
+}
+
+async function guardarComoSaldoFavorAdmin(restante){
+  const res = await api('guardar_restante_saldo_favor_admin_app', { jugadorId: pagoAdminState.jugadorId, pagoId: pagoAdminState.pagoId, monto: restante });
+  if(res===null) return;
+  toast('Guardado como saldo a favor');
+  cerrarSheet();
+  cargarJugadores();
+}
+
+function abrirEditarJugador(j){
+  const html = `
+    <div class="sheet-head"><h2>${esc(j.nombres)} ${esc(j.apellidos)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="editNombres" value="${esc(j.nombres)}">
+    <label>Apellidos</label>
+    <input id="editApellidos" value="${esc(j.apellidos)}">
+    <label>Cédula</label>
+    <input id="editCedula" value="${esc(j.cedula || '')}">
+    <label>Correo</label>
+    <input id="editCorreo" value="${esc(j.correo || '')}">
+    <label>Teléfono</label>
+    <input id="editTelefono" value="${esc(j.telefono)}">
+    <label>Estado</label>
+    <select id="editEstado">
+      <option value="activo" ${j.estado==='activo'?'selected':''}>Activo</option>
+      <option value="inactivo" ${j.estado==='inactivo'?'selected':''}>Inactivo</option>
+    </select>
+    <div class="toggle-row" style="margin-top:16px">
+      <span>Es administrador</span>
+      <label class="switch"><input type="checkbox" id="editAdmin" ${j.es_admin?'checked':''}><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span>Es controlador (escanea QR)</span>
+      <label class="switch"><input type="checkbox" id="editControlador" ${j.es_controlador?'checked':''}><span class="track"></span></label>
+    </div>
+    <div class="toggle-row">
+      <span>Autorizado (excepción de morosidad)</span>
+      <label class="switch"><input type="checkbox" id="editAutorizado" ${j.autorizado_excepcion_pago?'checked':''}><span class="track"></span></label>
+    </div>
+    <button class="primary block" style="margin-top:20px" onclick="guardarEditarJugador(${j.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarJugador(id){
+  const body = {
+    id,
+    nombres: document.getElementById('editNombres').value.trim(),
+    apellidos: document.getElementById('editApellidos').value.trim(),
+    cedula: document.getElementById('editCedula').value.trim(),
+    correo: document.getElementById('editCorreo').value.trim(),
+    telefono: document.getElementById('editTelefono').value.trim(),
+    estado: document.getElementById('editEstado').value,
+    es_admin: document.getElementById('editAdmin').checked,
+    es_controlador: document.getElementById('editControlador').checked,
+    autorizado_excepcion_pago: document.getElementById('editAutorizado').checked,
+  };
+  const res = await api('actualizar_jugador', body);
+  if(res!==null){ toast('Jugador actualizado'); cerrarSheet(); cargarJugadores(); }
+}
+
+async function verDetalleJugador(jugadorId){
+  const d = await api('ver_detalle_jugador_app', {jugadorId});
+  if(d===null) return;
+  const up = d.ultimo_pago;
+  const html = `
+    <div class="sheet-head"><h2>${esc(d.nombres)} ${esc(d.apellidos)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="field-line"><div class="fl-label">Teléfono</div><div class="fl-value">${esc(d.telefono)}</div></div>
+    <div class="field-line"><div class="fl-label">Cédula</div><div class="fl-value">${esc(d.cedula || '—')}</div></div>
+    <div class="field-line"><div class="fl-label">Correo</div><div class="fl-value">${esc(d.correo || '—')}</div></div>
+    <div class="field-line"><div class="fl-label">Miembro desde</div><div class="fl-value">${fechaCorta(d.creado_en)}</div></div>
+    <div class="field-line">
+      <div class="fl-label">Estado de pago</div>
+      <span class="badge ${d.meses_atraso>0 ? 'cancelado' : 'confirmando'}">${d.meses_atraso>0 ? d.meses_atraso + ' mes(es) atraso' : 'Al día'}</span>
+    </div>
+    ${d.autorizado_excepcion_pago ? '<div class="field-line"><div class="fl-label">⭐ Autorizado (excepción de morosidad)</div></div>' : ''}
+    <div class="field-line"><div class="fl-label">Deuda estimada</div><div class="fl-value">$${d.deuda_estimada}</div></div>
+    <div class="field-line"><div class="fl-label">Total pagado histórico</div><div class="fl-value">$${d.total_pagado}</div></div>
+    <div class="field-line"><div class="fl-label">Último pago</div><div class="fl-value">${up ? '$' + up.monto + ' (' + up.tipo + ', ' + up.metodo + ')<br><span style="font-size:12px;color:var(--chalk-dim)">' + fechaCorta(up.fecha) + '</span>' : 'Sin pagos registrados'}</div></div>
+    <div class="field-line"><div class="fl-label">Multas pendientes</div><div class="fl-value">$${d.multas_pendientes}</div></div>
+    <div class="field-line"><div class="fl-label">Multas pagadas (histórico)</div><div class="fl-value">$${d.multas_aprobadas}</div></div>
+    <div class="field-line"><div class="fl-label">Partidos confirmados</div><div class="fl-value">${d.partidos_confirmados}</div></div>
+    <div class="field-line"><div class="fl-label">Partidos asistidos (check-in)</div><div class="fl-value">${d.partidos_asistidos}</div></div>
+  `;
+  abrirSheet(html);
+}
+
+async function verPagosJugador(jugadorId, nombre){
+  const pagos = await api('ver_pagos_jugador_app', {jugadorId});
+  if(pagos===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Pagos de ${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Últimos ${pagos.length} pago(s), del más reciente al más antiguo.</p>
+    ${pagos.length===0 ? '<p style="color:var(--chalk-dim)">Sin pagos registrados todavía.</p>' : pagos.map(p=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${esc(p.motivo)}</div>
+          <div class="fl-label">${fechaCorta(p.fecha)}</div>
+        </div>
+        <div class="fl-value" style="color:var(--gold)">$${p.monto}</div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+async function cargarParametros(){
+  const list = document.getElementById('parametrosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const p = await api('obtener_parametros');
+  if(p===null) return;
+  const campos = [
+    {key:'cuota_mensual', label:'Cuota mensual', val:p.cuota_mensual, prefix:'$'},
+    {key:'costo_invitado', label:'Costo por invitado', val:p.costo_invitado, prefix:'$'},
+    {key:'multa_inasistencia', label:'Multa por inasistencia', val:p.valor_multa_inasistencia, prefix:'$'},
+    {key:'multa_invitado_no_show', label:'Multa invitado no-show', val:p.valor_multa_invitado_no_show, prefix:'$'},
+    {key:'meses_maximo_atraso', label:'Meses máx. de atraso', val:p.meses_maximo_atraso, prefix:''},
+    {key:'numero_admin', label:'Número del admin', val:p.numero_admin, prefix:''},
+    {key:'fecha_inicio_recaudacion', label:'Inicio de recaudación (DD/MM/AAAA)', val:p.fecha_inicio_recaudacion, prefix:''},
+    {key:'meses_retener_codigos', label:'Meses para conservar códigos QR usados', val:p.meses_retener_codigos, prefix:''},
+  ];
+  document.getElementById('parametrosList').innerHTML = '<div class="card">' + campos.map(c=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-label">${c.label}</div>
+        <div class="fl-value">${c.prefix}${esc(c.val ?? '—')}</div>
+      </div>
+      <button class="sm" onclick="editarParametro('${c.key}','${esc(c.label)}','${esc(c.val ?? '')}')">Editar</button>
+    </div>
+  `).join('') + '</div>';
+}
+
+function editarParametro(key, label, valorActual){
+  const html = `
+    <div class="sheet-head"><h2>${label}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nuevo valor</label>
+    <input id="paramValor" value="${valorActual}">
+    <button class="primary block" style="margin-top:20px" onclick="guardarParametro('${key}')">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarParametro(key){
+  const valor = document.getElementById('paramValor').value.trim();
+  const res = await api('actualizar_parametro', {campo:key, valor});
+  if(res!==null){ toast('Parámetro actualizado'); cerrarSheet(); cargarParametros(); }
+}
+
+function abrirSheet(html){
+  cerrarSheet();
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'sheetOverlay';
+  overlay.onclick = (e)=>{ if(e.target===overlay) cerrarSheet(); };
+  overlay.innerHTML = `<div class="sheet">${html}</div>`;
+  document.body.appendChild(overlay);
+}
+function cerrarSheet(){
+  const el = document.getElementById('sheetOverlay');
+  if(el) el.remove();
+}
+
+/* ---------- DETALLES DEL PARTIDO ---------- */
+function abrirDetallesPartido(id, alias, estado){
+  const titulo = alias || ('Partido #' + id);
+  const botonCierre = estado === 'cerrado'
+    ? `<button class="block" onclick="reabrirConfirmaciones(${id})">🔓 Reabrir confirmaciones</button>`
+    : `<button class="block" onclick="cerrarConfirmaciones(${id})">🔒 Cerrar confirmaciones</button>`;
+  const html = `
+    <div class="sheet-head"><h2>Detalles</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;margin-top:-4px">${esc(titulo)}</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+      <button class="block" onclick="verConfirmados(${id})">👥 Lista de confirmados</button>
+      <button class="block" onclick="verCheckIn(${id})">✅ Check-in en tiempo real</button>
+      <button class="block" onclick="verInvitadosPartido(${id})">🎟️ Ver invitados</button>
+      <button class="block" onclick="abrirAgregarManual(${id})">➕ Agregar jugadores manualmente</button>
+      <button class="block" onclick="abrirQuitarManual(${id})">➖ Quitar jugadores manualmente</button>
+      ${botonCierre}
+      <button class="block" onclick="confirmarRecordatorio(${id})">🔔 Enviar recordatorio al grupo</button>
+      <button class="block" onclick="abrirEnviarQR(${id})">📲 Enviar QR a un jugador</button>
+      <button class="block" onclick="confirmarMarcarEnJuego(${id})">🏃 Marcar en juego</button>
+      <button class="primary block" onclick="confirmarFinalizar(${id})">🏁 Finalizar y revisar multas</button>
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function cerrarConfirmaciones(id){
+  if(!confirm('¿Cerrar las confirmaciones de este partido? Los jugadores ya no podrán escribir "voy" hasta que lo reabras.')) return;
+  const res = await api('cerrar_partido_app', {partidoId:id});
+  if(res!==null){ toast('Partido cerrado para confirmaciones'); cerrarSheet(); cargarPartidos(); }
+}
+
+async function reabrirConfirmaciones(id){
+  if(!confirm('¿Reabrir las confirmaciones de este partido?')) return;
+  const res = await api('reabrir_partido_app', {partidoId:id});
+  if(res!==null){ toast('Partido reabierto'); cerrarSheet(); cargarPartidos(); }
+}
+
+async function abrirAgregarManual(partidoId){
+  const data = await api('listar_jugadores_disponibles_partido_app', {partidoId});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Agregar jugadores</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Toca un jugador para confirmarlo manualmente en este partido (funciona sin importar el estado del partido).</p>
+    <div id="listaAgregarManual">${renderAgregarManualList(partidoId, data)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderAgregarManualList(partidoId, data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim)">Todos los jugadores activos ya están confirmados en este partido.</p>';
+  return data.map(j=>`
+    <button class="block sm" style="text-align:left;margin-bottom:8px" onclick='confirmarAgregarManual(${partidoId}, ${j.id}, ${JSON.stringify(j.nombre)})'>${esc(j.nombre)}</button>
+  `).join('');
+}
+
+async function confirmarAgregarManual(partidoId, jugadorId, nombre){
+  const res = await api('agregar_jugador_partido_app', {partidoId, jugadorId});
+  if(res===null) return;
+  toast(nombre + ' agregado al partido');
+  const data = await api('listar_jugadores_disponibles_partido_app', {partidoId});
+  if(data===null) return;
+  const cont = document.getElementById('listaAgregarManual');
+  if(cont) cont.innerHTML = renderAgregarManualList(partidoId, data);
+}
+
+async function abrirQuitarManual(partidoId){
+  const data = await api('listar_confirmados_removibles_partido_app', {partidoId});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Quitar jugadores</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Quitar a un jugador también cancela a sus invitados. Quitar un invitado solo lo afecta a él.</p>
+    <div id="listaQuitarManual">${renderQuitarManualList(partidoId, data)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderQuitarManualList(partidoId, data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim)">Nadie confirmado todavía en este partido.</p>';
+  return data.map(item=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${item.tipo==='invitado' ? '🎟️ ' : ''}${esc(item.nombre)}</div>
+        ${item.anfitrion ? `<div class="fl-label">Invitado de ${esc(item.anfitrion)}</div>` : ''}
+      </div>
+      <button class="sm danger" onclick='confirmarQuitarManual(${partidoId}, "${item.tipo}", ${item.id}, ${JSON.stringify(item.nombre)})'>Quitar</button>
+    </div>
+  `).join('');
+}
+
+async function confirmarQuitarManual(partidoId, tipo, id, nombre){
+  if(!confirm('¿Quitar a ' + nombre + ' de este partido?' + (tipo==='jugador' ? ' Sus invitados también serán cancelados.' : ''))) return;
+  const accion = tipo==='jugador' ? 'quitar_jugador_partido_app' : 'quitar_invitado_partido_app';
+  const body = tipo==='jugador' ? {partidoId, jugadorId:id} : {invitadoId:id};
+  const res = await api(accion, body);
+  if(res===null) return;
+  toast(nombre + ' fue quitado del partido');
+  const data = await api('listar_confirmados_removibles_partido_app', {partidoId});
+  if(data===null) return;
+  const cont = document.getElementById('listaQuitarManual');
+  if(cont) cont.innerHTML = renderQuitarManualList(partidoId, data);
+  cargarPartidos();
+}
+
+let confirmadosCache = { partidoId: null, data: [] };
+
+async function verConfirmados(partidoId){
+  const data = await api('ver_confirmados_partido', {partidoId});
+  if(data===null) return;
+  confirmadosCache = { partidoId, data };
+  const html = `
+    <div class="sheet-head"><h2>Confirmados</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Toca "Registrar pago" para efectivo recibido en cancha.</p>
+    <div id="listaConfirmados">${renderConfirmadosList(partidoId, data)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderConfirmadosList(partidoId, data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim)">Nadie confirmado todavía.</p>';
+  return data.map((item,i)=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${i+1}. ${item.tipo==='invitado' ? '🎟️ ' : ''}${esc(item.nombre)}</div>
+        ${item.anfitrion ? `<div class="fl-label">Invitado de ${esc(item.anfitrion)}</div>` : (item.mesesAtraso>0 ? `<div class="fl-label" style="color:var(--red)">⚠️ Moroso: ${item.mesesAtraso} mes(es) de atraso</div>` : `<div class="fl-label" style="color:var(--green-ok)">✓ Al día</div>`)}
+      </div>
+      ${item.tipo==='jugador' ? (item.pagado
+        ? `<span class="badge confirmando">Pagó</span>`
+        : `<button class="sm danger" onclick='registrarPagoEfectivo(${partidoId}, ${item.jugadorId}, ${JSON.stringify(item.nombre)})'>💵 Registrar pago</button>`
+      ) : ''}
+    </div>
+  `).join('');
+}
+
+async function registrarPagoEfectivo(partidoId, jugadorId, nombre){
+  if(!confirm('¿Registrar pago en efectivo de la mensualidad de ' + nombre + '?')) return;
+  const res = await api('registrar_pago_efectivo_app', {jugadorId});
+  if(res===null) return;
+  const dataActualizada = await api('ver_confirmados_partido', {partidoId});
+  if(dataActualizada===null) return;
+  confirmadosCache = { partidoId, data: dataActualizada };
+  const cont = document.getElementById('listaConfirmados');
+  if(cont) cont.innerHTML = renderConfirmadosList(partidoId, dataActualizada);
+  toast('Pago registrado');
+}
+
+let checkInCache = { partidoId: null, data: [] };
+
+async function verCheckIn(partidoId){
+  const data = await api('ver_checkin_partido', {partidoId});
+  if(data===null) return;
+  checkInCache = { partidoId, data };
+  const html = `
+    <div class="sheet-head"><h2>Check-in en vivo</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Toca "Marcar" para registrar asistencia manual en caso de emergencia.</p>
+    <div id="listaCheckIn">${renderCheckInList(partidoId, data)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderCheckInList(partidoId, data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim)">Nadie confirmado todavía.</p>';
+  return data.map((item,i)=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${i+1}. ${item.tipo==='invitado' ? '🎟️ ' : ''}${esc(item.nombre)}</div>
+        ${item.anfitrion ? `<div class="fl-label">Invitado de ${esc(item.anfitrion)}</div>` : ''}
+      </div>
+      <button class="sm ${item.presente ? '' : 'danger'}" onclick="toggleAsistencia(${partidoId}, '${item.tipo}', ${item.id})">${item.presente ? '✅ Presente' : '⚪ Marcar'}</button>
+    </div>
+  `).join('');
+}
+
+async function toggleAsistencia(partidoId, tipo, id){
+  const item = checkInCache.data.find(x => x.tipo===tipo && x.id===id);
+  const nuevoPresente = item ? !item.presente : true;
+  const res = await api('toggle_asistencia_app', {partidoId, tipo, id, presente: nuevoPresente});
+  if(res===null) return;
+  const dataActualizada = await api('ver_checkin_partido', {partidoId});
+  if(dataActualizada===null) return;
+  checkInCache = { partidoId, data: dataActualizada };
+  const cont = document.getElementById('listaCheckIn');
+  if(cont) cont.innerHTML = renderCheckInList(partidoId, dataActualizada);
+  toast(nuevoPresente ? 'Marcado presente' : 'Marcado ausente');
+}
+
+let invitadosCache = { partidoId: null, data: [] };
+
+async function verInvitadosPartido(partidoId){
+  const data = await api('ver_invitados_partido', {partidoId});
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  const pagados = data.filter(i => i.pagado).length;
+  const html = `
+    <div class="sheet-head"><h2>Invitados</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length>0 ? `<p style="color:var(--chalk-dim);font-size:13px">${pagados} de ${data.length} han pagado. Toca 💵 para registrar pago en efectivo.</p>` : ''}
+    <div id="listaInvitados">${renderInvitadosList(partidoId, data)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderInvitadosList(partidoId, data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim)">No hay invitados registrados.</p>';
+  return data.map((inv,i)=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${i+1}. ${esc(inv.nombre)} ${inv.presente?'✅':''}</div>
+        <div class="fl-label">Invitado de ${esc(inv.anfitrion)}</div>
+      </div>
+      <button class="sm ${inv.pagado ? '' : 'danger'}" onclick="togglePagoInvitado(${partidoId}, ${inv.id})">${inv.pagado ? '💵 Pagó' : '🔲 Marcar pago'}</button>
+    </div>
+  `).join('');
+}
+
+async function togglePagoInvitado(partidoId, invitadoId){
+  const item = invitadosCache.data.find(x => x.id===invitadoId);
+  const nuevoPagado = item ? !item.pagado : true;
+  const res = await api('marcar_pago_invitado_app', {invitadoId, pagado: nuevoPagado});
+  if(res===null) return;
+  const dataActualizada = await api('ver_invitados_partido', {partidoId});
+  if(dataActualizada===null) return;
+  invitadosCache = { partidoId, data: dataActualizada };
+  const cont = document.getElementById('listaInvitados');
+  if(cont) cont.innerHTML = renderInvitadosList(partidoId, dataActualizada);
+  toast(nuevoPagado ? 'Pago registrado' : 'Pago desmarcado');
+}
+
+async function abrirEnviarQR(partidoId){
+  const data = await api('ver_confirmados_partido', {partidoId});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Enviar QR</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px">Toca un jugador para reenviarle su código.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+    ${data.length===0 ? '<p style="color:var(--chalk-dim)">Nadie confirmado todavía.</p>' : data.map(j=>`
+      <button class="block sm" style="text-align:left" onclick='enviarQRJugador(${partidoId}, ${j.jugadorId}, ${JSON.stringify(j.nombre)})'>${esc(j.nombre)}</button>
+    `).join('')}
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function enviarQRJugador(partidoId, jugadorId, nombre){
+  const res = await api('reenviar_qr_jugador', {partidoId, jugadorId});
+  if(res!==null){ toast('QR enviado a ' + nombre); }
+}
+
+async function confirmarMarcarEnJuego(partidoId){
+  if(!confirm('¿Marcar este partido como "en juego"?')) return;
+  const res = await api('marcar_en_juego', {partidoId});
+  if(res!==null){ toast('Partido en juego'); cerrarSheet(); cargarPartidos(); }
+}
+
+async function confirmarRecordatorio(partidoId){
+  if(!confirm('¿Enviar recordatorio con la lista actual al grupo de WhatsApp?')) return;
+  const res = await api('enviar_recordatorio_app', {partidoId});
+  if(res!==null){ toast('Recordatorio enviado al grupo'); }
+}
+
+let multasEnRevision = { partidoId: null, multas: [] };
+
+async function confirmarFinalizar(partidoId){
+  if(!confirm('¿Finalizar este partido? Se generarán las multas por inasistencia.')) return;
+  const data = await api('finalizar_partido', {id: partidoId});
+  if(data===null) return;
+  mostrarRevisionMultas(partidoId, data.multas || []);
+}
+
+function mostrarRevisionMultas(partidoId, multas){
+  multasEnRevision = { partidoId, multas };
+  const html = `
+    <div class="sheet-head"><h2>Revisar multas</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div id="listaMultas">${renderMultasCheckbox(multas)}</div>
+    <div class="row-actions" style="margin-top:16px">
+      <button class="sm danger" onclick="anularSeleccionadas()">Anular seleccionadas</button>
+      <button class="sm danger" onclick="anularTodas()">Anular todas</button>
+    </div>
+    <button class="primary block" style="margin-top:16px" onclick="confirmarPublicarMultas()">Confirmar y publicar al grupo</button>
+  `;
+  abrirSheet(html);
+}
+
+function renderMultasCheckbox(multas){
+  if(multas.length===0) return '<p style="color:var(--chalk-dim)">No hay multas pendientes. ¡Nadie faltó!</p>';
+  return multas.map(m => `
+    <label class="field-line" style="cursor:pointer">
+      <div>
+        <div class="fl-value">${esc(m.nombre)}</div>
+        <div class="fl-label">${esc(m.motivo)} — $${m.monto}</div>
+      </div>
+      <input type="checkbox" class="chkMulta" value="${m.id}" style="width:20px;height:20px;flex-shrink:0">
+    </label>
+  `).join('');
+}
+
+async function anularSeleccionadas(){
+  const ids = Array.from(document.querySelectorAll('.chkMulta:checked')).map(el => parseInt(el.value));
+  if(ids.length===0){ toast('Selecciona al menos una', true); return; }
+  const data = await api('anular_multa_app', {partidoId: multasEnRevision.partidoId, ids});
+  if(data===null) return;
+  multasEnRevision.multas = data.multas;
+  document.getElementById('listaMultas').innerHTML = renderMultasCheckbox(data.multas);
+  toast('Multas anuladas');
+}
+
+async function anularTodas(){
+  if(!confirm('¿Anular TODAS las multas pendientes de este partido?')) return;
+  const data = await api('anular_multa_app', {partidoId: multasEnRevision.partidoId, todas: true});
+  if(data===null) return;
+  multasEnRevision.multas = data.multas;
+  document.getElementById('listaMultas').innerHTML = renderMultasCheckbox(data.multas);
+  toast('Todas las multas fueron anuladas');
+}
+
+async function confirmarPublicarMultas(){
+  const res = await api('confirmar_multas_app', {partidoId: multasEnRevision.partidoId});
+  if(res===null) return;
+  toast('Multas publicadas al grupo');
+  cerrarSheet();
+  cargarPartidos();
+}
+
+/* ---------- DASHBOARD ---------- */
+let dashboardCache = null;
+
+async function cargarDashboard(){
+  const cont = document.getElementById('dashboardContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const stats = await api('obtener_dashboard_app');
+  if(stats===null) return;
+  dashboardCache = stats;
+  const pctMorosos = stats.total_jugadores>0 ? Math.round(stats.total_morosos/stats.total_jugadores*100) : 0;
+  const pctRecaudo = stats.esperado_mes>0 ? Math.round(stats.recaudado_mes/stats.esperado_mes*100) : 0;
+  const maxAtraso = Math.max(stats.atraso_1, stats.atraso_2, stats.atraso_3mas, 1);
+  cont.innerHTML = `
+    ${stats.multas_pendientes_partidos>0 ? `<div class="alert-card">⚠️ Tienes ${stats.multas_pendientes_partidos} partido(s) con multas pendientes de revisar (~$${stats.multas_pendientes_monto}). Revísalas en Partidos → Detalles → Finalizar y revisar multas.</div>` : ''}
+    <div class="stat-grid">
+      <div class="stat-card"><div class="num">${stats.total_jugadores}</div><div class="lbl">Jugadores activos</div></div>
+      <div class="stat-card"><div class="num" style="color:${stats.total_morosos>0?'var(--red)':'var(--green-ok)'}">${pctMorosos}%</div><div class="lbl">Morosos (${stats.total_morosos})</div></div>
+      <div class="stat-card" style="cursor:pointer" onclick="abrirRecaudadoMes()"><div class="num">$${stats.recaudado_mes}</div><div class="lbl">Recaudado este mes</div></div>
+      <div class="stat-card"><div class="num">${pctRecaudo}%</div><div class="lbl">de lo esperado ($${stats.esperado_mes})</div></div>
+      <div class="stat-card"><div class="num">${stats.nuevos_mes}</div><div class="lbl">Nuevos este mes</div></div>
+      <div class="stat-card"><div class="num">$${stats.cuota_mensual ?? '—'}</div><div class="lbl">Cuota mensual</div></div>
+    </div>
+    <div class="card">
+      <div class="fl-label" style="margin-bottom:12px">DISTRIBUCIÓN DE ATRASO</div>
+      <div class="bar-row"><div class="bar-label"><span>1 mes</span><span>${stats.atraso_1}</span></div><div class="bar-track"><div class="bar-fill" style="width:${stats.atraso_1/maxAtraso*100}%;background:var(--gold)"></div></div></div>
+      <div class="bar-row"><div class="bar-label"><span>2 meses</span><span>${stats.atraso_2}</span></div><div class="bar-track"><div class="bar-fill" style="width:${stats.atraso_2/maxAtraso*100}%;background:var(--red)"></div></div></div>
+      <div class="bar-row"><div class="bar-label"><span>3+ meses</span><span>${stats.atraso_3mas}</span></div><div class="bar-track"><div class="bar-fill" style="width:${stats.atraso_3mas/maxAtraso*100}%;background:#8C2A1F"></div></div></div>
+    </div>
+    <button class="block" onclick="descargarInformePagos()">📊 Descargar informe (CSV)</button>
+    <button class="block" style="margin-top:10px" onclick="confirmarRecordatorioMorosos()">📢 Enviar recordatorio a morosos (${stats.total_morosos})</button>
+  `;
+}
+
+async function descargarInformePagos(){
+  const data = await api('listar_informe_completo_app');
+  if(data===null) return;
+  const ahora = new Date().toLocaleString('es-EC');
+  let csv = `Informe generado el,${ahora}\n\n`;
+  csv += 'Nombre,Telefono,Total pagado historico,Pagado este mes,Meses de atraso,Deuda mensualidad,Deuda invitados,Deuda multas propias,Deuda multas invitados,Deuda partidos especiales,Deuda total,Saldo a favor,Saldo,Moroso\n';
+  let totHist=0, totMes=0, totMensualidad=0, totInvitados=0, totMultasP=0, totMultasI=0, totPartidos=0, totDeuda=0, totSaldoFavor=0, totSaldo=0;
+  data.forEach(j => {
+    csv += `"${j.nombre}","${j.telefono}",${j.totalPagadoHistorico},${j.pagadoEsteMes},${j.mesesAtraso},${j.deudaMensualidad},${j.deudaInvitados},${j.deudaMultasPropias},${j.deudaMultasInvitados},${j.deudaPartidosEspeciales},${j.deudaTotal},${j.saldoAFavor},${j.saldo},${j.moroso ? 'SI' : 'NO'}\n`;
+    totHist += Number(j.totalPagadoHistorico); totMes += Number(j.pagadoEsteMes);
+    totMensualidad += Number(j.deudaMensualidad); totInvitados += Number(j.deudaInvitados);
+    totMultasP += Number(j.deudaMultasPropias); totMultasI += Number(j.deudaMultasInvitados);
+    totPartidos += Number(j.deudaPartidosEspeciales); totDeuda += Number(j.deudaTotal);
+    totSaldoFavor += Number(j.saldoAFavor); totSaldo += Number(j.saldo);
+  });
+  csv += `\nTOTALES,,${totHist.toFixed(2)},${totMes.toFixed(2)},,${totMensualidad.toFixed(2)},${totInvitados.toFixed(2)},${totMultasP.toFixed(2)},${totMultasI.toFixed(2)},${totPartidos.toFixed(2)},${totDeuda.toFixed(2)},${totSaldoFavor.toFixed(2)},${totSaldo.toFixed(2)},\n`;
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'informe_pagos_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Informe descargado');
+}
+
+async function abrirRecaudadoMes(){
+  const d = await api('ver_recaudado_mes_app');
+  if(d===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Recaudado este mes</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card">
+      <div class="field-line"><div class="fl-label">Total</div><div class="fl-value" style="color:var(--gold)">$${d.granTotal.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Transferencias</div><div class="fl-value">$${d.granTransferencia.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Efectivo</div><div class="fl-value">$${d.granEfectivo.toFixed(2)}</div></div>
+    </div>
+    <p style="color:var(--chalk-dim);font-size:13px">Toca un jugador para ver el detalle de sus pagos (mensualidad, invitados, multas, etc).</p>
+    <div id="listaRecaudadoMes">${renderRecaudadoMesList(d.jugadores)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderRecaudadoMesList(jugadores){
+  if(jugadores.length===0) return '<p style="color:var(--chalk-dim)">Nadie ha pagado este mes todavia.</p>';
+  return jugadores.map(j=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value" style="cursor:pointer;text-decoration:underline" onclick='verPagosJugador(${j.jugadorId}, ${JSON.stringify(j.nombre)})'>${esc(j.nombre)}</div>
+        <div class="fl-label">Transf: $${Number(j.transferencia).toFixed(2)} · Efectivo: $${Number(j.efectivo).toFixed(2)}</div>
+      </div>
+      <div class="fl-value" style="color:var(--gold)">$${Number(j.total).toFixed(2)}</div>
+    </div>
+  `).join('');
+}
+
+async function confirmarRecordatorioMorosos(){
+  if(!dashboardCache || dashboardCache.total_morosos===0){ toast('No hay jugadores morosos ahora mismo', true); return; }
+  if(!confirm('¿Enviar recordatorio de pago por WhatsApp a los ' + dashboardCache.total_morosos + ' jugadores morosos?')) return;
+  const res = await api('enviar_recordatorio_morosos_app');
+  if(res!==null){ toast('Recordatorios enviados: ' + (res.enviados ?? 0)); }
+}
+
+/* ---------- DEUDA DEL JUGADOR ---------- */
+let deudaCache = { jugadorId: null, pendientes: [] };
+
+async function abrirDeudaJugador(jugadorId, nombre){
+  const d = await api('ver_pendientes_categorizado_app', {jugadorId});
+  if(d===null) return;
+  deudaCache = { jugadorId, nombre };
+  const html = `
+    <div class="sheet-head"><h2>Deuda de ${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Cada concepto se paga por separado. Los invitados y multas se cubren desde el más antiguo.</p>
+    <div id="listaDeudaCategorizada">${renderDeudaCategorizada(d)}</div>
+  `;
+  abrirSheet(html);
+}
+
+function renderDeudaCategorizada(d){
+  const filas = [];
+  if(d.deuda_mensualidad > 0){
+    const etiqueta = d.meses_atraso > 0 ? d.meses_atraso+' mes(es)' : 'mes actual';
+    filas.push({tipo:'mensualidad', label:'Mensualidad ('+etiqueta+')', monto:d.deuda_mensualidad, partidoId:null, conceptoMonto:null});
+  }
+  if((d.invitados_pendientes||[]).length > 0){
+    filas.push({tipo:'invitado', label:'🎟️ Invitados pendientes ('+d.invitados_pendientes.length+')', monto:d.total_invitados, partidoId:null, conceptoMonto:null});
+  }
+  if((d.multas_propias||[]).length > 0){
+    filas.push({tipo:'multas_propias', label:'⚠️ Multas propias ('+d.multas_propias.length+')', monto:d.total_multas_propias, partidoId:null, conceptoMonto:null});
+  }
+  if((d.multas_invitados||[]).length > 0){
+    filas.push({tipo:'multas_invitados', label:'⚠️ Multas por invitados ('+d.multas_invitados.length+')', monto:d.total_multas_invitados, partidoId:null, conceptoMonto:null});
+  }
+  (d.partidos_especiales||[]).forEach(pe=>{
+    filas.push({tipo:'partido_especial', label:'Partido especial: '+esc(pe.alias), monto:pe.monto, partidoId:pe.partido_id, conceptoMonto:pe.monto});
+  });
+  if(filas.length===0) return '<div class="alert-card" style="background:rgba(111,207,151,.12);border-color:rgba(111,207,151,.35);color:var(--green-ok)">✓ Sin deuda pendiente.</div>';
+  return filas.map((f,i)=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${f.label}</div>
+        <div class="fl-label">$${f.monto}</div>
+      </div>
+      <button class="sm" onclick='registrarPagoCategorizado(${JSON.stringify(f).replace(/'/g,"&#39;")})'>💵 Registrar pago</button>
+    </div>
+  `).join('');
+}
+
+async function registrarPagoCategorizado(f){
+  const montoStr = prompt('¿Cuánto se pagó en efectivo para "' + f.label + '"?', f.monto);
+  if(montoStr===null) return;
+  const monto = parseFloat(montoStr);
+  if(!monto || monto<=0){ toast('Monto inválido', true); return; }
+  const res = await api('registrar_pago_categorizado_app', {jugadorId: deudaCache.jugadorId, tipoConcepto: f.tipo, monto, partidoId: f.partidoId, conceptoMonto: f.conceptoMonto});
+  if(res===null) return;
+  toast(res.mensaje || 'Pago registrado');
+  const d = await api('ver_pendientes_categorizado_app', {jugadorId: deudaCache.jugadorId});
+  if(d===null) return;
+  const cont = document.getElementById('listaDeudaCategorizada');
+  if(cont) cont.innerHTML = renderDeudaCategorizada(d);
+  cargarJugadores();
+}
+</script>
+</body>
+</html>
