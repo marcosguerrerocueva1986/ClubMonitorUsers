@@ -490,12 +490,8 @@ async function cargarDeuda(){
     `;
   }
 
-  if(p.deuda_mensualidad > 0){
-    if(p.meses_atraso >= 1){
-      html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
-    } else {
-      html += `<div class="alert-card">📅 Tu mensualidad de este mes está pendiente — debes $${p.deuda_mensualidad}</div>`;
-    }
+  if(p.meses_atraso >= 1){
+    html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
   } else {
     html += `<div class="ok-card">✓ Tu mensualidad está al día.</div>`;
   }
