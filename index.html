@@ -187,6 +187,8 @@ const API_URL = 'https://primary-production-7ef315.up.railway.app/webhook/jugado
 // Cada entrada aqui apunta a un archivo bajo /api/. Todo lo que NO
 // este en este mapa sigue llamando a n8n exactamente como antes.
 const ACCIONES_VERCEL = {
+  'login_jugador': '/api/login',
+  'registrar_jugador_pwa': '/api/registro',
   'obtener_mi_perfil_jugador': '/api/perfil',
   'ver_mis_partidos_jugador': '/api/partidos',
   'ver_pendientes_pago_jugador': '/api/deuda',
@@ -194,6 +196,16 @@ const ACCIONES_VERCEL = {
   'actualizar_mis_datos_jugador': '/api/actualizar-perfil',
   'confirmar_mi_partido_jugador': '/api/confirmar-partido',
   'cancelar_mi_partido_jugador': '/api/cancelar-partido',
+  'ver_documento_jugador': '/api/documento',
+  'marcar_push_habilitado_jugador': '/api/push-habilitado',
+  'ver_mis_ultimos_pagos_jugador': '/api/ultimos-pagos',
+  'ver_mis_invitados_partido_jugador': '/api/invitados',
+  'agregar_invitado_partido_jugador': '/api/invitado-agregar',
+  'quitar_invitado_partido_jugador': '/api/invitado-quitar',
+  'analizar_comprobante_jugador': '/api/comprobante-analizar',
+  'registrar_pago_comprobante_jugador': '/api/comprobante-registrar',
+  'aplicar_pago_jugador': '/api/aplicar-pago',
+  'guardar_restante_saldo_favor_jugador': '/api/saldo-favor',
 };
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
