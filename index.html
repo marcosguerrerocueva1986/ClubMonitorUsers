@@ -189,6 +189,9 @@ const API_URL = 'https://primary-production-7ef315.up.railway.app/webhook/jugado
 const ACCIONES_VERCEL = {
   'obtener_mi_perfil_jugador': '/api/perfil',
   'ver_mis_partidos_jugador': '/api/partidos',
+  'ver_pendientes_pago_jugador': '/api/deuda',
+  'ver_mi_qr_jugador': '/api/qr',
+  'actualizar_mis_datos_jugador': '/api/actualizar-perfil',
 };
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
