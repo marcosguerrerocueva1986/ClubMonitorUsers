@@ -186,27 +186,20 @@ const API_URL = 'https://primary-production-7ef315.up.railway.app/webhook/jugado
 // Acciones ya migradas a funciones propias de Vercel (paso a paso).
 // Cada entrada aqui apunta a un archivo bajo /api/. Todo lo que NO
 // este en este mapa sigue llamando a n8n exactamente como antes.
-const ACCIONES_VERCEL = {
-  'login_jugador': '/api/login',
-  'registrar_jugador_pwa': '/api/registro',
-  'obtener_mi_perfil_jugador': '/api/perfil',
-  'ver_mis_partidos_jugador': '/api/partidos',
-  'ver_pendientes_pago_jugador': '/api/deuda',
-  'ver_mi_qr_jugador': '/api/qr',
-  'actualizar_mis_datos_jugador': '/api/actualizar-perfil',
-  'confirmar_mi_partido_jugador': '/api/confirmar-partido',
-  'cancelar_mi_partido_jugador': '/api/cancelar-partido',
-  'ver_documento_jugador': '/api/documento',
-  'marcar_push_habilitado_jugador': '/api/push-habilitado',
-  'ver_mis_ultimos_pagos_jugador': '/api/ultimos-pagos',
-  'ver_mis_invitados_partido_jugador': '/api/invitados',
-  'agregar_invitado_partido_jugador': '/api/invitado-agregar',
-  'quitar_invitado_partido_jugador': '/api/invitado-quitar',
-  'analizar_comprobante_jugador': '/api/comprobante-analizar',
-  'registrar_pago_comprobante_jugador': '/api/comprobante-registrar',
-  'aplicar_pago_jugador': '/api/aplicar-pago',
-  'guardar_restante_saldo_favor_jugador': '/api/saldo-favor',
-};
+// Todas las acciones del jugador ahora viven en UNA sola funcion
+// serverless (/api/jugador) para no superar el limite de 12 funciones
+// del plan Hobby de Vercel. Si en el futuro se agrega una accion nueva
+// en n8n que aun no se haya migrado, agregarla aqui para que siga
+// yendo a n8n mientras tanto.
+const ACCIONES_VERCEL = new Set([
+  'login_jugador', 'registrar_jugador_pwa', 'obtener_mi_perfil_jugador',
+  'ver_mis_partidos_jugador', 'ver_pendientes_pago_jugador', 'ver_mi_qr_jugador',
+  'actualizar_mis_datos_jugador', 'confirmar_mi_partido_jugador', 'cancelar_mi_partido_jugador',
+  'ver_documento_jugador', 'marcar_push_habilitado_jugador', 'ver_mis_ultimos_pagos_jugador',
+  'ver_mis_invitados_partido_jugador', 'agregar_invitado_partido_jugador', 'quitar_invitado_partido_jugador',
+  'analizar_comprobante_jugador', 'registrar_pago_comprobante_jugador', 'aplicar_pago_jugador',
+  'guardar_restante_saldo_favor_jugador',
+]);
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
 function safeSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -224,7 +217,7 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;
 
 async function api(accion, extra){
   const body = Object.assign({ token: TOKEN, accion }, extra || {});
-  const url = ACCIONES_VERCEL[accion] || API_URL;
+  const url = ACCIONES_VERCEL.has(accion) ? '/api/jugador' : API_URL;
   try{
     const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json();
