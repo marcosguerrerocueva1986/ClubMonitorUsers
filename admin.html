@@ -856,13 +856,13 @@ function cambiarSubtabParametros(sub){
 async function cargarExentosPendientes(){
   const list = document.getElementById('parametrosList');
   list.innerHTML = '<div class="spinner"></div>';
-  const data = await api('listar_exentos_pendientes_app');
-  if(data===null) return;
-  if(data.length===0){
-    list.innerHTML = '<p style="color:var(--chalk-dim)">No hay solicitudes de exentos pendientes.</p>';
-    return;
-  }
-  list.innerHTML = data.map(e=>`
+  const pendientes = await api('listar_exentos_pendientes_app');
+  if(pendientes===null) return;
+  const aprobados = await api('listar_exentos_aprobados_app');
+  if(aprobados===null) return;
+
+  let html = '<h3 style="margin-bottom:10px">Pendientes de aprobar</h3>';
+  html += pendientes.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">No hay solicitudes pendientes.</p>' : pendientes.map(e=>`
     <div class="card">
       <div class="card-title"><h3>${esc(e.nombres)} ${esc(e.apellidos)}</h3></div>
       <div class="meta">Relación: <b>${esc(e.relacion)}</b><br>Jugador: ${esc(e.jugador)}</div>
@@ -872,6 +872,27 @@ async function cargarExentosPendientes(){
       </div>
     </div>
   `).join('');
+
+  html += '<h3 style="margin:20px 0 10px">Aprobados (puedes revocar)</h3>';
+  html += aprobados.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">No hay exentos aprobados todavía.</p>' : aprobados.map(e=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${esc(e.nombres)} ${esc(e.apellidos)}</div>
+        <div class="fl-label">${esc(e.relacion)} — ${esc(e.jugador)}</div>
+      </div>
+      <button class="sm danger" onclick="revocarExentoAdmin(${e.id})">Revocar</button>
+    </div>
+  `).join('');
+
+  list.innerHTML = html;
+}
+
+async function revocarExentoAdmin(exentoId){
+  if(!confirm('¿Revocar la exención de esta persona? Ya no podrá agregarse sin pagar en futuros partidos.')) return;
+  const res = await api('revocar_exento_app', {exentoId});
+  if(res===null) return;
+  toast(res.eliminadoCompleto ? 'Eliminado por completo' : 'Revocado');
+  cargarExentosPendientes();
 }
 
 async function revisarExento(exentoId, aprobar){

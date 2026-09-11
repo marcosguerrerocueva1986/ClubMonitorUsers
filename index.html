@@ -199,7 +199,7 @@ const ACCIONES_VERCEL = new Set([
   'ver_mis_invitados_partido_jugador', 'agregar_invitado_partido_jugador', 'quitar_invitado_partido_jugador',
   'analizar_comprobante_jugador', 'registrar_pago_comprobante_jugador', 'aplicar_pago_jugador',
   'guardar_restante_saldo_favor_jugador',
-  'listar_tipos_relacion_exento', 'listar_mis_exentos_jugador', 'agregar_exento_jugador',
+  'listar_tipos_relacion_exento', 'listar_mis_exentos_jugador', 'agregar_exento_jugador', 'eliminar_exento_jugador',
 ]);
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
@@ -848,7 +848,10 @@ async function mostrarMisExentos(data){
             <div class="fl-value">${esc(e.nombres)} ${esc(e.apellidos)}</div>
             <div class="fl-label">${esc(e.relacion)}</div>
           </div>
-          ${badgeEstadoExento(e.estado)}
+          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+            ${badgeEstadoExento(e.estado)}
+            <button class="sm danger" onclick="eliminarExentoJugador(${e.id})">Quitar</button>
+          </div>
         </div>
       `).join('')}
     </div>
@@ -863,6 +866,16 @@ async function mostrarMisExentos(data){
     <button class="primary block" style="margin-top:12px" onclick="agregarExentoJugador()">Enviar para aprobación</button>
   `;
   abrirSheet(html);
+}
+
+async function eliminarExentoJugador(exentoId){
+  if(!confirm('¿Quitar a esta persona de tu lista de exentos?')) return;
+  const res = await api('eliminar_exento_jugador', { exentoId });
+  if(res===null) return;
+  toast(res.eliminadoCompleto ? 'Eliminado' : 'Quitado de tu lista');
+  const data = await api('listar_mis_exentos_jugador');
+  if(data===null) return;
+  mostrarMisExentos(data);
 }
 
 async function agregarExentoJugador(){
