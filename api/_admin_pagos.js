@@ -104,15 +104,34 @@ async function listarInformeCompleto(pool) {
        'nombre', j.nombres || ' ' || j.apellidos, 'telefono', j.telefono,
        'totalPagadoHistorico', COALESCE(pg_hist.total, 0), 'pagadoEsteMes', COALESCE(pg_mes.total, 0),
        'mesesAtraso', sport_control.meses_atraso(j.id),
-       'deudaMensualidad', GREATEST(sport_control.meses_atraso(j.id), 1) * COALESCE(cuota.valor, 0),
+       'deudaMensualidad', dm.monto,
        'deudaInvitados', COALESCE(inv.total, 0), 'deudaMultasPropias', COALESCE(mp.total, 0), 'deudaMultasInvitados', COALESCE(mi.total, 0), 'deudaPartidosEspeciales', COALESCE(pe.total, 0),
-       'deudaTotal', GREATEST(sport_control.meses_atraso(j.id), 1) * COALESCE(cuota.valor, 0) + COALESCE(inv.total, 0) + COALESCE(mp.total, 0) + COALESCE(mi.total, 0) + COALESCE(pe.total, 0),
+       'deudaTotal', dm.monto + COALESCE(inv.total, 0) + COALESCE(mp.total, 0) + COALESCE(mi.total, 0) + COALESCE(pe.total, 0),
        'saldoAFavor', COALESCE(sf.total, 0),
-       'saldo', GREATEST((sport_control.meses_atraso(j.id) * COALESCE(cuota.valor, 0) + COALESCE(inv.total, 0) + COALESCE(mp.total, 0) + COALESCE(mi.total, 0) + COALESCE(pe.total, 0)) - COALESCE(sf.total, 0), 0),
+       'saldo', GREATEST((dm.monto + COALESCE(inv.total, 0) + COALESCE(mp.total, 0) + COALESCE(mi.total, 0) + COALESCE(pe.total, 0)) - COALESCE(sf.total, 0), 0),
        'moroso', sport_control.meses_atraso(j.id) > (SELECT meses_maximo_atraso FROM sport_control.configuracion_club WHERE id = 1) AND NOT j.autorizado_excepcion_pago
      ) ORDER BY j.nombres), '[]'::json) AS jugadores
      FROM sport_control.jugadores j
      CROSS JOIN LATERAL (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1) cuota
+     -- CAMBIO 2026-09-11: unica fuente de verdad para la deuda de mensualidad,
+     -- usada de forma CONSISTENTE en deudaMensualidad, deudaTotal y saldo (antes
+     -- deudaTotal forzaba GREATEST(meses_atraso,1) pero saldo usaba meses_atraso
+     -- sin forzar -- dos formulas distintas en la misma fila). Igual que en
+     -- pendientes_jugador(): si esta atrasado de verdad (meses_atraso>=1) se
+     -- cobran esos meses reales; si no, solo se cuenta como pendiente cuando el
+     -- mes calendario actual todavia NO tiene un pago de mensualidad confirmado.
+     CROSS JOIN LATERAL (
+       SELECT CASE
+         WHEN sport_control.meses_atraso(j.id) >= 1 THEN sport_control.meses_atraso(j.id) * COALESCE(cuota.valor, 0)
+         WHEN EXISTS (
+           SELECT 1 FROM sport_control.pagos pgm
+           WHERE pgm.jugador_id = j.id AND pgm.estado = 'confirmado'
+             AND pgm.tipo_cobro_id IN (SELECT id FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad')
+             AND date_trunc('month', pgm.creado_en) = date_trunc('month', CURRENT_DATE)
+         ) THEN 0
+         ELSE COALESCE(cuota.valor, 0)
+       END AS monto
+     ) dm
      LEFT JOIN LATERAL (SELECT SUM(monto) AS total FROM sport_control.pagos WHERE jugador_id = j.id AND estado = 'confirmado') pg_hist ON true
      LEFT JOIN LATERAL (SELECT SUM(monto) AS total FROM sport_control.pagos WHERE jugador_id = j.id AND estado = 'confirmado' AND date_trunc('month', creado_en) = date_trunc('month', CURRENT_DATE)) pg_mes ON true
      LEFT JOIN LATERAL (SELECT COUNT(*) * COALESCE((SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'invitado' AND activo = true ORDER BY prioridad ASC LIMIT 1), 0) AS total FROM sport_control.invitados_asistencia ia JOIN sport_control.partidos p ON p.id = ia.partido_id WHERE ia.jugador_anfitrion_id = j.id AND ia.estado = 'confirmado' AND COALESCE(ia.pagado, false) = false AND p.estado = 'finalizado' AND p.fecha >= (SELECT fecha_inicio_recaudacion FROM sport_control.configuracion_club WHERE id = 1) AND NOT EXISTS (SELECT 1 FROM sport_control.multas mx WHERE mx.invitado_asistencia_id = ia.id)) inv ON true

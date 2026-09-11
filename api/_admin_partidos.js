@@ -82,8 +82,11 @@ async function enviarWhatsAppMedia(config, numero, mediaUrl, caption) {
 
 async function listarPartidos(pool) {
   const r = await pool.query(
-    `SELECT COALESCE(json_agg(json_build_object('id', id, 'alias', alias, 'fecha', fecha, 'hora', hora, 'lugar', lugar, 'estado', estado, 'costo_inscripcion', costo_inscripcion) ORDER BY fecha ASC), '[]'::json) AS partidos
-     FROM sport_control.partidos WHERE estado IN ('confirmando', 'cerrado', 'en_juego')`
+    `SELECT COALESCE(json_agg(t.*), '[]'::json) AS partidos FROM (
+       SELECT id, alias, fecha, hora, lugar, estado, costo_inscripcion
+       FROM sport_control.partidos WHERE estado != 'cancelado'
+       ORDER BY fecha DESC LIMIT 5
+     ) t`
   );
   return { success: true, data: r.rows[0].partidos };
 }
@@ -154,36 +157,8 @@ async function finalizarPartido(pool, config, body) {
   const r = await pool.query(`UPDATE sport_control.partidos SET estado = 'finalizado' WHERE id = $1 RETURNING id, alias, fecha, hora, lugar`, [body.id]);
   const p = r.rows[0];
   const titulo = p.alias ? p.alias : ('Partido #' + p.id);
-  await enviarWhatsAppGrupo(config, `📅El partido: *${titulo}*\n📅 ${fechaCorta(p.fecha)}  🕐 ${p.hora}\n📍 ${p.lugar}\n\nA Finalizado`);
-
-  const tipoInasistencia = await pool.query(`SELECT id FROM sport_control.tipos_multa WHERE nombre = 'Inasistencia sin aviso' LIMIT 1`);
-  const tipoInvitadoNoShow = await pool.query(`SELECT id FROM sport_control.tipos_multa WHERE nombre = 'Invitado no show' LIMIT 1`);
-
-  await pool.query(
-    `INSERT INTO sport_control.multas (jugador_id, partido_id, tipo_multa_id, monto, estado)
-     SELECT cp.jugador_id, cp.partido_id, $1, $2, 'pendiente_aprobacion'
-     FROM sport_control.confirmaciones_partido cp
-     WHERE cp.partido_id = $3 AND cp.estado = 'confirmado'
-       AND NOT EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.jugador_id = cp.jugador_id AND ca.partido_id = cp.partido_id AND ca.invitado_asistencia_id IS NULL AND ca.usado = true)`,
-    [tipoInasistencia.rows[0].id, config.valor_multa_inasistencia, p.id]
-  );
-
-  await pool.query(
-    `INSERT INTO sport_control.multas (jugador_id, partido_id, tipo_multa_id, invitado_asistencia_id, monto, estado)
-     SELECT ia.jugador_anfitrion_id, ia.partido_id, $1, ia.id, $2, 'pendiente_aprobacion'
-     FROM sport_control.invitados_asistencia ia
-     WHERE ia.partido_id = $3 AND ia.estado = 'confirmado'
-       AND NOT EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.invitado_asistencia_id = ia.id AND ca.usado = true)`,
-    [tipoInvitadoNoShow.rows[0].id, config.valor_multa_invitado_no_show, p.id]
-  );
-
-  const resumen = await pool.query(
-    `SELECT COALESCE(json_agg(json_build_object('id', m.id, 'nombre', j.nombres || ' ' || j.apellidos, 'motivo', t.nombre, 'monto', m.monto)), '[]'::json) AS multas, COALESCE(SUM(m.monto), 0) AS total
-     FROM sport_control.multas m JOIN sport_control.jugadores j ON j.id = m.jugador_id JOIN sport_control.tipos_multa t ON t.id = m.tipo_multa_id
-     WHERE m.partido_id = $1 AND m.estado = 'pendiente_aprobacion'`,
-    [p.id]
-  );
-  return { success: true, data: { partidoId: p.id, multas: resumen.rows[0].multas, total: resumen.rows[0].total } };
+  await enviarWhatsAppGrupo(config, `📅El partido: *${titulo}*\n📅 ${fechaCorta(p.fecha)}  🕐 ${p.hora}\n📍 ${p.lugar}\n\nHa finalizado.`);
+  return { success: true, data: p };
 }
 
 async function marcarEnJuego(pool, body) {
