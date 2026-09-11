@@ -90,6 +90,6 @@ async function toggleItemCatalogo(pool, body) {
 }
 
 module.exports = {
-  listarExentosPendientes, aprobarExento, rechazarExento,
+  listarExentosPendientes, aprobarExento, rechazarExento, listarExentosAprobados, revocarExento,
   listarCatalogo, crearItemCatalogo, toggleItemCatalogo,
 };
