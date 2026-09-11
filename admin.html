@@ -96,6 +96,7 @@
   .badge.cerrado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
   .badge.confirmando{background:rgba(111,207,151,.15);color:var(--green-ok);border:1px solid rgba(111,207,151,.3);}
   .badge.en_juego{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
+  .badge.finalizado{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
   .badge.cancelado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
   .badge.admin{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
   .badge.controlador{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
@@ -380,6 +381,7 @@ async function cargarPartidos(){
 
         <button class="sm" onclick="abrirEditarPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')})">Editar</button>
 
+        <button class="sm" onclick="abrirRevisionMultas(${p.id})">🧾 Multas</button>
         <button class="sm primary" onclick="confirmarFinalizar(${p.id})">Terminar</button>
 
 
@@ -906,7 +908,8 @@ function abrirDetallesPartido(id, alias, estado){
       <button class="block" onclick="confirmarRecordatorio(${id})">🔔 Enviar recordatorio al grupo</button>
       <button class="block" onclick="abrirEnviarQR(${id})">📲 Enviar QR a un jugador</button>
       <button class="block" onclick="confirmarMarcarEnJuego(${id})">🏃 Marcar en juego</button>
-      <button class="primary block" onclick="confirmarFinalizar(${id})">🏁 Finalizar y revisar multas</button>
+      <button class="block" onclick="abrirRevisionMultas(${id})">🧾 Revisar multas y pendientes</button>
+      <button class="primary block" onclick="confirmarFinalizar(${id})">🏁 Finalizar partido</button>
     </div>
   `;
   abrirSheet(html);
@@ -1145,65 +1148,82 @@ async function confirmarRecordatorio(partidoId){
   if(res!==null){ toast('Recordatorio enviado al grupo'); }
 }
 
-let multasEnRevision = { partidoId: null, multas: [] };
+let multasEnRevision = { partidoId: null, jugadores: [] };
 
 async function confirmarFinalizar(partidoId){
-  if(!confirm('¿Finalizar este partido? Se generarán las multas por inasistencia.')) return;
+  if(!confirm('¿Finalizar este partido?')) return;
   const data = await api('finalizar_partido', {id: partidoId});
   if(data===null) return;
-  mostrarRevisionMultas(partidoId, data.multas || []);
+  toast('Partido finalizado');
+  cargarPartidos();
 }
 
-function mostrarRevisionMultas(partidoId, multas){
-  multasEnRevision = { partidoId, multas };
+async function abrirRevisionMultas(partidoId){
+  const data = await api('revisar_multas_partido', {partidoId});
+  if(data===null) return;
+  mostrarRevisionMultas(partidoId, data);
+}
+
+function mostrarRevisionMultas(partidoId, data){
+  multasEnRevision = { partidoId, jugadores: data.jugadores || [] };
   const html = `
-    <div class="sheet-head"><h2>Revisar multas</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <div id="listaMultas">${renderMultasCheckbox(multas)}</div>
-    <div class="row-actions" style="margin-top:16px">
-      <button class="sm danger" onclick="anularSeleccionadas()">Anular seleccionadas</button>
-      <button class="sm danger" onclick="anularTodas()">Anular todas</button>
+    <div class="sheet-head"><h2>Multas y pendientes</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">${esc(data.partido && data.partido.alias ? data.partido.alias : ('Partido #'+partidoId))} — multas propias, invitados no-show, e invitados sin pagar. No incluye mensualidad.</p>
+    <div id="listaMultasJugadores">${renderMultasPorJugador(multasEnRevision.jugadores)}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:18px;border-top:1px solid var(--line);padding-top:16px">
+      <button class="block primary" onclick="enviarAJugadoresSeleccionados()">📲 Avisar a los seleccionados (WhatsApp + push)</button>
+      <button class="block" onclick="enviarResumenGrupoMultas()">📢 Enviar resumen completo al grupo</button>
     </div>
-    <button class="primary block" style="margin-top:16px" onclick="confirmarPublicarMultas()">Confirmar y publicar al grupo</button>
   `;
   abrirSheet(html);
 }
 
-function renderMultasCheckbox(multas){
-  if(multas.length===0) return '<p style="color:var(--chalk-dim)">No hay multas pendientes. ¡Nadie faltó!</p>';
-  return multas.map(m => `
-    <label class="field-line" style="cursor:pointer">
-      <div>
-        <div class="fl-value">${esc(m.nombre)}</div>
-        <div class="fl-label">${esc(m.motivo)} — $${m.monto}</div>
-      </div>
-      <input type="checkbox" class="chkMulta" value="${m.id}" style="width:20px;height:20px;flex-shrink:0">
-    </label>
+function renderMultasPorJugador(jugadores){
+  if(!jugadores || jugadores.length===0) return '<p style="color:var(--chalk-dim)">No hay multas ni pendientes de invitados para este partido. ¡Todo en orden!</p>';
+  return jugadores.map(j => `
+    <div class="field-line" style="align-items:flex-start">
+      <label style="display:flex;gap:10px;cursor:pointer;flex:1">
+        <input type="checkbox" class="chkJugadorMulta" value="${j.jugadorId}" style="width:20px;height:20px;flex-shrink:0;margin-top:2px">
+        <div style="flex:1">
+          <div class="fl-value">${esc(j.nombre)}</div>
+          ${j.items.map(it => `
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--chalk-dim);margin-top:4px">
+              <span>${esc(it.motivo)}</span>
+              <span style="display:flex;gap:8px;align-items:center">
+                $${it.monto}
+                ${it.multaId ? `<button class="sm danger" style="padding:2px 8px;font-size:11px" onclick="event.preventDefault(); anularMultaIndividual(${it.multaId})">Anular</button>` : ''}
+              </span>
+            </div>
+          `).join('')}
+          <div style="font-weight:700;color:var(--gold);margin-top:6px">Total: $${j.total}</div>
+        </div>
+      </label>
+    </div>
   `).join('');
 }
 
-async function anularSeleccionadas(){
-  const ids = Array.from(document.querySelectorAll('.chkMulta:checked')).map(el => parseInt(el.value));
-  if(ids.length===0){ toast('Selecciona al menos una', true); return; }
-  const data = await api('anular_multa_app', {partidoId: multasEnRevision.partidoId, ids});
+async function anularMultaIndividual(multaId){
+  if(!confirm('¿Anular esta multa?')) return;
+  const data = await api('anular_multa_app', {partidoId: multasEnRevision.partidoId, ids: [multaId]});
   if(data===null) return;
-  multasEnRevision.multas = data.multas;
-  document.getElementById('listaMultas').innerHTML = renderMultasCheckbox(data.multas);
-  toast('Multas anuladas');
+  await abrirRevisionMultas(multasEnRevision.partidoId);
+  toast('Multa anulada');
 }
 
-async function anularTodas(){
-  if(!confirm('¿Anular TODAS las multas pendientes de este partido?')) return;
-  const data = await api('anular_multa_app', {partidoId: multasEnRevision.partidoId, todas: true});
-  if(data===null) return;
-  multasEnRevision.multas = data.multas;
-  document.getElementById('listaMultas').innerHTML = renderMultasCheckbox(data.multas);
-  toast('Todas las multas fueron anuladas');
-}
-
-async function confirmarPublicarMultas(){
-  const res = await api('confirmar_multas_app', {partidoId: multasEnRevision.partidoId});
+async function enviarAJugadoresSeleccionados(){
+  const jugadorIds = Array.from(document.querySelectorAll('.chkJugadorMulta:checked')).map(el => parseInt(el.value));
+  if(jugadorIds.length===0){ toast('Selecciona al menos un jugador', true); return; }
+  if(!confirm('¿Enviar WhatsApp y notificación push a ' + jugadorIds.length + ' jugador(es)?')) return;
+  const res = await api('enviar_multas_jugadores_app', {partidoId: multasEnRevision.partidoId, jugadorIds});
   if(res===null) return;
-  toast('Multas publicadas al grupo');
+  toast('Enviado a ' + (res.enviados||jugadorIds.length) + ' jugador(es)');
+}
+
+async function enviarResumenGrupoMultas(){
+  if(!confirm('¿Enviar el resumen completo de multas y pendientes al grupo de WhatsApp?')) return;
+  const res = await api('enviar_resumen_multas_grupo_app', {partidoId: multasEnRevision.partidoId});
+  if(res===null) return;
+  toast('Resumen enviado al grupo');
   cerrarSheet();
   cargarPartidos();
 }
