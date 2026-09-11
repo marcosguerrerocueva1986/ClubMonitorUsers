@@ -84,6 +84,7 @@ module.exports = async (req, res) => {
     }
   } catch (err) {
     console.error(`Error en /api/admin (accion=${accion}):`, err);
-    return res.status(200).json({ success: false, error: 'Error interno del servidor' });
+    // Temporal: devolvemos el mensaje real del error para diagnosticar.
+    return res.status(200).json({ success: false, error: 'Error interno: ' + (err && err.message ? err.message : String(err)) });
   }
 };
