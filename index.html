@@ -427,13 +427,25 @@ async function abrirInvitados(partidoId, alias){
   const data = await api('ver_mis_invitados_partido_jugador', { partidoId });
   if(data===null) return;
   invitadosCache = { partidoId, data };
+  const misExentos = await api('listar_mis_exentos_jugador');
+  const exentosAprobados = (misExentos || []).filter(e => e.estado === 'aprobado');
   const html = `
     <div class="sheet-head"><h2>Mis invitados</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">${esc(alias)}</p>
     <div id="listaInvitadosJugador">${renderInvitadosJugador(data)}</div>
-    <label style="margin-top:18px">Agregar invitado</label>
+    <label style="margin-top:18px">Agregar invitado (paga entrada)</label>
     <input id="nuevoInvitadoNombre" placeholder="Nombre completo">
     <button class="primary block" style="margin-top:10px" onclick="agregarInvitadoJugador(${partidoId})">Agregar</button>
+    ${exentosAprobados.length > 0 ? `
+      <label style="margin-top:18px">O elige de tus exentos (no paga entrada)</label>
+      <select id="selectExentoInvitado">
+        <option value="">Selecciona...</option>
+        ${exentosAprobados.map(e => `<option value="${e.id}">${esc(e.nombres)} ${esc(e.apellidos)} (${esc(e.relacion)})</option>`).join('')}
+      </select>
+      <button class="block" style="margin-top:10px" onclick="agregarExentoComoInvitado(${partidoId})">Agregar exento</button>
+    ` : `
+      <p style="color:var(--chalk-dim);font-size:12px;margin-top:14px">¿Tienes hijos u otros invitados exentos de pago? Agrégalos desde tu Perfil.</p>
+    `}
   `;
   abrirSheet(html);
 }
@@ -442,13 +454,26 @@ function renderInvitadosJugador(data){
   if(data.length===0) return '<p style="color:var(--chalk-dim);font-size:14px">Aún no tienes invitados en este partido.</p>';
   return data.map(inv=>`
     <div class="field-line">
-      <div class="fl-value">${esc(inv.nombre)}</div>
+      <div class="fl-value">${esc(inv.nombre)} ${inv.exento ? '<span class="badge confirmado" style="margin-left:6px">Exento</span>' : ''}</div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         ${inv.token ? `<button class="sm primary" onclick='mostrarQR(${JSON.stringify(inv.token)}, ${JSON.stringify(inv.nombre)})'>📱 QR</button>` : ''}
         <button class="sm danger" onclick="quitarInvitadoJugador(${inv.id})">Quitar</button>
       </div>
     </div>
   `).join('');
+}
+
+async function agregarExentoComoInvitado(partidoId){
+  const exentoId = document.getElementById('selectExentoInvitado').value;
+  if(!exentoId){ toast('Selecciona un exento de la lista', true); return; }
+  const res = await api('agregar_invitado_partido_jugador', { partidoId, exentoId: parseInt(exentoId) });
+  if(res===null) return;
+  toast('Invitado exento agregado');
+  const data = await api('ver_mis_invitados_partido_jugador', { partidoId });
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  document.getElementById('listaInvitadosJugador').innerHTML = renderInvitadosJugador(data);
+  cargarPartidos();
 }
 
 async function agregarInvitadoJugador(partidoId){
@@ -792,9 +817,64 @@ async function cargarPerfil(){
       <input id="perfilCorreo" value="${esc(PERFIL?.correo||'')}" type="email">
       <button class="primary block" style="margin-top:16px" onclick="guardarPerfil()">Guardar cambios</button>
     </div>
+    <button class="block" onclick="abrirMisExentos()">👨‍👩‍👧 Mis invitados exentos (hijos, etc.)</button>
     <button class="block danger" onclick="cerrarSesion()">Cerrar sesión en este dispositivo</button>
   `;
   actualizarEstadoPush();
+}
+
+async function abrirMisExentos(){
+  const data = await api('listar_mis_exentos_jugador');
+  if(data===null) return;
+  mostrarMisExentos(data);
+}
+
+function badgeEstadoExento(estado){
+  if(estado==='aprobado') return '<span class="badge confirmado">Aprobado</span>';
+  if(estado==='rechazado') return '<span class="badge cancelado">Rechazado</span>';
+  return '<span class="badge en_juego">Pendiente</span>';
+}
+
+async function mostrarMisExentos(data){
+  const tipos = await api('listar_tipos_relacion_exento');
+  const html = `
+    <div class="sheet-head"><h2>Mis invitados exentos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Registra aquí a tus hijos u otros invitados que no deben pagar entrada. El club debe aprobarlos antes de que puedas usarlos en un partido.</p>
+    <div id="listaMisExentos">
+      ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no has registrado a nadie.</p>' : data.map(e=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(e.nombres)} ${esc(e.apellidos)}</div>
+            <div class="fl-label">${esc(e.relacion)}</div>
+          </div>
+          ${badgeEstadoExento(e.estado)}
+        </div>
+      `).join('')}
+    </div>
+    <label style="margin-top:18px">Nombres</label>
+    <input id="exentoNombres" placeholder="Nombres">
+    <label>Apellidos</label>
+    <input id="exentoApellidos" placeholder="Apellidos">
+    <label>Relación</label>
+    <select id="exentoTipoRelacion">
+      ${(tipos||[]).map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}
+    </select>
+    <button class="primary block" style="margin-top:12px" onclick="agregarExentoJugador()">Enviar para aprobación</button>
+  `;
+  abrirSheet(html);
+}
+
+async function agregarExentoJugador(){
+  const nombres = document.getElementById('exentoNombres').value.trim();
+  const apellidos = document.getElementById('exentoApellidos').value.trim();
+  const tipoRelacionId = parseInt(document.getElementById('exentoTipoRelacion').value);
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('agregar_exento_jugador', { nombres, apellidos, tipoRelacionId });
+  if(res===null) return;
+  toast('Enviado. El club debe aprobarlo antes de poder usarlo.');
+  const data = await api('listar_mis_exentos_jugador');
+  if(data===null) return;
+  mostrarMisExentos(data);
 }
 
 function esInstaladaComoApp(){

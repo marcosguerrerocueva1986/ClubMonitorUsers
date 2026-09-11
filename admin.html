@@ -262,6 +262,12 @@
     </div>
 
     <div class="screen" id="screen-parametros">
+      <div class="row-actions" style="margin-bottom:14px">
+        <button class="sm primary" id="btnSubtabGenerales" onclick="cambiarSubtabParametros('generales')">⚙️ Generales</button>
+        <button class="sm" id="btnSubtabExentos" onclick="cambiarSubtabParametros('exentos')">👨‍👩‍👧 Exentos pendientes</button>
+        <button class="sm" id="btnSubtabCatMultas" onclick="cambiarSubtabParametros('cat_multas')">📋 Tipos de multa</button>
+        <button class="sm" id="btnSubtabCatRelacion" onclick="cambiarSubtabParametros('cat_relacion')">👪 Tipos de parentesco</button>
+      </div>
       <div id="parametrosList"><div class="spinner"></div></div>
     </div>
   </main>
@@ -347,7 +353,7 @@ function cambiarTab(tab){
   if(tab==='dashboard') cargarDashboard();
   if(tab==='partidos') cargarPartidos();
   if(tab==='jugadores') cargarJugadores();
-  if(tab==='parametros') cargarParametros();
+  if(tab==='parametros') cambiarSubtabParametros('generales');
 }
 
 function fechaCorta(f){
@@ -831,6 +837,83 @@ async function verPagosJugador(jugadorId, nombre){
     `).join('')}
   `;
   abrirSheet(html);
+}
+
+let subtabParametrosActual = 'generales';
+
+function cambiarSubtabParametros(sub){
+  subtabParametrosActual = sub;
+  ['generales','exentos','cat_multas','cat_relacion'].forEach(s=>{
+    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion'}[s]);
+    if(btn) btn.classList.toggle('primary', s===sub);
+  });
+  if(sub==='generales') cargarParametros();
+  if(sub==='exentos') cargarExentosPendientes();
+  if(sub==='cat_multas') cargarCatalogo('tipos_multa', 'Tipos de multa');
+  if(sub==='cat_relacion') cargarCatalogo('tipos_relacion_exento', 'Tipos de parentesco');
+}
+
+async function cargarExentosPendientes(){
+  const list = document.getElementById('parametrosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_exentos_pendientes_app');
+  if(data===null) return;
+  if(data.length===0){
+    list.innerHTML = '<p style="color:var(--chalk-dim)">No hay solicitudes de exentos pendientes.</p>';
+    return;
+  }
+  list.innerHTML = data.map(e=>`
+    <div class="card">
+      <div class="card-title"><h3>${esc(e.nombres)} ${esc(e.apellidos)}</h3></div>
+      <div class="meta">Relación: <b>${esc(e.relacion)}</b><br>Jugador: ${esc(e.jugador)}</div>
+      <div class="row-actions">
+        <button class="sm primary" onclick="revisarExento(${e.id}, true)">✓ Aprobar</button>
+        <button class="sm danger" onclick="revisarExento(${e.id}, false)">✕ Rechazar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function revisarExento(exentoId, aprobar){
+  const res = await api(aprobar ? 'aprobar_exento_app' : 'rechazar_exento_app', {exentoId});
+  if(res===null) return;
+  toast(aprobar ? 'Exento aprobado' : 'Exento rechazado');
+  cargarExentosPendientes();
+}
+
+async function cargarCatalogo(catalogo, titulo){
+  const list = document.getElementById('parametrosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_catalogo_app', {catalogo});
+  if(data===null) return;
+  list.innerHTML = `
+    <div class="card">
+      ${data.map(item=>`
+        <div class="field-line">
+          <div class="fl-value">${esc(item.nombre)} ${!item.activo ? '<span class="badge cancelado">Inactivo</span>' : ''}</div>
+          <button class="sm ${item.activo ? 'danger' : 'primary'}" onclick="toggleCatalogoItem('${catalogo}', ${item.id}, ${!item.activo})">${item.activo ? 'Desactivar' : 'Activar'}</button>
+        </div>
+      `).join('')}
+    </div>
+    <label>Agregar nuevo en ${esc(titulo)}</label>
+    <input id="nuevoItemCatalogo" placeholder="Nombre">
+    <button class="primary block" style="margin-top:10px" onclick="crearCatalogoItem('${catalogo}')">Agregar</button>
+  `;
+}
+
+async function toggleCatalogoItem(catalogo, id, activo){
+  const res = await api('toggle_item_catalogo_app', {catalogo, id, activo});
+  if(res===null) return;
+  cargarCatalogo(catalogo, catalogo);
+}
+
+async function crearCatalogoItem(catalogo){
+  const nombre = document.getElementById('nuevoItemCatalogo').value.trim();
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('crear_item_catalogo_app', {catalogo, nombre});
+  if(res===null) return;
+  toast('Agregado');
+  cargarCatalogo(catalogo, catalogo);
 }
 
 async function cargarParametros(){
