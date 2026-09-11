@@ -160,7 +160,7 @@ async function verCheckinPartido(pool, body) {
 
 async function verInvitadosPartido(pool, body) {
   const r = await pool.query(
-    `SELECT COALESCE(json_agg(json_build_object('id', ia.id, 'anfitrion', j.nombres || ' ' || j.apellidos, 'nombre', ia.nombre, 'presente', COALESCE(ca.usado, false), 'pagado', ia.pagado) ORDER BY j.nombres, ia.id), '[]'::json) AS invitados
+    `SELECT COALESCE(json_agg(json_build_object('id', ia.id, 'anfitrion', j.nombres || ' ' || j.apellidos, 'nombre', ia.nombre, 'presente', COALESCE(ca.usado, false), 'pagado', ia.pagado, 'exento', ia.exento_id IS NOT NULL) ORDER BY j.nombres, ia.id), '[]'::json) AS invitados
      FROM sport_control.invitados_asistencia ia JOIN sport_control.jugadores j ON j.id = ia.jugador_anfitrion_id LEFT JOIN sport_control.codigos_asistencia ca ON ca.invitado_asistencia_id = ia.id
      WHERE ia.partido_id = $1 AND ia.estado = 'confirmado'`,
     [body.partidoId]

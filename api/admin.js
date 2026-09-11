@@ -15,6 +15,7 @@ const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, 
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
 const { listarJugadoresDisponibles, agregarJugadorPartido, listarConfirmadosRemovibles, quitarJugadorPartido, quitarInvitadoPartido } = require('./_admin_gestion_partido');
 const { revisarMultasPartido, enviarMultasJugadoresApp, enviarResumenMultasGrupoApp } = require('./_admin_multas_revision');
+const { listarExentosPendientes, aprobarExento, rechazarExento, listarCatalogo, crearItemCatalogo, toggleItemCatalogo } = require('./_admin_exentos_catalogos');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
@@ -74,6 +75,12 @@ module.exports = async (req, res) => {
       case 'revisar_multas_partido': return res.status(200).json(await revisarMultasPartido(pool, config, body));
       case 'enviar_multas_jugadores_app': return res.status(200).json(await enviarMultasJugadoresApp(pool, config, body));
       case 'enviar_resumen_multas_grupo_app': return res.status(200).json(await enviarResumenMultasGrupoApp(pool, config, body));
+      case 'listar_exentos_pendientes_app': return res.status(200).json(await listarExentosPendientes(pool));
+      case 'aprobar_exento_app': return res.status(200).json(await aprobarExento(pool, body));
+      case 'rechazar_exento_app': return res.status(200).json(await rechazarExento(pool, body));
+      case 'listar_catalogo_app': return res.status(200).json(await listarCatalogo(pool, body));
+      case 'crear_item_catalogo_app': return res.status(200).json(await crearItemCatalogo(pool, body));
+      case 'toggle_item_catalogo_app': return res.status(200).json(await toggleItemCatalogo(pool, body));
       case 'crear_jugador_manual_app': return res.status(200).json(await crearJugadorManual(pool, body));
       case 'analizar_comprobante_admin_app': return res.status(200).json(await analizarComprobanteAdmin(pool, body));
       case 'registrar_pago_comprobante_admin_app': return res.status(200).json(await registrarPagoComprobanteAdmin(pool, body));

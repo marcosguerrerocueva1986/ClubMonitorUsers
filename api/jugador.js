@@ -239,7 +239,7 @@ async function verMisUltimosPagos(pool, jugadorId) {
 
 async function verMisInvitados(pool, jugadorId, body) {
   const r = await pool.query(
-    `SELECT COALESCE(json_agg(json_build_object('id', ia.id, 'nombre', ia.nombre, 'token', ca.token) ORDER BY ia.id), '[]'::json) AS invitados
+    `SELECT COALESCE(json_agg(json_build_object('id', ia.id, 'nombre', ia.nombre, 'token', ca.token, 'exento', ia.exento_id IS NOT NULL) ORDER BY ia.id), '[]'::json) AS invitados
      FROM sport_control.invitados_asistencia ia LEFT JOIN sport_control.codigos_asistencia ca ON ca.invitado_asistencia_id = ia.id
      WHERE ia.partido_id = $1 AND ia.jugador_anfitrion_id = $2 AND ia.estado = 'confirmado'`,
     [body.partidoId, jugadorId]
@@ -248,10 +248,25 @@ async function verMisInvitados(pool, jugadorId, body) {
 }
 
 async function agregarInvitado(pool, jugadorId, body) {
-  const { partidoId, nombre } = body;
+  const { partidoId, exentoId } = body;
+  let nombre = body.nombre;
+  let exentoIdFinal = null;
+
+  if (exentoId) {
+    const ex = await pool.query(
+      `SELECT id, nombres, apellidos FROM sport_control.jugador_exentos WHERE id = $1 AND jugador_id = $2 AND estado = 'aprobado'`,
+      [exentoId, jugadorId]
+    );
+    if (!ex.rows[0]) return { success: false, error: 'Ese exento no existe o todavía no está aprobado por el club.' };
+    nombre = ex.rows[0].nombres + ' ' + ex.rows[0].apellidos;
+    exentoIdFinal = exentoId;
+  }
+
+  if (!nombre || !nombre.trim()) return { success: false, error: 'Falta el nombre del invitado.' };
+
   const nuevo = await pool.query(
-    `INSERT INTO sport_control.invitados_asistencia (partido_id, jugador_anfitrion_id, nombre, estado, creado_en) VALUES ($1, $2, $3, 'confirmado', NOW()) RETURNING id`,
-    [partidoId, jugadorId, nombre]
+    `INSERT INTO sport_control.invitados_asistencia (partido_id, jugador_anfitrion_id, nombre, estado, creado_en, exento_id) VALUES ($1, $2, $3, 'confirmado', NOW(), $4) RETURNING id`,
+    [partidoId, jugadorId, nombre, exentoIdFinal]
   );
   const invitadoId = nuevo.rows[0].id;
   const codigo = await pool.query(
@@ -260,6 +275,33 @@ async function agregarInvitado(pool, jugadorId, body) {
   );
   await avisarGrupo(pool, partidoId);
   return { success: true, data: { id: invitadoId, token: codigo.rows[0].token } };
+}
+
+async function listarTiposRelacionExento(pool) {
+  const r = await pool.query(`SELECT id, nombre FROM sport_control.tipos_relacion_exento WHERE activo = true ORDER BY nombre`);
+  return { success: true, data: r.rows };
+}
+
+async function listarMisExentos(pool, jugadorId) {
+  const r = await pool.query(
+    `SELECT je.id, je.nombres, je.apellidos, je.estado, tr.nombre AS relacion
+     FROM sport_control.jugador_exentos je
+     JOIN sport_control.tipos_relacion_exento tr ON tr.id = je.tipo_relacion_id
+     WHERE je.jugador_id = $1 ORDER BY je.creado_en DESC`,
+    [jugadorId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function agregarExento(pool, jugadorId, body) {
+  const { nombres, apellidos, tipoRelacionId } = body;
+  if (!nombres || !apellidos || !tipoRelacionId) return { success: false, error: 'Completa nombres, apellidos y el tipo de relación.' };
+  const r = await pool.query(
+    `INSERT INTO sport_control.jugador_exentos (jugador_id, nombres, apellidos, tipo_relacion_id, estado, creado_en)
+     VALUES ($1, $2, $3, $4, 'pendiente_aprobacion', NOW()) RETURNING id`,
+    [jugadorId, nombres, apellidos, tipoRelacionId]
+  );
+  return { success: true, data: { id: r.rows[0].id } };
 }
 
 async function quitarInvitado(pool, jugadorId, body) {
@@ -409,6 +451,9 @@ module.exports = async (req, res) => {
       case 'marcar_push_habilitado_jugador': return res.status(200).json(await marcarPushHabilitado(pool, jugadorId));
       case 'ver_mis_ultimos_pagos_jugador': return res.status(200).json(await verMisUltimosPagos(pool, jugadorId));
       case 'ver_mis_invitados_partido_jugador': return res.status(200).json(await verMisInvitados(pool, jugadorId, body));
+      case 'listar_tipos_relacion_exento': return res.status(200).json(await listarTiposRelacionExento(pool));
+      case 'listar_mis_exentos_jugador': return res.status(200).json(await listarMisExentos(pool, jugadorId));
+      case 'agregar_exento_jugador': return res.status(200).json(await agregarExento(pool, jugadorId, body));
       case 'agregar_invitado_partido_jugador': return res.status(200).json(await agregarInvitado(pool, jugadorId, body));
       case 'quitar_invitado_partido_jugador': return res.status(200).json(await quitarInvitado(pool, jugadorId, body));
       case 'analizar_comprobante_jugador': return res.status(200).json(await analizarComprobante(pool, body));

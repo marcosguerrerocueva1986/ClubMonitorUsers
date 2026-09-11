@@ -53,13 +53,16 @@ async function obtenerPendientesAgrupados(pool, partidoId) {
   );
 
   // Invitados que SI asistieron (su codigo fue usado) pero no han pagado su costo de entrada
+  // Los invitados exentos (hijos, etc.) nunca deben el costo de entrada
+  // -- se excluyen de este listado. Sus multas por no-show, si aplican,
+  // SI se incluyen (vienen de la consulta de multas de arriba, sin cambios).
   const invitadosSinPagar = await pool.query(
     `SELECT ia.jugador_anfitrion_id AS "jugadorId", j.nombres || ' ' || j.apellidos AS nombre, j.telefono,
             'Invitado sin pagar: ' || ia.nombre AS motivo,
             COALESCE((SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'invitado' AND activo = true ORDER BY prioridad ASC LIMIT 1), 0) AS monto
      FROM sport_control.invitados_asistencia ia
      JOIN sport_control.jugadores j ON j.id = ia.jugador_anfitrion_id
-     WHERE ia.partido_id = $1 AND ia.estado = 'confirmado' AND COALESCE(ia.pagado, false) = false
+     WHERE ia.partido_id = $1 AND ia.estado = 'confirmado' AND COALESCE(ia.pagado, false) = false AND ia.exento_id IS NULL
        AND EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.invitado_asistencia_id = ia.id AND ca.usado = true)`,
     [partidoId]
   );
