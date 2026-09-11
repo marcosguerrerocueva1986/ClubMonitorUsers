@@ -124,12 +124,18 @@ async function enviarRecordatorioPartido(pool, config, body) {
     [body.partidoId]
   );
   const p = r.rows[0];
+  if (!p) return { success: false, error: 'No se encontro el partido (partidoId=' + body.partidoId + ')' };
   const titulo = p.alias ? p.alias : 'Partido';
   const lista = p.lista || [];
   const lineas = lista.map((item, i) => item.tipo === 'invitado' ? `${i + 1}. 🎟️ ${item.nombre} (invitado de ${item.anfitrion})` : `${i + 1}. ${item.nombre}`);
   const { fechaCorta, enviarWhatsAppGrupo } = require('./_admin_partidos');
   const texto = '⏰ *Recordatorio: ' + titulo + '*\n📅 ' + fechaCorta(p.fecha) + '  🕐 ' + (p.hora || '') + '\n📍 ' + (p.lugar || '') + '\n\nConfirmados (' + lista.length + '):\n\n' + (lineas.length > 0 ? lineas.join('\n') : 'Nadie confirmado todavía.') + '\n\nResponde *voy* o *no voy* para confirmar tu asistencia.';
-  await enviarWhatsAppGrupo(config, texto);
+  const diagnostico = await enviarWhatsAppGrupo(config, texto);
+  if (!diagnostico.enviado) {
+    // Temporal: devolvemos el motivo real en vez de fallar en silencio,
+    // para diagnosticar por que no llegaba el mensaje.
+    return { success: false, error: 'No se pudo enviar al grupo: ' + JSON.stringify(diagnostico) };
+  }
   return { success: true };
 }
 

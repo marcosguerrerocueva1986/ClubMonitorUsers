@@ -30,15 +30,25 @@ function fechaCorta(f) {
 }
 
 async function enviarWhatsAppGrupo(config, texto) {
+  if (!config.grupo_jid) return { enviado: false, razon: 'Falta grupo_jid en configuracion_club' };
+  if (!config.instance_evolutionapi) return { enviado: false, razon: 'Falta instance_evolutionapi en configuracion_club' };
   try {
-    if (!config.grupo_jid || !config.instance_evolutionapi) return;
-    await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendText/${config.instance_evolutionapi}`, {
+    const url = `https://evolution-api-production-641b.up.railway.app/message/sendText/${config.instance_evolutionapi}`;
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ number: config.grupo_jid, text: texto }),
     });
+    const status = resp.status;
+    let cuerpoResp = '';
+    try { cuerpoResp = await resp.text(); } catch (e) {}
+    if (status >= 200 && status < 300) {
+      return { enviado: true, razon: 'ok', status };
+    }
+    return { enviado: false, razon: 'Evolution API respondio con error', status, cuerpoResp: cuerpoResp.slice(0, 300), url };
   } catch (e) {
     console.error('Aviso al grupo fallo (no bloquea la accion principal):', e);
+    return { enviado: false, razon: 'Excepcion al llamar Evolution API', error: String(e && e.message || e) };
   }
 }
 
