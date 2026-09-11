@@ -36,7 +36,7 @@ async function enviarWhatsAppGrupo(config, texto) {
     const url = `https://evolution-api-production-641b.up.railway.app/message/sendText/${config.instance_evolutionapi}`;
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: config.grupo_jid, text: texto }),
     });
     const status = resp.status;
@@ -56,7 +56,7 @@ async function enviarWhatsAppPrivado(config, numero, texto) {
   try {
     await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendText/${config.instance_evolutionapi}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: numero, text: texto }),
     });
   } catch (e) {
@@ -68,7 +68,7 @@ async function enviarWhatsAppMedia(config, numero, mediaUrl, caption) {
   try {
     await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendMedia/${config.instance_evolutionapi}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: numero, mediatype: 'image', media: mediaUrl, caption }),
     });
   } catch (e) {

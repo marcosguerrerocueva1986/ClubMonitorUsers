@@ -65,7 +65,7 @@ async function avisarGrupo(pool, partidoId) {
 
     await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendText/${p.instance_evolutionapi}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: p.grupo_jid, text: texto }),
     });
   } catch (e) {
