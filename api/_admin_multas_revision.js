@@ -9,28 +9,33 @@
 const { fechaCorta, enviarWhatsAppGrupo, enviarWhatsAppPrivado } = require('./_admin_partidos');
 
 async function generarMultasSiFaltan(pool, config, partidoId) {
-  const tipoInasistencia = await pool.query(`SELECT id FROM sport_control.tipos_multa WHERE nombre = 'Inasistencia sin aviso' LIMIT 1`);
-  const tipoInvitadoNoShow = await pool.query(`SELECT id FROM sport_control.tipos_multa WHERE nombre = 'Invitado no show' LIMIT 1`);
+  if (!config.tipo_multa_inasistencia_id) {
+    console.error("configuracion_club.tipo_multa_inasistencia_id no esta configurado -- corre configurar_tipos_multa_automaticos.sql. Se omite la generacion de esa multa.");
+  } else {
+    await pool.query(
+      `INSERT INTO sport_control.multas (jugador_id, partido_id, tipo_multa_id, monto, estado)
+       SELECT cp.jugador_id, cp.partido_id, $1, $2, 'pendiente_aprobacion'
+       FROM sport_control.confirmaciones_partido cp
+       WHERE cp.partido_id = $3 AND cp.estado = 'confirmado'
+         AND NOT EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.jugador_id = cp.jugador_id AND ca.partido_id = cp.partido_id AND ca.invitado_asistencia_id IS NULL AND ca.usado = true)
+         AND NOT EXISTS (SELECT 1 FROM sport_control.multas m2 WHERE m2.jugador_id = cp.jugador_id AND m2.partido_id = cp.partido_id AND m2.invitado_asistencia_id IS NULL)`,
+      [config.tipo_multa_inasistencia_id, config.valor_multa_inasistencia, partidoId]
+    );
+  }
 
-  await pool.query(
-    `INSERT INTO sport_control.multas (jugador_id, partido_id, tipo_multa_id, monto, estado)
-     SELECT cp.jugador_id, cp.partido_id, $1, $2, 'pendiente_aprobacion'
-     FROM sport_control.confirmaciones_partido cp
-     WHERE cp.partido_id = $3 AND cp.estado = 'confirmado'
-       AND NOT EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.jugador_id = cp.jugador_id AND ca.partido_id = cp.partido_id AND ca.invitado_asistencia_id IS NULL AND ca.usado = true)
-       AND NOT EXISTS (SELECT 1 FROM sport_control.multas m2 WHERE m2.jugador_id = cp.jugador_id AND m2.partido_id = cp.partido_id AND m2.origen_multa = 'propia')`,
-    [tipoInasistencia.rows[0].id, config.valor_multa_inasistencia, partidoId]
-  );
-
-  await pool.query(
-    `INSERT INTO sport_control.multas (jugador_id, partido_id, tipo_multa_id, invitado_asistencia_id, monto, estado)
-     SELECT ia.jugador_anfitrion_id, ia.partido_id, $1, ia.id, $2, 'pendiente_aprobacion'
-     FROM sport_control.invitados_asistencia ia
-     WHERE ia.partido_id = $3 AND ia.estado = 'confirmado'
-       AND NOT EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.invitado_asistencia_id = ia.id AND ca.usado = true)
-       AND NOT EXISTS (SELECT 1 FROM sport_control.multas m3 WHERE m3.invitado_asistencia_id = ia.id)`,
-    [tipoInvitadoNoShow.rows[0].id, config.valor_multa_invitado_no_show, partidoId]
-  );
+  if (!config.tipo_multa_invitado_id) {
+    console.error("configuracion_club.tipo_multa_invitado_id no esta configurado -- corre configurar_tipos_multa_automaticos.sql. Se omite la generacion de esa multa.");
+  } else {
+    await pool.query(
+      `INSERT INTO sport_control.multas (jugador_id, partido_id, tipo_multa_id, invitado_asistencia_id, monto, estado)
+       SELECT ia.jugador_anfitrion_id, ia.partido_id, $1, ia.id, $2, 'pendiente_aprobacion'
+       FROM sport_control.invitados_asistencia ia
+       WHERE ia.partido_id = $3 AND ia.estado = 'confirmado'
+         AND NOT EXISTS (SELECT 1 FROM sport_control.codigos_asistencia ca WHERE ca.invitado_asistencia_id = ia.id AND ca.usado = true)
+         AND NOT EXISTS (SELECT 1 FROM sport_control.multas m3 WHERE m3.invitado_asistencia_id = ia.id)`,
+      [config.tipo_multa_invitado_id, config.valor_multa_invitado_no_show, partidoId]
+    );
+  }
 }
 
 async function obtenerPendientesAgrupados(pool, partidoId) {

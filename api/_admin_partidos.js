@@ -17,7 +17,8 @@ const { getPool } = require('./_db');
 // ============================================================
 async function cargarConfig(pool) {
   const r = await pool.query(
-    `SELECT clave_admin_app, grupo_jid, valor_multa_inasistencia, valor_multa_invitado_no_show, instance_evolutionapi
+    `SELECT clave_admin_app, grupo_jid, valor_multa_inasistencia, valor_multa_invitado_no_show, instance_evolutionapi,
+            tipo_multa_inasistencia_id, tipo_multa_invitado_id
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return r.rows[0];
