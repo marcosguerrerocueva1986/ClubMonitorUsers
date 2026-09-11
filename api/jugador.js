@@ -287,7 +287,7 @@ async function listarMisExentos(pool, jugadorId) {
     `SELECT je.id, je.nombres, je.apellidos, je.estado, tr.nombre AS relacion
      FROM sport_control.jugador_exentos je
      JOIN sport_control.tipos_relacion_exento tr ON tr.id = je.tipo_relacion_id
-     WHERE je.jugador_id = $1 ORDER BY je.creado_en DESC`,
+     WHERE je.jugador_id = $1 AND je.estado != 'revocado' ORDER BY je.creado_en DESC`,
     [jugadorId]
   );
   return { success: true, data: r.rows };
@@ -302,6 +302,26 @@ async function agregarExento(pool, jugadorId, body) {
     [jugadorId, nombres, apellidos, tipoRelacionId]
   );
   return { success: true, data: { id: r.rows[0].id } };
+}
+
+async function eliminarExento(pool, jugadorId, body) {
+  const { exentoId } = body;
+  const check = await pool.query(`SELECT id FROM sport_control.jugador_exentos WHERE id = $1 AND jugador_id = $2`, [exentoId, jugadorId]);
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese registro.' };
+
+  try {
+    // Intento 1: borrado completo (solo funciona si nunca se uso en ningun partido)
+    await pool.query(`DELETE FROM sport_control.jugador_exentos WHERE id = $1`, [exentoId]);
+    return { success: true, data: { eliminadoCompleto: true } };
+  } catch (err) {
+    if (err.code === '23503') {
+      // Ya fue usado como invitado en algun partido -- no se puede borrar sin
+      // perder ese historial. Se marca como eliminado (deja de ser seleccionable).
+      await pool.query(`UPDATE sport_control.jugador_exentos SET estado = 'revocado', revisado_en = NOW() WHERE id = $1`, [exentoId]);
+      return { success: true, data: { eliminadoCompleto: false } };
+    }
+    throw err;
+  }
 }
 
 async function quitarInvitado(pool, jugadorId, body) {
@@ -454,6 +474,7 @@ module.exports = async (req, res) => {
       case 'listar_tipos_relacion_exento': return res.status(200).json(await listarTiposRelacionExento(pool));
       case 'listar_mis_exentos_jugador': return res.status(200).json(await listarMisExentos(pool, jugadorId));
       case 'agregar_exento_jugador': return res.status(200).json(await agregarExento(pool, jugadorId, body));
+      case 'eliminar_exento_jugador': return res.status(200).json(await eliminarExento(pool, jugadorId, body));
       case 'agregar_invitado_partido_jugador': return res.status(200).json(await agregarInvitado(pool, jugadorId, body));
       case 'quitar_invitado_partido_jugador': return res.status(200).json(await quitarInvitado(pool, jugadorId, body));
       case 'analizar_comprobante_jugador': return res.status(200).json(await analizarComprobante(pool, body));

@@ -15,7 +15,7 @@ const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, 
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
 const { listarJugadoresDisponibles, agregarJugadorPartido, listarConfirmadosRemovibles, quitarJugadorPartido, quitarInvitadoPartido } = require('./_admin_gestion_partido');
 const { revisarMultasPartido, enviarMultasJugadoresApp, enviarResumenMultasGrupoApp } = require('./_admin_multas_revision');
-const { listarExentosPendientes, aprobarExento, rechazarExento, listarCatalogo, crearItemCatalogo, toggleItemCatalogo } = require('./_admin_exentos_catalogos');
+const { listarExentosPendientes, aprobarExento, rechazarExento, listarExentosAprobados, revocarExento, listarCatalogo, crearItemCatalogo, toggleItemCatalogo } = require('./_admin_exentos_catalogos');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
@@ -78,6 +78,8 @@ module.exports = async (req, res) => {
       case 'listar_exentos_pendientes_app': return res.status(200).json(await listarExentosPendientes(pool));
       case 'aprobar_exento_app': return res.status(200).json(await aprobarExento(pool, body));
       case 'rechazar_exento_app': return res.status(200).json(await rechazarExento(pool, body));
+      case 'listar_exentos_aprobados_app': return res.status(200).json(await listarExentosAprobados(pool));
+      case 'revocar_exento_app': return res.status(200).json(await revocarExento(pool, body));
       case 'listar_catalogo_app': return res.status(200).json(await listarCatalogo(pool, body));
       case 'crear_item_catalogo_app': return res.status(200).json(await crearItemCatalogo(pool, body));
       case 'toggle_item_catalogo_app': return res.status(200).json(await toggleItemCatalogo(pool, body));

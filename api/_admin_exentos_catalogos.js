@@ -29,6 +29,35 @@ async function rechazarExento(pool, body) {
   return { success: true };
 }
 
+async function listarExentosAprobados(pool) {
+  const r = await pool.query(
+    `SELECT je.id, je.nombres, je.apellidos, tr.nombre AS relacion, j.nombres || ' ' || j.apellidos AS jugador
+     FROM sport_control.jugador_exentos je
+     JOIN sport_control.tipos_relacion_exento tr ON tr.id = je.tipo_relacion_id
+     JOIN sport_control.jugadores j ON j.id = je.jugador_id
+     WHERE je.estado = 'aprobado'
+     ORDER BY j.nombres, je.nombres`
+  );
+  return { success: true, data: r.rows };
+}
+
+async function revocarExento(pool, body) {
+  const { exentoId } = body;
+  try {
+    // Intento 1: borrado completo (solo funciona si nunca se uso en ningun partido)
+    await pool.query(`DELETE FROM sport_control.jugador_exentos WHERE id = $1`, [exentoId]);
+    return { success: true, data: { eliminadoCompleto: true } };
+  } catch (err) {
+    if (err.code === '23503') {
+      // Ya fue usado como invitado en algun partido -- se revoca sin borrar,
+      // para no perder el historial de ese partido.
+      await pool.query(`UPDATE sport_control.jugador_exentos SET estado = 'revocado', revisado_en = NOW() WHERE id = $1`, [exentoId]);
+      return { success: true, data: { eliminadoCompleto: false } };
+    }
+    throw err;
+  }
+}
+
 // ---------- Catalogos genericos ----------
 // Para agregar un catalogo nuevo mas adelante, solo se agrega aqui una
 // entrada con su tabla real. El resto (listar/crear/activar-desactivar)
