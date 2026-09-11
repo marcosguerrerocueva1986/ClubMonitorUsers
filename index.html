@@ -199,6 +199,7 @@ const ACCIONES_VERCEL = new Set([
   'ver_mis_invitados_partido_jugador', 'agregar_invitado_partido_jugador', 'quitar_invitado_partido_jugador',
   'analizar_comprobante_jugador', 'registrar_pago_comprobante_jugador', 'aplicar_pago_jugador',
   'guardar_restante_saldo_favor_jugador',
+  'listar_tipos_relacion_exento', 'listar_mis_exentos_jugador', 'agregar_exento_jugador',
 ]);
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
