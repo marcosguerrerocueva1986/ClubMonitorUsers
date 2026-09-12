@@ -11,6 +11,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Panel Club">
 <meta name="theme-color" content="#14231A">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({ appId: "94fc2cb8-f935-4abc-b237-ea9d81c1eb81" });
+  });
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
@@ -952,7 +959,13 @@ async function cargarParametros(){
     {key:'fecha_inicio_recaudacion', label:'Inicio de recaudación (DD/MM/AAAA)', val:p.fecha_inicio_recaudacion, prefix:''},
     {key:'meses_retener_codigos', label:'Meses para conservar códigos QR usados', val:p.meses_retener_codigos, prefix:''},
   ];
-  document.getElementById('parametrosList').innerHTML = '<div class="card">' + campos.map(c=>`
+  document.getElementById('parametrosList').innerHTML = `
+    <div class="card" id="adminPushCard">
+      <div class="card-title"><h3>🔔 Notificaciones del Admin</h3></div>
+      <p class="meta" id="adminPushEstadoTexto">Revisando el estado...</p>
+      <button class="primary block" id="adminPushBtn" style="margin-top:10px;display:none" onclick="activarNotificacionesAdmin()">Activar notificaciones</button>
+    </div>
+    <div class="card">` + campos.map(c=>`
     <div class="field-line">
       <div>
         <div class="fl-label">${c.label}</div>
@@ -961,6 +974,78 @@ async function cargarParametros(){
       <button class="sm" onclick="editarParametro('${c.key}','${esc(c.label)}','${esc(c.val ?? '')}')">Editar</button>
     </div>
   `).join('') + '</div>';
+  actualizarEstadoPushAdmin();
+}
+
+function esInstaladaComoAppAdmin(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function esIOSAdmin(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+async function actualizarEstadoPushAdmin(){
+  const textoEl = document.getElementById('adminPushEstadoTexto');
+  const btnEl = document.getElementById('adminPushBtn');
+  if(!textoEl) return;
+
+  if(esIOSAdmin() && !esInstaladaComoAppAdmin()){
+    textoEl.innerHTML = '📲 En iPhone, primero instala esta página a tu pantalla de inicio (Safari → Compartir → Agregar a inicio) para poder recibir notificaciones.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(!('Notification' in window)){
+    textoEl.textContent = 'Tu navegador no soporta notificaciones push.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(Notification.permission === 'denied'){
+    textoEl.textContent = '🚫 Bloqueaste las notificaciones. Actívalas desde la configuración del navegador para este sitio.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(Notification.permission !== 'granted'){
+    textoEl.textContent = 'Actívalas para enterarte al instante cuando un jugador haga un pago o registre un invitado exento por aprobar.';
+    btnEl.style.display = 'block';
+    btnEl.textContent = 'Activar notificaciones';
+    return;
+  }
+  if(window.OneSignalDeferred){
+    OneSignalDeferred.push(async function(OneSignal){
+      let optedIn = false;
+      try{ optedIn = OneSignal.User.PushSubscription.optedIn === true; }catch(e){}
+      if(optedIn){
+        textoEl.textContent = '✓ Las notificaciones están activadas.';
+        btnEl.style.display = 'none';
+      } else {
+        textoEl.textContent = '⚠️ El navegador lo permite, pero falta completar la suscripción.';
+        btnEl.style.display = 'block';
+        btnEl.textContent = 'Reactivar notificaciones';
+      }
+    });
+  }
+}
+
+async function activarNotificacionesAdmin(){
+  if(typeof Notification === 'undefined'){ toast('Tu navegador no soporta notificaciones', true); return; }
+  const permiso = await Notification.requestPermission();
+  if(permiso === 'granted'){
+    if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
+    OneSignalDeferred.push(async function(OneSignal){
+      try{
+        await OneSignal.login('admin_club');
+        await OneSignal.User.PushSubscription.optIn();
+        toast('¡Notificaciones activadas!');
+        actualizarEstadoPushAdmin();
+      }catch(e){
+        toast('Error: ' + (e.message || 'fallo interno'), true);
+        actualizarEstadoPushAdmin();
+      }
+    });
+  } else {
+    toast('Permiso denegado por el navegador', true);
+    actualizarEstadoPushAdmin();
+  }
 }
 
 function editarParametro(key, label, valorActual){

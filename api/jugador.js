@@ -90,11 +90,33 @@ async function enviarPushSaldoFavor(jugadorId, monto) {
         target_channel: 'push',
         headings: { en: '💰 Tienes saldo sin distribuir' },
         contents: { en: `Guardamos $${Number(monto).toFixed(2)} como saldo a favor. Toca para asignarlo a una deuda.` },
-        url: 'https://club-monitor-users.vercel.app/',
+        url: 'https://club-monitor-users.vercel.app/jugador/',
       }),
     });
   } catch (e) {
     console.error('Push de saldo a favor fallo (no bloquea el guardado):', e);
+  }
+}
+
+async function enviarPushAdmin(titulo, mensaje) {
+  try {
+    await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify({
+        app_id: '94fc2cb8-f935-4abc-b237-ea9d81c1eb81',
+        include_aliases: { external_id: ['admin_club'] },
+        target_channel: 'push',
+        headings: { en: titulo },
+        contents: { en: mensaje },
+        url: 'https://club-monitor-users.vercel.app/admin.html',
+      }),
+    });
+  } catch (e) {
+    console.error('Push al admin fallo (no bloquea la accion principal):', e);
   }
 }
 
@@ -301,6 +323,11 @@ async function agregarExento(pool, jugadorId, body) {
      VALUES ($1, $2, $3, $4, 'pendiente_aprobacion', NOW()) RETURNING id`,
     [jugadorId, nombres, apellidos, tipoRelacionId]
   );
+
+  const j = await pool.query(`SELECT nombres, apellidos FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
+  const nombreJugador = j.rows[0] ? (j.rows[0].nombres + ' ' + j.rows[0].apellidos) : 'Un jugador';
+  await enviarPushAdmin('👨‍👩‍👧 Nuevo exento por aprobar', `${nombreJugador} registró a ${nombres} ${apellidos} como exento. Revísalo en Parámetros.`);
+
   return { success: true, data: { id: r.rows[0].id } };
 }
 
@@ -377,6 +404,11 @@ async function registrarPagoComprobante(pool, jugadorId, body) {
     `INSERT INTO sport_control.pagos (jugador_id, monto, numero_comprobante, banco, fecha_comprobante, metodo_pago, estado, creado_en) VALUES ($1, $2, $3, $4, $5::date, 'transferencia', 'confirmado', NOW()) RETURNING id`,
     [jugadorId, monto, numeroComprobante, banco, fecha]
   );
+
+  const j = await pool.query(`SELECT nombres, apellidos FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
+  const nombreJugador = j.rows[0] ? (j.rows[0].nombres + ' ' + j.rows[0].apellidos) : 'Un jugador';
+  await enviarPushAdmin('💵 Nuevo pago registrado', `${nombreJugador} registró un pago de $${Number(monto).toFixed(2)}.`);
+
   return { success: true, data: { pagoId: result.rows[0].id, monto } };
 }
 

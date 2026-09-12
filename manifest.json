@@ -1,9 +1,9 @@
 {
-  "id": "/",
+  "id": "/jugador/",
   "name": "Mi Club",
   "short_name": "Mi Club",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/jugador/",
+  "scope": "/jugador/",
   "display": "standalone",
   "background_color": "#14231A",
   "theme_color": "#14231A",
