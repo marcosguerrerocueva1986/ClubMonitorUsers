@@ -15,7 +15,13 @@
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function(OneSignal) {
-    await OneSignal.init({ appId: "94fc2cb8-f935-4abc-b237-ea9d81c1eb81" });
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      if (cfg.onesignalAppId) await OneSignal.init({ appId: cfg.onesignalAppId });
+    } catch (e) {
+      console.error('No se pudo inicializar OneSignal:', e);
+    }
   });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -170,11 +176,16 @@
     <div class="screen" id="screen-perfil">
       <div id="perfilContent"><div class="spinner"></div></div>
     </div>
+
+    <div class="screen" id="screen-eventos">
+      <div id="eventosJugadorContent"><div class="spinner"></div></div>
+    </div>
   </main>
 
   <nav class="tabs">
     <button class="active" data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic">⚽</span>Partidos</button>
     <button data-tab="deuda" onclick="cambiarTab('deuda')"><span class="ic">💳</span>Mi cuenta</button>
+    <button data-tab="eventos" id="tabEventos" onclick="cambiarTab('eventos')" style="display:none"><span class="ic">🎒</span>Eventos</button>
     <button data-tab="docs" onclick="cambiarTab('docs')"><span class="ic">📖</span>Info</button>
     <button data-tab="perfil" onclick="cambiarTab('perfil')"><span class="ic">👤</span>Perfil</button>
   </nav>
@@ -372,7 +383,8 @@ async function verMiQR(partidoId){
 }
 
 function mostrarQR(token, nombreContexto){
-  const waLink = 'https://wa.me/15122281262?text=ASISTIO-' + token;
+  const numeroCheckin = (PERFIL && PERFIL.whatsappCheckinNumero) || '';
+  const waLink = `https://wa.me/${numeroCheckin}?text=ASISTIO-` + token;
   const url = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent(waLink);
   const html = `
     <div class="sheet-head"><h2>${nombreContexto ? esc(nombreContexto) : 'Tu código QR'}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
