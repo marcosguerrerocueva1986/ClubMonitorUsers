@@ -5,7 +5,8 @@ async function obtenerParametros(pool) {
     `SELECT (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1) AS cuota_mensual,
             (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'invitado' AND activo = true ORDER BY prioridad ASC LIMIT 1) AS costo_invitado,
             valor_multa_inasistencia, valor_multa_invitado_no_show, meses_maximo_atraso, numero_admin,
-            to_char(fecha_inicio_recaudacion, 'DD/MM/YYYY') AS fecha_inicio_recaudacion, meses_retener_codigos
+            to_char(fecha_inicio_recaudacion, 'DD/MM/YYYY') AS fecha_inicio_recaudacion, meses_retener_codigos,
+            eventos_habilitado_jugador
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return { success: true, data: r.rows[0] };
@@ -163,7 +164,13 @@ async function marcarMultaPagada(pool, body) {
   return { success: true };
 }
 
+async function toggleEventosJugador(pool, body) {
+  await pool.query(`UPDATE sport_control.configuracion_club SET eventos_habilitado_jugador = $1 WHERE id = 1`, [!!body.habilitado]);
+  return { success: true };
+}
+
 module.exports = {
   obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas,
   toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada,
+  toggleEventosJugador,
 };

@@ -11,7 +11,8 @@
 
 const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido } = require('./_admin_partidos');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido } = require('./_admin_jugadores');
-const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada } = require('./_admin_operaciones');
+const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador } = require('./_admin_operaciones');
+const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento } = require('./_admin_eventos');
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
 const { listarJugadoresDisponibles, agregarJugadorPartido, listarConfirmadosRemovibles, quitarJugadorPartido, quitarInvitadoPartido } = require('./_admin_gestion_partido');
 const { revisarMultasPartido, enviarMultasJugadoresApp, enviarResumenMultasGrupoApp } = require('./_admin_multas_revision');
@@ -59,6 +60,26 @@ module.exports = async (req, res) => {
       case 'ver_detalle_jugador_app': return res.status(200).json(await verDetalleJugador(pool, body));
       case 'ver_pendientes_jugador_app': return res.status(200).json(await verPendientesJugador(pool, body));
       case 'marcar_multa_pagada_app': return res.status(200).json(await marcarMultaPagada(pool, body));
+      case 'toggle_eventos_jugador_app': return res.status(200).json(await toggleEventosJugador(pool, body));
+      case 'crear_evento_app': return res.status(200).json(await crearEvento(pool, body));
+      case 'editar_evento_app': return res.status(200).json(await editarEvento(pool, body));
+      case 'listar_eventos_app': return res.status(200).json(await listarEventos(pool));
+      case 'ver_detalle_evento_app': return res.status(200).json(await verDetalleEvento(pool, body));
+      case 'crear_evento_fecha_app': return res.status(200).json(await crearEventoFecha(pool, body));
+      case 'editar_evento_fecha_app': return res.status(200).json(await editarEventoFecha(pool, body));
+      case 'eliminar_evento_fecha_app': return res.status(200).json(await eliminarEventoFecha(pool, body));
+      case 'eliminar_presupuesto_item_app': return res.status(200).json(await eliminarPresupuestoItem(pool, body));
+      case 'guardar_presupuesto_item_app': return res.status(200).json(await guardarPresupuestoItem(pool, body));
+      case 'asignar_cuota_jugador_app': return res.status(200).json(await asignarCuotaJugador(pool, body));
+      case 'aplicar_cuota_todos_app': return res.status(200).json(await aplicarCuotaATodos(pool, body));
+      case 'quitar_cuota_jugador_app': return res.status(200).json(await quitarCuotaJugador(pool, body));
+      case 'registrar_movimiento_evento_app': return res.status(200).json(await registrarMovimientoEvento(pool, body));
+      case 'eliminar_movimiento_evento_app': return res.status(200).json(await eliminarMovimientoEvento(pool, body));
+      case 'ver_comprobante_movimiento_app': return res.status(200).json(await verComprobanteMovimiento(pool, body));
+      case 'listar_informe_consolidado_eventos_app': return res.status(200).json(await listarInformeConsolidadoEventos(pool));
+      case 'listar_tipos_movimiento_evento_app': return res.status(200).json(await listarTiposMovimientoEvento(pool));
+      case 'crear_tipo_movimiento_evento_app': return res.status(200).json(await crearTipoMovimientoEvento(pool, body));
+      case 'toggle_tipo_movimiento_evento_app': return res.status(200).json(await toggleTipoMovimientoEvento(pool, body));
       case 'marcar_meses_pagados_app': return res.status(200).json(await marcarMesesPagados(pool, body));
       case 'ver_pagos_jugador_app': return res.status(200).json(await verPagosJugador(pool, body));
       case 'ver_pendientes_categorizado_app': return res.status(200).json(await verPendientesCategorizado(pool, body));
