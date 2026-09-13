@@ -15,7 +15,13 @@
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function(OneSignal) {
-    await OneSignal.init({ appId: "94fc2cb8-f935-4abc-b237-ea9d81c1eb81" });
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      if (cfg.onesignalAppId) await OneSignal.init({ appId: cfg.onesignalAppId });
+    } catch (e) {
+      console.error('No se pudo inicializar OneSignal:', e);
+    }
   });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
