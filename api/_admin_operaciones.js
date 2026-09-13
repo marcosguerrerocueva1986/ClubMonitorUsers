@@ -44,7 +44,7 @@ async function reenviarQrJugador(pool, config, body) {
   );
   const row = r.rows[0];
   if (!row || !row.token) return { success: false, error: 'Este jugador todavia no tiene un codigo QR generado.' };
-  const waLink = 'https://wa.me/15122281262?text=ASISTIO-' + row.token;
+  const waLink = `https://wa.me/${config.whatsapp_checkin_numero}?text=ASISTIO-` + row.token;
   const mediaUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent(waLink);
   const { enviarWhatsAppMedia } = require('./_admin_partidos');
   await enviarWhatsAppMedia(config, row.telefono, mediaUrl, 'Tu codigo de asistencia para el partido.');
@@ -169,8 +169,15 @@ async function toggleEventosJugador(pool, body) {
   return { success: true };
 }
 
+async function actualizarLogoClub(pool, body) {
+  const { logoBase64 } = body;
+  if (!logoBase64) return { success: false, error: 'No se recibió ninguna imagen.' };
+  await pool.query(`UPDATE sport_control.configuracion_club SET logo_base64 = $1 WHERE id = 1`, [logoBase64]);
+  return { success: true };
+}
+
 module.exports = {
   obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas,
   toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada,
-  toggleEventosJugador,
+  toggleEventosJugador, actualizarLogoClub,
 };
