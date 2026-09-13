@@ -1018,6 +1018,13 @@ async function cargarParametros(){
       <button class="primary block" id="adminPushBtn" style="margin-top:10px;display:none" onclick="activarNotificacionesAdmin()">Activar notificaciones</button>
     </div>
     <div class="card">
+      <div class="card-title"><h3>🖼️ Logo del club</h3></div>
+      <p class="meta">Se usa como ícono al instalar la app (jugador y admin), en las notificaciones push, y en las páginas. Sube una imagen cuadrada si puedes — la app la ajusta automáticamente.</p>
+      <img src="/api/logo" style="width:80px;height:80px;border-radius:12px;margin:8px 0;background:#fff" onerror="this.style.display='none'">
+      <input type="file" id="logoClubFile" accept="image/*">
+      <button class="primary block" style="margin-top:10px" onclick="subirLogoClub()">Actualizar logo</button>
+    </div>
+    <div class="card">
       <div class="card-title"><h3>🎒 Módulo de Eventos</h3></div>
       <p class="meta">${p.eventos_habilitado_jugador ? 'Los jugadores YA PUEDEN ver la pestaña de Eventos en su app.' : 'Oculto para los jugadores por ahora — solo tú lo ves aquí.'}</p>
       <button class="block ${p.eventos_habilitado_jugador ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleEventosJugador(${!p.eventos_habilitado_jugador})">${p.eventos_habilitado_jugador ? 'Ocultar de los jugadores' : 'Liberar a los jugadores'}</button>
@@ -1038,6 +1045,45 @@ async function toggleEventosJugador(habilitado){
   const res = await api('toggle_eventos_jugador_app', {habilitado});
   if(res===null) return;
   toast(habilitado ? 'Eventos liberado a los jugadores' : 'Eventos ocultado de los jugadores');
+  cargarParametros();
+}
+
+function procesarImagenParaLogo(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      // Mismo criterio que ya validamos con los iconos del jugador/admin:
+      // lienzo cuadrado, fondo blanco, la imagen ocupa ~88% (deja el
+      // margen minimo necesario para verse bien como icono "maskable"
+      // en Android sin recortarse ni dejar bordes oscuros).
+      const size = 512;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      const factor = 0.88;
+      const escala = Math.min(size*factor/img.width, size*factor/img.height);
+      const w = img.width*escala, h = img.height*escala;
+      ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
+      const dataUrl = canvas.toDataURL('image/png');
+      resolve(dataUrl.split(',')[1]); // solo el base64, sin el prefijo data:image/png;base64,
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function subirLogoClub(){
+  const fileInput = document.getElementById('logoClubFile');
+  if(!fileInput.files || !fileInput.files[0]){ toast('Selecciona una imagen', true); return; }
+  const logoBase64 = await procesarImagenParaLogo(fileInput.files[0]);
+  const res = await api('actualizar_logo_club_app', {logoBase64});
+  if(res===null) return;
+  toast('Logo actualizado');
   cargarParametros();
 }
 
