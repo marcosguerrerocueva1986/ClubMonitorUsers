@@ -10,12 +10,24 @@
 <link rel="apple-touch-icon" href="/api/logo?badge=representante">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <script>
-window._configClubPromise = fetch('/api/config').then(r=>r.json()).catch(()=>({iconoDeporte:'⚽'}));
+window._configClubPromise = fetch('/api/config').then(r=>r.json()).catch(()=>({onesignalAppId:null, iconoDeporte:'⚽'}));
 window._iconoDeporteActual = '⚽';
 window._configClubPromise.then(cfg => {
   window._iconoDeporteActual = cfg.iconoDeporte || '⚽';
   document.querySelectorAll('.ic-deporte').forEach(el => el.textContent = window._iconoDeporteActual);
 });
+</script>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    try {
+      const cfg = await window._configClubPromise;
+      if (cfg.onesignalAppId) await OneSignal.init({ appId: cfg.onesignalAppId });
+    } catch (e) {
+      console.error('No se pudo inicializar OneSignal:', e);
+    }
+  });
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
