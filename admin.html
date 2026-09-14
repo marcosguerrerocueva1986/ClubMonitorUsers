@@ -523,6 +523,7 @@ async function cargarPartidos(){
       <div class="row-actions">
 
         <button class="sm" onclick="abrirDetallesPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')}, '${p.estado}')">Detalles</button>
+        <button class="sm" onclick="abrirEstadisticasPartido(${p.id})">📊 Estadísticas</button>
 
         <button class="sm" onclick="abrirEditarPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')})">Editar</button>
 
@@ -538,6 +539,155 @@ async function cargarPartidos(){
 }
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- Estadisticas del partido (pantalla generica) ---------- */
+let estadisticasPartidoActual = null;
+
+async function abrirEstadisticasPartido(partidoId){
+  const data = await api('ver_estadisticas_partido_admin', {partidoId});
+  if(data===null) return;
+  estadisticasPartidoActual = data;
+  mostrarEstadisticasPartido();
+}
+
+function valorGuardado(tipoEstadisticaId, jugadorId){
+  const v = estadisticasPartidoActual.valores.find(x => x.tipoEstadisticaId===tipoEstadisticaId && x.jugadorId===jugadorId);
+  return v ? v.valor : 0;
+}
+
+function mostrarEstadisticasPartido(){
+  const d = estadisticasPartidoActual;
+  const p = d.partido;
+  const porJugador = d.tipos.filter(t=>t.nivel==='jugador');
+  const porEquipo = d.tipos.filter(t=>t.nivel==='equipo');
+
+  const html = `
+    <div class="sheet-head"><h2>${esc(p.disciplinaIcono||'📊')} Estadísticas</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">${esc(p.alias || 'Partido #'+p.id)} · ${esc(p.disciplinaNombre||'')}</p>
+
+    <div class="card">
+      <div class="card-title"><h3>Marcador</h3></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1"><label>Nosotros</label><input id="estMarcadorPropio" type="number" value="${p.marcador_propio ?? ''}"></div>
+        <div style="font-size:20px;color:var(--chalk-dim);margin-top:14px">vs</div>
+        <div style="flex:1"><label>Rival</label><input id="estMarcadorRival" type="number" value="${p.marcador_rival ?? ''}"></div>
+      </div>
+      <label>Nombre del rival</label>
+      <input id="estRivalNombre" value="${esc(p.rival_nombre||'')}" placeholder="Ej: Liga Deportiva Norte">
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h3>Jugador destacado</h3></div>
+      <select id="estJugadorDestacado">
+        <option value="">— Ninguno —</option>
+        ${d.jugadores.map(j=>`<option value="${j.id}" ${p.jugador_destacado_id===j.id?'selected':''}>${esc(j.nombre)}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h3>Fotos oficiales</h3></div>
+      <label>Foto del equipo ${p.tieneFotoEquipo ? '<span style="color:var(--green-ok)">✓ ya tiene una</span>' : ''}</label>
+      ${p.tieneFotoEquipo ? `<button class="sm" style="margin-bottom:10px" onclick="verFotoPartidoAccion(${p.id}, 'equipo')">Ver foto actual</button>` : ''}
+      <input type="file" id="estFotoEquipo" accept="image/*">
+      <label style="margin-top:10px">Foto de la planilla de control ${p.tieneFotoPlanilla ? '<span style="color:var(--green-ok)">✓ ya tiene una</span>' : ''}</label>
+      ${p.tieneFotoPlanilla ? `<button class="sm" style="margin-bottom:10px" onclick="verFotoPartidoAccion(${p.id}, 'planilla')">Ver foto actual</button>` : ''}
+      <input type="file" id="estFotoPlanilla" accept="image/*">
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h3>Notas del partido</h3></div>
+      <textarea id="estNotas" rows="3" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-family:inherit;font-size:14px">${esc(p.notas||'')}</textarea>
+    </div>
+
+    ${porEquipo.length>0 ? `
+    <div class="card">
+      <div class="card-title"><h3>Estadísticas del equipo</h3></div>
+      ${porEquipo.map(t=>`
+        <label>${esc(t.nombre)}</label>
+        <input type="number" class="est-equipo" data-tipo="${t.id}" value="${valorGuardado(t.id, null)}">
+      `).join('')}
+    </div>` : ''}
+
+    ${porJugador.length>0 && d.jugadores.length>0 ? `
+    <div class="card">
+      <div class="card-title"><h3>Estadísticas por jugador</h3></div>
+      ${d.jugadores.map(j=>`
+        <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+          <div class="fl-value" style="margin-bottom:8px">${esc(j.nombre)}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${porJugador.map(t=>`
+              <div style="flex:1;min-width:90px">
+                <label style="font-size:10px">${esc(t.nombre)}</label>
+                <input type="number" class="est-jugador" data-tipo="${t.id}" data-jugador="${j.id}" value="${valorGuardado(t.id, j.id)}" style="margin-bottom:0">
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+    ${d.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Nadie ha confirmado asistencia a este partido todavía, así que no hay a quién asignarle estadísticas por jugador. Las de equipo sí se pueden guardar igual.</p>' : ''}
+
+    <button class="primary block" id="btnGuardarEstadisticas" style="margin-top:14px" onclick="guardarEstadisticasPartido(${p.id})">Guardar estadísticas</button>
+  `;
+  abrirSheet(html);
+}
+
+async function verFotoPartidoAccion(partidoId, tipo){
+  const res = await api('ver_foto_partido_admin', {partidoId, tipo});
+  if(res===null) return;
+  if(!res.foto){ toast('No hay foto', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>${tipo==='planilla'?'Planilla de control':'Foto del equipo'}</h2><button class="sheet-close" onclick="cerrarSheet(); mostrarEstadisticasPartido();">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.foto}" style="width:100%;border-radius:12px">
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEstadisticasPartido(partidoId){
+  const btn = document.getElementById('btnGuardarEstadisticas');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  try {
+    const valoresEquipo = [...document.querySelectorAll('.est-equipo')].map(el => ({
+      tipoEstadisticaId: parseInt(el.dataset.tipo), valor: parseFloat(el.value) || 0,
+    }));
+    const valoresJugador = [...document.querySelectorAll('.est-jugador')].map(el => ({
+      tipoEstadisticaId: parseInt(el.dataset.tipo), jugadorId: parseInt(el.dataset.jugador), valor: parseFloat(el.value) || 0,
+    }));
+
+    let fotoEquipoBase64 = null, fotoPlanillaBase64 = null;
+    const fileEquipo = document.getElementById('estFotoEquipo');
+    if(fileEquipo.files && fileEquipo.files[0]){
+      btn.textContent = 'Procesando foto del equipo...';
+      fotoEquipoBase64 = await fileToBase64Admin(fileEquipo.files[0]);
+    }
+    const filePlanilla = document.getElementById('estFotoPlanilla');
+    if(filePlanilla.files && filePlanilla.files[0]){
+      btn.textContent = 'Procesando foto de la planilla...';
+      fotoPlanillaBase64 = await fileToBase64Admin(filePlanilla.files[0]);
+    }
+    btn.textContent = 'Guardando...';
+
+    const jugadorDestacadoVal = document.getElementById('estJugadorDestacado').value;
+    const body = {
+      partidoId,
+      marcadorPropio: document.getElementById('estMarcadorPropio').value ? parseInt(document.getElementById('estMarcadorPropio').value) : null,
+      marcadorRival: document.getElementById('estMarcadorRival').value ? parseInt(document.getElementById('estMarcadorRival').value) : null,
+      rivalNombre: document.getElementById('estRivalNombre').value.trim(),
+      notas: document.getElementById('estNotas').value.trim(),
+      jugadorDestacadoId: jugadorDestacadoVal ? parseInt(jugadorDestacadoVal) : null,
+      fotoEquipoBase64, fotoPlanillaBase64, valoresJugador, valoresEquipo,
+    };
+    const res = await api('guardar_estadisticas_partido_admin', body);
+    if(res===null){ btn.disabled = false; btn.textContent = 'Guardar estadísticas'; return; }
+    toast('Estadísticas guardadas');
+    cerrarSheet();
+  } catch(e) {
+    toast('No se pudo guardar. Intenta de nuevo.', true);
+    btn.disabled = false;
+    btn.textContent = 'Guardar estadísticas';
+  }
+}
 
 async function confirmarAccionPartido(accion, id, label){
   if(!confirm('¿Seguro que quieres ' + label + '?')) return;
