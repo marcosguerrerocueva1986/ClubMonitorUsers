@@ -19,6 +19,15 @@ window._configClubPromise.then(cfg => {
   document.querySelectorAll('.ic-deporte').forEach(el => el.textContent = window._iconoDeporteActual);
 });
 </script>
+<script>
+// Registro del Service Worker INDEPENDIENTE de OneSignal -- necesario
+// para que Android instale la app de verdad (no solo un acceso directo),
+// sin importar si la inicializacion de OneSignal (mas abajo) tiene exito
+// o falla por cualquier motivo de red/configuracion.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/OneSignalSDKWorker.js').catch(e => console.error('No se pudo registrar el Service Worker:', e));
+}
+</script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -198,7 +207,7 @@ window._configClubPromise.then(cfg => {
 
   <nav class="tabs">
     <button class="active" data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic ic-deporte">⚽</span>Partidos</button>
-    <button data-tab="deuda" onclick="cambiarTab('deuda')"><span class="ic">💳</span>Mi cuenta</button>
+    <button data-tab="deuda" id="tabCuenta" onclick="cambiarTab('deuda')"><span class="ic">💳</span>Mi cuenta</button>
     <button data-tab="eventos" id="tabEventos" onclick="cambiarTab('eventos')" style="display:none"><span class="ic">🎒</span>Eventos</button>
     <button data-tab="docs" onclick="cambiarTab('docs')"><span class="ic">📖</span>Info</button>
     <button data-tab="perfil" onclick="cambiarTab('perfil')"><span class="ic">👤</span>Perfil</button>
@@ -435,6 +444,7 @@ async function entrarApp(){
     }
   }
   document.getElementById('tabEventos').style.display = perfil && perfil.eventosHabilitado ? 'flex' : 'none';
+  document.getElementById('tabCuenta').style.display = (perfil && perfil.miCuentaHabilitado === false) ? 'none' : 'flex';
   cargarPartidos();
 }
 
@@ -982,7 +992,7 @@ async function cargarPerfil(){
       <button class="primary block" style="margin-top:16px" onclick="guardarPerfil()">Guardar cambios</button>
     </div>
     <button class="block" onclick="abrirSelectorTema()">🎨 Estilo de la app</button>
-    <button class="block" onclick="abrirMisExentos()">👨‍👩‍👧 Mis invitados exentos (hijos, etc.)</button>
+    ${PERFIL?.misExentosHabilitado !== false ? '<button class="block" onclick="abrirMisExentos()">👨‍👩‍👧 Mis invitados exentos (hijos, etc.)</button>' : ''}
     ${PERFIL?.representantesHabilitado ? '<button class="block" onclick="abrirMisRepresentantes()">📇 Mis representantes</button>' : ''}
     <button class="block danger" onclick="cerrarSesion()">Cerrar sesión en este dispositivo</button>
   `;
@@ -1222,32 +1232,17 @@ async function abrirMisRepresentantes(){
 function mostrarMisRepresentantes(data){
   const html = `
     <div class="sheet-head"><h2>Mis representantes</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Registra aquí a tus padres/tutores u otros representantes, con su cédula — la van a necesitar para ingresar a su propia app más adelante.</p>
+    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Esta es la lista de tus representantes registrados. Para agregar, editar o quitar a alguien, pídele al administrador del club que lo haga por ti.</p>
     <div id="listaMisRepresentantes">
-      ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no has registrado a nadie.</p>' : data.map(r=>`
+      ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no tienes representantes registrados.</p>' : data.map(r=>`
         <div class="field-line">
           <div>
             <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)} ${!r.cedula ? '<span class="badge cancelado">Falta cédula</span>' : ''}</div>
             <div class="fl-label">${esc(r.cedula||'Sin cédula')} · ${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="sm" onclick='abrirEditarRepresentante(${JSON.stringify(r).replace(/"/g,"&quot;")})'>Editar</button>
-            <button class="sm danger" onclick="eliminarRepresentanteJugador(${r.id})">Quitar</button>
-          </div>
         </div>
       `).join('')}
     </div>
-    <label style="margin-top:18px">Nombres</label>
-    <input id="repNombres" placeholder="Nombres">
-    <label>Apellidos</label>
-    <input id="repApellidos" placeholder="Apellidos">
-    <label>Cédula</label>
-    <input id="repCedula" placeholder="La necesitará para ingresar a su app" inputmode="numeric">
-    <label>Teléfono</label>
-    <input id="repTelefono" placeholder="Opcional" type="tel">
-    <label>Descripción</label>
-    <input id="repDescripcion" placeholder="Ej: Mamá, Papá, Tío...">
-    <button class="primary block" style="margin-top:12px" onclick="agregarRepresentanteJugador()">Agregar</button>
   `;
   abrirSheet(html);
 }

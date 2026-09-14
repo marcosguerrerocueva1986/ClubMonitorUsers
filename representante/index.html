@@ -17,6 +17,11 @@ window._configClubPromise.then(cfg => {
   document.querySelectorAll('.ic-deporte').forEach(el => el.textContent = window._iconoDeporteActual);
 });
 </script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/OneSignalSDKWorker.js').catch(e => console.error('No se pudo registrar el Service Worker:', e));
+}
+</script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
