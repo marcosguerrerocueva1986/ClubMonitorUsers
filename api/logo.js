@@ -6,16 +6,16 @@
 // GET /api/logo?badge=admin|jugador|representante -- el logo con la
 // insignia correspondiente superpuesta, para diferenciar visualmente
 // cada app aunque el club cambie su logo.
+//
+// Las insignias van incrustadas como base64 en _badges_base64.js (no
+// se leen como archivos sueltos del disco) porque Vercel no siempre
+// incluye automaticamente archivos de imagen accedidos dinamicamente
+// en el paquete de la funcion -- eso causaba que esto fallara en
+// produccion aunque funcionara perfecto en las pruebas locales.
 
-const path = require('path');
 const { getPool } = require('./_db');
 const Jimp = require('jimp');
-
-const BADGES = {
-  admin: '_admin-badge.png',
-  jugador: '_jugador-badge.png',
-  representante: '_representante-badge.png',
-};
+const BADGES_BASE64 = require('./_badges_base64');
 
 module.exports = async (req, res) => {
   try {
@@ -29,10 +29,10 @@ module.exports = async (req, res) => {
 
     let buffer = Buffer.from(base64, 'base64');
 
-    const badgeArchivo = req.query && BADGES[req.query.badge];
-    if (badgeArchivo) {
+    const badgeBase64 = req.query && BADGES_BASE64[req.query.badge];
+    if (badgeBase64) {
       const logoImg = await Jimp.read(buffer);
-      const badgeImg = await Jimp.read(path.join(__dirname, badgeArchivo));
+      const badgeImg = await Jimp.read(Buffer.from(badgeBase64, 'base64'));
       const w = logoImg.getWidth();
       const badgeSize = Math.round(w * 0.34);
       badgeImg.resize(badgeSize, badgeSize);
