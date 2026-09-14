@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Mi Club - Representantes</title>
+<meta name="theme-color" content="#14231A">
+<link rel="manifest" href="/representante-manifest.json">
+<link rel="icon" href="/api/logo" type="image/png">
+<link rel="apple-touch-icon" href="/api/logo">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pitch-0:#0E1712; --pitch-1:#14231A; --pitch-2:#1C2E20; --pitch-3:#28402F;
+    --line:#33502F; --chalk:#E9EEE3; --chalk-dim:#9FB09A; --gold:#FFD23F; --gold-dim:#8C7A2A;
+    --red:#E85D4C; --green-ok:#6FCF97; --radius:14px;
+  }
+  [data-theme="light"]{
+    --pitch-0:#F7F9F5; --pitch-1:#FFFFFF; --pitch-2:#EEF2EA; --pitch-3:#E0E8DA;
+    --line:#C9D6C2; --chalk:#16241A; --chalk-dim:#5A6B54; --gold:#C9971F; --gold-dim:#8C7A2A;
+    --red:#C0392B; --green-ok:#2E9E5B;
+  }
+  [data-theme="light"] body{ background: var(--pitch-0); }
+  [data-theme="dark"] body, :root:not([data-theme]) body{ background:radial-gradient(1200px 600px at 50% -10%, #1A2C1F 0%, var(--pitch-1) 55%), var(--pitch-1); }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(1200px 600px at 50% -10%, #1A2C1F 0%, var(--pitch-1) 55%), var(--pitch-1);
+    color:var(--chalk); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;
+    height:100vh; height:100dvh; overflow:hidden;
+  }
+  #appRoot{ display:none; flex-direction:column; height:100vh; height:100dvh; }
+  h1,h2,h3,.disp{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:0.02em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  header.top{ flex-shrink:0; background:linear-gradient(180deg, var(--pitch-1) 70%, transparent); padding:18px 20px 14px; border-bottom:1px solid var(--line); }
+  header.top h1{font-size:20px;margin:0;font-weight:600;color:var(--chalk);}
+  header.top .sub{font-size:12px;color:var(--chalk-dim);margin-top:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.03em;}
+  .centerline{height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 10px, transparent 10px 18px);margin-top:12px;border-radius:2px;}
+  main{flex:1;overflow-y:auto;padding:16px 16px 90px;-webkit-overflow-scrolling:touch;}
+  .screen{display:none;animation:fade .25s ease;}
+  .screen.active{display:block;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .card{background:var(--pitch-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px;}
+  .card-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .card-title h3{margin:0;font-size:18px;color:var(--chalk);}
+  .meta{font-size:13px;color:var(--chalk-dim);line-height:1.6;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  .badge.confirmando{background:rgba(111,207,151,.15);color:var(--green-ok);border:1px solid rgba(111,207,151,.3);}
+  .badge.cerrado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
+  .badge.cancelado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
+  .badge.en_juego{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
+  .badge.finalizado{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
+  .row-actions{display:flex;gap:8px;}
+  button{font-family:inherit;cursor:pointer;}
+  button.block{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-weight:600;font-size:14px;}
+  button.primary{background:var(--gold);border-color:var(--gold);color:#1A2A1D;}
+  button.danger{background:rgba(232,93,76,.12);border-color:rgba(232,93,76,.35);color:var(--red);}
+  button.sm{padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-size:13px;font-weight:600;flex-shrink:0;}
+  button.sm.primary{background:var(--gold);border-color:var(--gold);color:#1A2A1D;}
+  button.sm.danger{background:rgba(232,93,76,.12);border-color:rgba(232,93,76,.35);color:var(--red);}
+  input,select{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-size:15px;margin-bottom:12px;font-family:inherit;}
+  label{display:block;font-size:12px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;font-weight:600;}
+  nav.tabs{ flex-shrink:0; display:flex; background:var(--pitch-1); border-top:1px solid var(--line); padding:8px 6px calc(8px + env(safe-area-inset-bottom)); position:fixed; bottom:0; left:0; right:0; }
+  nav.tabs button{ flex:1;background:none;border:none;color:var(--chalk-dim); display:flex;flex-direction:column;align-items:center;gap:3px; font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em; padding:6px 0;border-radius:10px; }
+  nav.tabs button .ic{font-size:20px;}
+  nav.tabs button.active{color:var(--gold);background:rgba(255,210,63,.08);}
+  .empty{text-align:center;padding:48px 16px;color:var(--chalk-dim);}
+  .empty .ic{font-size:40px;display:block;margin-bottom:10px;}
+  .toast{ position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(20px); background:var(--pitch-3);border:1px solid var(--line);color:var(--chalk); padding:12px 18px;border-radius:12px;font-size:14px;z-index:100; opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center; }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{background:rgba(232,93,76,.9);border-color:var(--red);color:#fff;}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;animation:fadeOv .2s ease;}
+  @keyframes fadeOv{from{opacity:0}to{opacity:1}}
+  .sheet{background:var(--pitch-1);width:100%;max-height:88vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));border-top:1px solid var(--line);}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .sheet-head h2{margin:0;font-size:20px;}
+  .sheet-close{background:none;border:none;color:var(--chalk-dim);font-size:22px;padding:4px 8px;}
+  .field-line{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:10px;}
+  .field-line:last-child{border-bottom:none;}
+  .field-line .fl-label{font-size:14px;color:var(--chalk-dim);}
+  .field-line .fl-value{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--chalk);}
+  .spinner{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;margin:30px auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .qr-box{text-align:center;padding:10px 0;}
+  .qr-box img{width:220px;height:220px;border-radius:12px;background:#fff;padding:10px;}
+  .alert-card{background:rgba(232,93,76,.12);border:1px solid rgba(232,93,76,.35);border-radius:var(--radius);padding:14px;margin-bottom:12px;color:#FFB4A8;font-size:14px;line-height:1.5;}
+  .ok-card{background:rgba(111,207,151,.12);border:1px solid rgba(111,207,151,.35);border-radius:var(--radius);padding:14px;margin-bottom:12px;color:var(--green-ok);font-size:14px;line-height:1.5;}
+  .login-card{max-width:400px;margin:15vh auto 0;padding:0 24px;text-align:center;}
+  .login-card .mark{font-size:48px;margin-bottom:10px;}
+  .login-card h1{font-size:26px;margin:0 0 4px;}
+  .login-card p{color:var(--chalk-dim);font-size:14px;margin-bottom:20px;}
+  .jugador-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:10px;cursor:pointer;text-align:left;width:100%;}
+  .jugador-card:active{background:var(--pitch-3);}
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="mark">👪</div>
+    <h1>Mi Club</h1>
+    <p id="loginSubtitle">Ingresa tu cédula (la misma con la que te registró tu hijo/a en la app)</p>
+    <input type="tel" id="loginCedula" placeholder="Tu cédula" inputmode="numeric">
+    <button class="primary block" onclick="intentarLoginRepresentante()">Ingresar</button>
+  </div>
+</div>
+
+<div id="appRoot">
+  <header class="top">
+    <img src="/api/logo" alt="" style="width:28px;height:28px;border-radius:7px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 id="saludoHeaderRep" style="display:inline">Hola 👋</h1>
+    <div class="sub" id="verJugadorHeader" style="cursor:pointer" onclick="abrirSelectorJugador()">VIENDO A: —</div>
+    <div class="centerline"></div>
+  </header>
+
+  <main>
+    <div class="screen active" id="screen-partidosRep">
+      <div id="partidosRepContent"><div class="spinner"></div></div>
+    </div>
+    <div class="screen" id="screen-cuentaRep">
+      <div id="cuentaRepContent"><div class="spinner"></div></div>
+    </div>
+    <div class="screen" id="screen-eventosRep">
+      <div id="eventosRepContent"><div class="spinner"></div></div>
+    </div>
+    <div class="screen" id="screen-perfilRep">
+      <div id="perfilRepContent"><div class="spinner"></div></div>
+    </div>
+  </main>
+
+  <nav class="tabs">
+    <button class="active" data-tab="partidosRep" onclick="cambiarTabRep('partidosRep')"><span class="ic">⚽</span>Partidos</button>
+    <button data-tab="cuentaRep" onclick="cambiarTabRep('cuentaRep')"><span class="ic">💳</span>Cuenta</button>
+    <button data-tab="eventosRep" id="tabEventosRep" onclick="cambiarTabRep('eventosRep')" style="display:none"><span class="ic">🎒</span>Eventos</button>
+    <button data-tab="perfilRep" onclick="cambiarTabRep('perfilRep')"><span class="ic">👤</span>Perfil</button>
+  </nav>
+</div>
+
+<script>
+/* ============================================================
+   SISTEMA DE TEMAS -- mismo sistema que el resto de las apps.
+   ============================================================ */
+(function aplicarTemaGuardadoAlInicio(){
+  const t = safeGetRep('temaAppRep') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  if(t === 'club'){
+    const colores = safeGetRep('temaClubColoresRep');
+    if(colores){
+      try {
+        const c = JSON.parse(colores);
+        document.documentElement.style.setProperty('--gold', c.principal);
+        document.documentElement.style.setProperty('--green-ok', c.secundario);
+      } catch(e){}
+    }
+  }
+})();
+function safeGetRep(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+function safeSetRep(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+
+let TOKEN = safeGetRep('representante_token');
+let MIS_JUGADORES = [];
+let JUGADOR_ACTUAL = null;
+let currentTabRep = 'partidosRep';
+
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  setTimeout(()=>{ t.className='toast'; }, 2600);
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fechaCorta(f){
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d = new Date(f);
+  return dias[d.getUTCDay()]+' '+String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();
+}
+function abrirSheet(html){
+  cerrarSheet();
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'sheetOverlay';
+  overlay.onclick = (e)=>{ if(e.target===overlay) cerrarSheet(); };
+  overlay.innerHTML = `<div class="sheet">${html}</div>`;
+  document.body.appendChild(overlay);
+}
+function cerrarSheet(){
+  const el = document.getElementById('sheetOverlay');
+  if(el) el.remove();
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const maxDim = 1280;
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.65).split(',')[1]);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function api(accion, extra){
+  const body = Object.assign({ token: TOKEN, accion }, extra || {});
+  if(JUGADOR_ACTUAL && !('jugadorId' in body)) body.jugadorId = JUGADOR_ACTUAL.id;
+  try{
+    const res = await fetch('/api/representante', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if(!data.success){ toast(data.error || 'Error', true); return null; }
+    return data.data !== undefined ? data.data : true;
+  }catch(e){
+    toast('No se pudo conectar. Revisa tu internet.', true);
+    return null;
+  }
+}
+
+/* ---------- Login ---------- */
+async function intentarLoginRepresentante(){
+  const cedula = document.getElementById('loginCedula').value.trim();
+  if(!cedula){ toast('Ingresa tu cédula', true); return; }
+  const res = await api('login_representante', { cedula });
+  if(res===null) return;
+  if(!res.registrado){
+    toast('No encontramos esa cédula. Pídele a tu hijo/a que te registre desde su app (Perfil → Mis representantes).', true);
+    return;
+  }
+  TOKEN = res.token;
+  safeSetRep('representante_token', TOKEN);
+  await entrarAppRepresentante(res.nombres);
+}
+
+if(TOKEN){
+  api('listar_mis_jugadores_representante').then(res=>{
+    if(res!==null && res.length>0){ entrarAppRepresentante(null, res); }
+    else if(res!==null){ safeSetRep('representante_token',''); TOKEN=''; }
+  });
+}
+
+async function entrarAppRepresentante(nombresLogin, jugadoresPrecargados){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appRoot').style.display='flex';
+  if(nombresLogin) document.getElementById('saludoHeaderRep').textContent = 'Hola, ' + nombresLogin.split(' ')[0] + ' 👋';
+
+  const jugadores = jugadoresPrecargados || await api('listar_mis_jugadores_representante');
+  if(jugadores===null) return;
+  MIS_JUGADORES = jugadores;
+
+  if(jugadores.length===0){
+    toast('No tienes ningún jugador vinculado todavía', true);
+    return;
+  }
+
+  const ultimoId = parseInt(safeGetRep('representante_jugador_actual') || '0');
+  JUGADOR_ACTUAL = jugadores.find(j=>j.id===ultimoId) || jugadores[0];
+
+  if(jugadores.length > 1){
+    abrirSelectorJugador(true);
+  } else {
+    actualizarHeaderJugador();
+    cargarPartidosRep();
+  }
+
+  const perfilParaFlags = await api('obtener_perfil_jugador_representante');
+  if(perfilParaFlags && perfilParaFlags.eventosHabilitado){
+    document.getElementById('tabEventosRep').style.display = 'flex';
+  }
+}
+
+function actualizarHeaderJugador(){
+  document.getElementById('verJugadorHeader').textContent = 'VIENDO A: ' + (JUGADOR_ACTUAL ? JUGADOR_ACTUAL.nombres.toUpperCase() : '—');
+}
+
+function abrirSelectorJugador(primeraVez){
+  const html = `
+    <div class="sheet-head"><h2>${primeraVez ? '¿A quién quieres ver?' : 'Cambiar de jugador'}</h2>${primeraVez ? '' : '<button class="sheet-close" onclick="cerrarSheet()">✕</button>'}</div>
+    ${MIS_JUGADORES.map(j=>`
+      <button class="jugador-card" onclick="seleccionarJugador(${j.id})">
+        <div style="font-weight:700;font-size:16px">${esc(j.nombres)} ${esc(j.apellidos)}</div>
+        <div style="color:var(--chalk-dim);font-size:13px;margin-top:2px">${j.descripcion ? esc(j.descripcion) + ' · ' : ''}${j.estado==='activo' ? 'Activo' : esc(j.estado)}</div>
+      </button>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+function seleccionarJugador(jugadorId){
+  JUGADOR_ACTUAL = MIS_JUGADORES.find(j=>j.id===jugadorId);
+  safeSetRep('representante_jugador_actual', String(jugadorId));
+  actualizarHeaderJugador();
+  cerrarSheet();
+  // Recargar la pestaña activa con los datos del jugador nuevo.
+  cambiarTabRep(currentTabRep, true);
+}
+
+function cambiarTabRep(tab, forzar){
+  if(tab===currentTabRep && !forzar){
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+    return;
+  }
+  currentTabRep = tab;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+  if(tab==='partidosRep') cargarPartidosRep();
+  if(tab==='cuentaRep') cargarCuentaRep();
+  if(tab==='eventosRep') cargarEventosRep();
+  if(tab==='perfilRep') cargarPerfilRep();
+}
+</script>
+<script>
+/* ---------- PARTIDOS (solo lectura, con QR) ---------- */
+async function cargarPartidosRep(){
+  const cont = document.getElementById('partidosRepContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const partidos = await api('ver_partidos_jugador_representante');
+  if(partidos===null) return;
+  if(partidos.length===0){
+    cont.innerHTML = '<div class="empty"><span class="ic">⚽</span>No hay partidos activos por ahora.</div>';
+    return;
+  }
+  cont.innerHTML = partidos.map(p=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${p.alias ? esc(p.alias) : 'Partido'}</h3>
+        <span class="badge ${p.miEstado}">${p.miEstado==='confirmado' ? 'Va' : (p.miEstado==='cancelado' ? 'No va' : 'Sin confirmar')}</span>
+      </div>
+      <div class="meta">
+        📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
+        📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
+      </div>
+      ${p.miEstado==='confirmado' ? `<button class="sm primary" onclick="verQrRep(${p.id})">📲 Ver código QR</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function verQrRep(partidoId){
+  const res = await api('ver_qr_jugador_representante', { partidoId });
+  if(res===null) return;
+  if(!res.token){ toast('Aún no tiene código para este partido', true); return; }
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent('ASISTIO-'+res.token);
+  const html = `
+    <div class="sheet-head"><h2>Código QR</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="qr-box"><img src="${url}" alt="Código QR"></div>
+    <p style="color:var(--chalk-dim);font-size:13px;text-align:center">Se muestra en la entrada de la cancha. Válido solo para este partido.</p>
+  `;
+  abrirSheet(html);
+}
+
+/* ---------- MI CUENTA (deuda + pago) ---------- */
+let pagoStateRep = {};
+
+async function cargarCuentaRep(){
+  const cont = document.getElementById('cuentaRepContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const d = await api('ver_deuda_jugador_representante');
+  if(d===null) return;
+  const p = d.pendientes || {};
+  let html = '';
+
+  if(d.saldoAFavor > 0){
+    html += `
+      <div class="card" style="border-color:rgba(255,210,63,.5);background:linear-gradient(180deg, rgba(255,210,63,.10), var(--pitch-2) 60%)">
+        <div class="fl-label">💰 SALDO A FAVOR</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:28px;color:var(--gold);font-weight:700;margin:4px 0">$${Number(d.saldoAFavor).toFixed(2)}</div>
+        <button class="primary block sm" onclick="abrirUsarSaldoFavorRep()">Usar el saldo a favor</button>
+      </div>
+    `;
+  }
+
+  if(p.meses_atraso >= 1){
+    html += `<div class="alert-card">⚠️ ${p.meses_atraso} mes(es) de mensualidad atrasada — $${p.deuda_mensualidad}</div>`;
+  } else {
+    html += `<div class="ok-card">✓ Mensualidad al día.</div>`;
+  }
+  if((p.multas_propias||[]).length>0){
+    html += `<div class="alert-card">⚠️ ${p.multas_propias.length} multa(s) propia(s) — $${p.total_multas_propias}</div>`;
+  }
+  if((p.multas_invitados||[]).length>0){
+    html += `<div class="alert-card">⚠️ ${p.multas_invitados.length} multa(s) por invitados — $${p.total_multas_invitados}</div>`;
+  }
+  if((p.invitados_pendientes||[]).length>0){
+    html += `<div class="card"><div class="card-title"><h3>🎟️ Invitados sin pagar</h3></div><p class="meta">${p.invitados_pendientes.length} invitado(s) — $${p.total_invitados}</p></div>`;
+  }
+
+  html += `
+    <div class="card">
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6;margin:0 0 12px">
+        📸 <b>¿Ya hiciste una transferencia al club?</b><br>
+        Sube el comprobante y elige a qué deuda de ${esc(JUGADOR_ACTUAL.nombres)} aplicarlo.
+      </p>
+      <button class="primary block" onclick="abrirSubirComprobanteRep()">📤 Subir comprobante de pago</button>
+    </div>
+    <button class="block" onclick="verMisUltimosPagosRep()">🧾 Ver últimos pagos</button>
+  `;
+  cont.innerHTML = html;
+}
+
+async function verMisUltimosPagosRep(){
+  const pagos = await api('ver_pagos_jugador_representante');
+  if(pagos===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Últimos pagos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${pagos.length===0 ? '<p style="color:var(--chalk-dim)">Aún no hay pagos registrados.</p>' : pagos.map(p=>`
+      <div class="field-line">
+        <div><div class="fl-value">${esc(p.tipo_concepto||p.tipo||'Pago')}</div><div class="fl-label">${p.fecha_comprobante||''}</div></div>
+        <div class="fl-value">$${p.monto}</div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+function abrirSubirComprobanteRep(){
+  const html = `
+    <div class="sheet-head"><h2>Subir comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6"><b>Paso 1 de 3.</b> Toma o elige una foto clara del comprobante de ${esc(JUGADOR_ACTUAL.nombres)}.</p>
+    <label>Foto del comprobante</label>
+    <input type="file" id="comprobanteFileRep" accept="image/*">
+    <button class="primary block" style="margin-top:16px" onclick="analizarComprobanteRep()">Analizar comprobante</button>
+    <div id="comprobanteLoadingRep" style="display:none;text-align:center;margin-top:16px">
+      <div class="spinner"></div>
+      <p style="color:var(--chalk-dim);font-size:13px">Leyendo el comprobante...</p>
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function analizarComprobanteRep(){
+  const input = document.getElementById('comprobanteFileRep');
+  if(!input.files || !input.files[0]){ toast('Primero elige o toma una foto', true); return; }
+  document.getElementById('comprobanteLoadingRep').style.display = 'block';
+  let base64;
+  try{ base64 = await fileToBase64(input.files[0]); }
+  catch(e){ toast('No se pudo leer la foto, intenta de nuevo', true); document.getElementById('comprobanteLoadingRep').style.display='none'; return; }
+  const res = await api('analizar_comprobante_representante', { imagenBase64: base64 });
+  document.getElementById('comprobanteLoadingRep').style.display = 'none';
+  if(res===null) return;
+  if(res.duplicado){ toast('Este comprobante ya había sido usado antes', true); return; }
+  mostrarConfirmarComprobanteRep(res);
+}
+
+function mostrarConfirmarComprobanteRep(datos){
+  const aviso = !datos.esComprobante ? `<div class="alert-card">⚠️ No pudimos leer esta foto como comprobante válido. Vuelve atrás y sube una más clara.</div>` : '';
+  const html = `
+    <div class="sheet-head"><h2>Confirma los datos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${aviso}
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6"><b>Paso 2 de 3.</b> Esto leímos automáticamente.</p>
+    <label>Monto pagado</label>
+    <input id="confMontoRep" type="number" step="0.01" value="${datos.monto || ''}" readonly style="opacity:.75">
+    <label>Banco</label>
+    <input id="confBancoRep" value="${esc(datos.banco || '')}" readonly style="opacity:.75">
+    <label>Número de comprobante</label>
+    <input id="confNumeroRep" value="${esc(datos.numeroComprobante || '')}" readonly style="opacity:.75">
+    <label>Fecha de la transferencia</label>
+    <input id="confFechaRep" value="${esc(datos.fechaComprobante || '')}" readonly style="opacity:.75">
+    <button class="primary block" style="margin-top:18px" onclick="confirmarYRegistrarPagoRep()">Confirmar y continuar</button>
+    <button class="block" style="margin-top:8px" onclick="abrirSubirComprobanteRep()">📸 Tomar otra foto</button>
+  `;
+  abrirSheet(html);
+}
+
+async function confirmarYRegistrarPagoRep(){
+  const monto = parseFloat(document.getElementById('confMontoRep').value);
+  const banco = document.getElementById('confBancoRep').value.trim();
+  const numeroComprobante = document.getElementById('confNumeroRep').value.trim();
+  const fecha = document.getElementById('confFechaRep').value.trim();
+  if(!monto || monto<=0){ toast('Monto inválido', true); return; }
+  if(!numeroComprobante){ toast('Falta el número de comprobante', true); return; }
+  if(!fecha){ toast('Falta la fecha', true); return; }
+  const res = await api('registrar_pago_comprobante_representante', { monto, banco, numeroComprobante, fecha });
+  if(res===null) return;
+  pagoStateRep = { pagoId: res.pagoId, montoDisponible: Number(res.monto), origenSaldoFavor: false };
+  await abrirDistribuirPagoRep();
+}
+
+async function abrirUsarSaldoFavorRep(){
+  const d = await api('ver_deuda_jugador_representante');
+  if(d===null) return;
+  if(!d.saldoAFavor || d.saldoAFavor<=0){ toast('No hay saldo a favor disponible', true); return; }
+  pagoStateRep = { pagoId: null, montoDisponible: Number(d.saldoAFavor), origenSaldoFavor: true };
+  mostrarDistribucionRep(d.pendientes);
+}
+
+async function abrirDistribuirPagoRep(){
+  const d = await api('ver_deuda_jugador_representante');
+  if(d===null) return;
+  mostrarDistribucionRep(d.pendientes);
+}
+
+function mostrarDistribucionRep(p){
+  const filas = [];
+  if(p.deuda_mensualidad > 0){
+    const etiqueta = p.meses_atraso > 0 ? p.meses_atraso+' mes(es) atrasado(s)' : 'mes actual';
+    filas.push({tipo:'mensualidad', label:'Mensualidad ('+etiqueta+')', monto:p.deuda_mensualidad});
+  }
+  if((p.invitados_pendientes||[]).length > 0){
+    filas.push({tipo:'invitado', label:'🎟️ Invitados pendientes ('+p.invitados_pendientes.length+')', monto:p.total_invitados});
+  }
+  if((p.multas_propias||[]).length > 0){
+    filas.push({tipo:'multas_propias', label:'⚠️ Multas propias ('+p.multas_propias.length+')', monto:p.total_multas_propias});
+  }
+  if((p.multas_invitados||[]).length > 0){
+    filas.push({tipo:'multas_invitados', label:'⚠️ Multas por invitados ('+p.multas_invitados.length+')', monto:p.total_multas_invitados});
+  }
+  (p.partidos_especiales||[]).forEach(pe=>{
+    filas.push({tipo:'partido_especial', label:'Partido especial: '+esc(pe.alias||''), monto:pe.monto, partidoId:pe.partido_id, conceptoMonto:pe.monto});
+  });
+
+  const html = `
+    <div class="sheet-head"><h2>¿A qué lo aplicamos?</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px"><b>Paso 3 de 3.</b></p>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">DISPONIBLE PARA APLICAR</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:32px;color:var(--gold);font-weight:700">$${pagoStateRep.montoDisponible.toFixed(2)}</div>
+    </div>
+    ${filas.length===0 ? '<div class="ok-card">✓ No hay deudas pendientes. Este monto se guardará como saldo a favor.</div>' : filas.map((f)=>`
+      <div class="field-line">
+        <div><div class="fl-value">${f.label}</div><div class="fl-label">Debe: $${f.monto}</div></div>
+        <button class="sm primary" onclick='aplicarPagoConceptoRep(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Aplicar aquí</button>
+      </div>
+    `).join('')}
+    ${filas.length===0 ? `<button class="primary block" style="margin-top:12px" onclick="guardarComoSaldoFavorRep(${pagoStateRep.montoDisponible})">Guardar como saldo a favor</button>` : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function aplicarPagoConceptoRep(f){
+  const montoAAplicar = Math.min(pagoStateRep.montoDisponible, Number(f.monto));
+  const sobrante = pagoStateRep.montoDisponible - montoAAplicar;
+  const res = await api('aplicar_pago_representante', {
+    tipoConcepto: f.tipo, monto: montoAAplicar, origenSaldoFavor: pagoStateRep.origenSaldoFavor,
+    pagoId: pagoStateRep.pagoId, partidoId: f.partidoId, conceptoMonto: f.conceptoMonto,
+  });
+  if(res===null) return;
+  if(res.pagoId) pagoStateRep.pagoId = res.pagoId;
+  pagoStateRep.origenSaldoFavor = false;
+  res.restante = sobrante + Number(res.restante || 0);
+  mostrarResultadoPagoRep(res);
+}
+
+function mostrarResultadoPagoRep(res){
+  const restante = Number(res.restante || 0);
+  let html = `
+    <div class="sheet-head"><h2>Resultado</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="ok-card">✓ ${esc(res.mensaje)}</div>
+  `;
+  if(restante > 0.009){
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">Quedan <b>$${restante.toFixed(2)}</b> sin usar. ¿Qué hacemos con eso?</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+        <button class="block primary" onclick="continuarConRestanteRep(${restante})">Aplicarlo a otra deuda</button>
+        <button class="block" onclick="guardarComoSaldoFavorRep(${restante})">Guardarlo como saldo a favor</button>
+      </div>
+    `;
+  } else {
+    html += `<button class="primary block" style="margin-top:8px" onclick="cerrarSheet(); cargarCuentaRep();">Listo</button>`;
+  }
+  abrirSheet(html);
+}
+
+async function continuarConRestanteRep(restante){
+  pagoStateRep.montoDisponible = restante;
+  await abrirDistribuirPagoRep();
+}
+
+async function guardarComoSaldoFavorRep(restante){
+  const res = await api('guardar_saldo_favor_representante', { pagoId: pagoStateRep.pagoId, monto: restante });
+  if(res===null) return;
+  toast('Guardado como saldo a favor');
+  cerrarSheet();
+  cargarCuentaRep();
+}
+</script>
+<script>
+/* ---------- EVENTOS ---------- */
+let eventoRepActualId = null;
+let eventoRepActualData = null;
+let eventoRepSubtabActual = 'resumen';
+
+async function cargarEventosRep(){
+  const cont = document.getElementById('eventosRepContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_eventos_jugador_representante');
+  if(data===null) return;
+  if(data.length===0){
+    cont.innerHTML = '<div class="empty"><span class="ic">🎒</span>Sin eventos por ahora.</div>';
+    return;
+  }
+  cont.innerHTML = data.map(e=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${esc(e.nombre)}</h3>
+        <span class="badge ${e.estado==='activo' ? 'confirmando' : (e.estado==='finalizado' ? 'finalizado' : 'cancelado')}">${esc(e.estado)}</span>
+      </div>
+      <div class="meta">📍 ${esc(e.lugar||'—')}<br>Cuota: $${e.montoCuota} · Pagado: $${e.montoPagado} ${Number(e.montoPagado)>=Number(e.montoCuota) ? '✓' : ''}</div>
+      <button class="sm primary" onclick="abrirDetalleEventoRep(${e.id})">Ver detalle</button>
+    </div>
+  `).join('');
+}
+
+async function abrirDetalleEventoRep(eventoId){
+  eventoRepActualId = eventoId;
+  eventoRepSubtabActual = 'resumen';
+  const data = await api('ver_evento_publico_representante', {eventoId});
+  if(data===null) return;
+  eventoRepActualData = data;
+  mostrarDetalleEventoRep();
+}
+
+function mostrarDetalleEventoRep(){
+  const d = eventoRepActualData;
+  const e = d.evento;
+  const cont = document.getElementById('eventosRepContent');
+  const subtabs = [{key:'resumen',label:'📊 Resumen'},{key:'movimientos',label:'🧾 Movimientos'}];
+  cont.innerHTML = `
+    <button class="sm" style="margin-bottom:10px" onclick="cargarEventosRep()">← Volver</button>
+    <div class="card">
+      <div class="card-title"><h3>${esc(e.nombre)}</h3><span class="badge ${e.estado==='activo'?'confirmando':(e.estado==='finalizado'?'finalizado':'cancelado')}">${esc(e.estado)}</span></div>
+      <div class="meta">📍 ${esc(e.lugar||'—')}</div>
+    </div>
+    <div class="row-actions" id="eventoRepSubtabBar" style="margin:14px 0">
+      ${subtabs.map(s=>`<button class="sm ${eventoRepSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEventoRep('${s.key}')">${s.label}</button>`).join('')}
+    </div>
+    <div id="eventoRepSubtabContent"></div>
+  `;
+  renderSubtabEventoRepActual();
+}
+
+function cambiarSubtabEventoRep(sub){
+  eventoRepSubtabActual = sub;
+  const keys = ['resumen','movimientos'];
+  document.querySelectorAll('#eventoRepSubtabBar button').forEach((b,i)=>b.classList.toggle('primary', keys[i]===sub));
+  renderSubtabEventoRepActual();
+}
+
+function renderSubtabEventoRepActual(){
+  if(eventoRepSubtabActual==='resumen') document.getElementById('eventoRepSubtabContent').innerHTML = renderResumenEventoRep();
+  if(eventoRepSubtabActual==='movimientos') cargarMovimientosEventoRep();
+}
+
+function renderResumenEventoRep(){
+  const d = eventoRepActualData;
+  const pendiente = d.miCuota!==null ? Math.max(d.miCuota - d.miPagado, 0) : null;
+  return `
+    <div class="card">
+      <div class="card-title"><h3>Cuota de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
+      ${d.miCuota===null ? '<p style="color:var(--chalk-dim);font-size:13px">Sin cuota asignada en este evento.</p>' : `
+        <div class="field-line"><div class="fl-label">Cuota</div><div class="fl-value">$${d.miCuota.toFixed(2)}</div></div>
+        <div class="field-line"><div class="fl-label">Pagado</div><div class="fl-value" style="color:var(--green-ok)">$${d.miPagado.toFixed(2)}</div></div>
+        <div class="field-line"><div class="fl-label">Pendiente</div><div class="fl-value" style="color:${pendiente>0?'var(--red)':'var(--green-ok)'}">$${pendiente.toFixed(2)} ${pendiente===0?'✓':''}</div></div>
+        ${pendiente>0 ? `<button class="primary block" style="margin-top:10px" onclick="abrirPagarCuotaEventoRep()">📤 Pagar cuota del evento</button>` : ''}
+      `}
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Financiero general</h3></div>
+      <div class="field-line"><div class="fl-label">Recaudado</div><div class="fl-value" style="color:var(--green-ok)">$${d.totalRecaudado.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Esperado</div><div class="fl-value">$${d.totalEsperadoCuotas.toFixed(2)}</div></div>
+    </div>
+  `;
+}
+
+async function cargarMovimientosEventoRep(){
+  const cont = document.getElementById('eventoRepSubtabContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const movs = await api('ver_movimientos_evento_representante', {eventoId: eventoRepActualId});
+  if(movs===null) return;
+  if(movs.length===0){ cont.innerHTML = '<p style="color:var(--chalk-dim);font-size:14px">Sin movimientos todavía.</p>'; return; }
+  cont.innerHTML = movs.map(m=>`
+    <div class="field-line">
+      <div><div class="fl-value">${esc(m.tipoMovimiento)} ${m.jugador ? '— '+esc(m.jugador) : ''}</div><div class="fl-label">${fechaCorta(m.fecha)} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div></div>
+      <div class="fl-value" style="color:${m.tipo==='ingreso' ? 'var(--green-ok)' : 'var(--red)'}">${m.tipo==='ingreso'?'+':'-'}$${m.monto}</div>
+    </div>
+  `).join('');
+}
+
+function abrirPagarCuotaEventoRep(){
+  const html = `
+    <div class="sheet-head"><h2>Pagar cuota del evento</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Foto del comprobante</label>
+    <input type="file" id="comprobanteEventoFileRep" accept="image/*">
+    <button class="primary block" style="margin-top:16px" onclick="analizarComprobanteEventoRep()">Analizar comprobante</button>
+    <div id="comprobanteEventoLoadingRep" style="display:none;text-align:center;margin-top:16px"><div class="spinner"></div></div>
+  `;
+  abrirSheet(html);
+}
+
+async function analizarComprobanteEventoRep(){
+  const input = document.getElementById('comprobanteEventoFileRep');
+  if(!input.files || !input.files[0]){ toast('Elige o toma una foto', true); return; }
+  document.getElementById('comprobanteEventoLoadingRep').style.display = 'block';
+  let base64;
+  try{ base64 = await fileToBase64(input.files[0]); }
+  catch(e){ toast('No se pudo leer la foto', true); return; }
+  const res = await api('analizar_comprobante_representante', { imagenBase64: base64 });
+  document.getElementById('comprobanteEventoLoadingRep').style.display = 'none';
+  if(res===null) return;
+  if(res.duplicado){ toast('Ese comprobante ya fue usado', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>Confirma el monto</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Monto pagado</label>
+    <input id="confMontoEventoRep" type="number" step="0.01" value="${res.monto||''}" readonly style="opacity:.75">
+    <label>Número de comprobante</label>
+    <input id="confNumeroEventoRep" value="${esc(res.numeroComprobante||'')}" readonly style="opacity:.75">
+    <label>Fecha</label>
+    <input id="confFechaEventoRep" value="${esc(res.fechaComprobante||'')}" readonly style="opacity:.75">
+    <label>Banco</label>
+    <input id="confBancoEventoRep" value="${esc(res.banco||'')}" readonly style="opacity:.75">
+    <button class="primary block" style="margin-top:16px" onclick="confirmarPagoEventoRep()">Aplicar a la cuota del evento</button>
+  `;
+  abrirSheet(html);
+}
+
+async function confirmarPagoEventoRep(){
+  const monto = parseFloat(document.getElementById('confMontoEventoRep').value);
+  const banco = document.getElementById('confBancoEventoRep').value.trim();
+  const numeroComprobante = document.getElementById('confNumeroEventoRep').value.trim();
+  const fecha = document.getElementById('confFechaEventoRep').value.trim();
+  if(!monto || monto<=0){ toast('Monto inválido', true); return; }
+  const reg = await api('registrar_pago_comprobante_representante', { monto, banco, numeroComprobante, fecha });
+  if(reg===null) return;
+  const res = await api('aplicar_pago_evento_representante', { pagoId: reg.pagoId, monto: reg.monto, eventoId: eventoRepActualId });
+  if(res===null) return;
+  toast(res.mensaje || 'Pago aplicado');
+  cerrarSheet();
+  abrirDetalleEventoRep(eventoRepActualId);
+}
+
+/* ---------- PERFIL (propio + del jugador representado) ---------- */
+async function cargarPerfilRep(){
+  const cont = document.getElementById('perfilRepContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const perfilJugador = await api('obtener_perfil_jugador_representante');
+  if(perfilJugador===null) return;
+  const miPerfil = await api('obtener_perfil_representante');
+  if(miPerfil===null) return;
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>Datos de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
+      <label>Nombres</label>
+      <input id="jugRepNombres" value="${esc(perfilJugador.nombres||'')}">
+      <label>Apellidos</label>
+      <input id="jugRepApellidos" value="${esc(perfilJugador.apellidos||'')}">
+      <label>Cédula</label>
+      <input id="jugRepCedula" value="${esc(perfilJugador.cedula||'')}">
+      <label>Correo</label>
+      <input id="jugRepCorreo" value="${esc(perfilJugador.correo||'')}" type="email">
+      <button class="primary block" style="margin-top:10px" onclick="guardarPerfilJugadorRep()">Guardar datos de ${esc(JUGADOR_ACTUAL.nombres.split(' ')[0])}</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Mis propios datos</h3></div>
+      <label>Nombres</label>
+      <input id="miRepNombres" value="${esc(miPerfil.nombres||'')}">
+      <label>Apellidos</label>
+      <input id="miRepApellidos" value="${esc(miPerfil.apellidos||'')}">
+      <label>Cédula</label>
+      <input value="${esc(miPerfil.cedula||'')}" disabled style="opacity:.6">
+      <label>Teléfono</label>
+      <input id="miRepTelefono" value="${esc(miPerfil.telefono||'')}" type="tel">
+      <button class="primary block" style="margin-top:10px" onclick="guardarMiPerfilRep()">Guardar mis datos</button>
+    </div>
+    <button class="block" onclick="abrirSelectorTemaRep()">🎨 Estilo de la app</button>
+    <button class="block danger" onclick="cerrarSesionRep()">Cerrar sesión en este dispositivo</button>
+  `;
+}
+
+async function guardarPerfilJugadorRep(){
+  const nombres = document.getElementById('jugRepNombres').value.trim();
+  const apellidos = document.getElementById('jugRepApellidos').value.trim();
+  const cedula = document.getElementById('jugRepCedula').value.trim();
+  const correo = document.getElementById('jugRepCorreo').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('actualizar_datos_jugador_representante', { nombres, apellidos, cedula, correo });
+  if(res===null) return;
+  toast('Datos actualizados');
+  JUGADOR_ACTUAL.nombres = nombres; JUGADOR_ACTUAL.apellidos = apellidos;
+  actualizarHeaderJugador();
+}
+
+async function guardarMiPerfilRep(){
+  const nombres = document.getElementById('miRepNombres').value.trim();
+  const apellidos = document.getElementById('miRepApellidos').value.trim();
+  const telefono = document.getElementById('miRepTelefono').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('actualizar_perfil_representante', { nombres, apellidos, telefono });
+  if(res===null) return;
+  toast('Tus datos fueron actualizados');
+}
+
+function cerrarSesionRep(){
+  if(!confirm('¿Cerrar sesión en este dispositivo?')) return;
+  safeSetRep('representante_token', '');
+  location.reload();
+}
+
+/* ---------- Temas (igual patron que las otras apps) ---------- */
+function extraerColoresDelLogoRep(){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, size, size);
+        const data = ctx.getImageData(0,0,size,size).data;
+        const buckets = {};
+        for(let i=0;i<data.length;i+=4){
+          const r=data[i], g=data[i+1], b=data[i+2], a=data[i+3];
+          if(a<200) continue;
+          const max=Math.max(r,g,b), min=Math.min(r,g,b);
+          const sat = max===0?0:(max-min)/max;
+          const lum = (r+g+b)/3;
+          if(sat<0.25 || lum>235 || lum<25) continue;
+          const key = [Math.round(r/24)*24, Math.round(g/24)*24, Math.round(b/24)*24].join(',');
+          buckets[key] = (buckets[key]||0)+1;
+        }
+        const ordenado = Object.entries(buckets).sort((a,b)=>b[1]-a[1]);
+        if(ordenado.length===0){ resolve(null); return; }
+        const [r,g,b] = ordenado[0][0].split(',').map(Number);
+        let r2=r,g2=g,b2=b;
+        for(const [k] of ordenado.slice(1)){
+          const [rr,gg,bb] = k.split(',').map(Number);
+          if(Math.abs(rr-r)+Math.abs(gg-g)+Math.abs(bb-b) > 60){ r2=rr;g2=gg;b2=bb; break; }
+        }
+        resolve({ principal: `rgb(${r},${g},${b})`, secundario: `rgb(${r2},${g2},${b2})` });
+      } catch(e){ resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = '/api/logo';
+  });
+}
+
+async function cambiarTemaRep(tema){
+  document.documentElement.setAttribute('data-theme', tema);
+  safeSetRep('temaAppRep', tema);
+  document.documentElement.style.removeProperty('--gold');
+  document.documentElement.style.removeProperty('--green-ok');
+  if(tema === 'club'){
+    let colores = null;
+    try { colores = JSON.parse(safeGetRep('temaClubColoresRep') || 'null'); } catch(e){}
+    if(!colores){
+      colores = await extraerColoresDelLogoRep();
+      if(colores) safeSetRep('temaClubColoresRep', JSON.stringify(colores));
+    }
+    if(colores){
+      document.documentElement.style.setProperty('--gold', colores.principal);
+      document.documentElement.style.setProperty('--green-ok', colores.secundario);
+    } else {
+      toast('No se pudo leer el logo todavía', true);
+    }
+  }
+  cerrarSheet();
+}
+
+function abrirSelectorTemaRep(){
+  const actual = safeGetRep('temaAppRep') || 'dark';
+  const html = `
+    <div class="sheet-head"><h2>Estilo de la app</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaRep('dark')"><div><div class="fl-value">🌙 Oscuro</div></div>${actual==='dark'?'<span class="badge confirmando">Activo</span>':''}</div>
+    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaRep('light')"><div><div class="fl-value">☀️ Claro</div></div>${actual==='light'?'<span class="badge confirmando">Activo</span>':''}</div>
+    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaRep('club')"><div><div class="fl-value">🎨 Del club</div></div>${actual==='club'?'<span class="badge confirmando">Activo</span>':''}</div>
+  `;
+  abrirSheet(html);
+}
+</script>
+</body>
+</html>

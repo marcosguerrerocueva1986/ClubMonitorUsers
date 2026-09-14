@@ -16,8 +16,22 @@ const { getPool } = require('./_db');
 const {
   obtenerMiPerfil, verMisPartidos, verPendientesPago, verMiQr, verMisUltimosPagos,
   verMisInvitados, listarMisEventos, verEventoPublico, verMovimientosEventoJugador,
-  verComprobanteMovimientoJugador,
+  verComprobanteMovimientoJugador, actualizarMisDatos, analizarComprobante,
+  registrarPagoComprobante, aplicarPago, aplicarPagoEvento, guardarSaldoFavor,
 } = require('./jugador');
+
+async function actualizarPerfilRepresentante(pool, representanteId, body) {
+  await pool.query(
+    `UPDATE sport_control.representantes SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`,
+    [body.nombres, body.apellidos, body.telefono, representanteId]
+  );
+  return { success: true, data: true };
+}
+
+async function obtenerPerfilRepresentante(pool, representanteId) {
+  const r = await pool.query(`SELECT nombres, apellidos, telefono, cedula FROM sport_control.representantes WHERE id = $1`, [representanteId]);
+  return { success: true, data: r.rows[0] };
+}
 
 async function resolverSesionRepresentante(pool, token) {
   const r = await pool.query(
@@ -82,6 +96,15 @@ module.exports = async (req, res) => {
     if (accion === 'listar_mis_jugadores_representante') {
       return res.status(200).json(await listarMisJugadoresRepresentante(pool, representanteId));
     }
+    if (accion === 'actualizar_perfil_representante') {
+      return res.status(200).json(await actualizarPerfilRepresentante(pool, representanteId, body));
+    }
+    if (accion === 'obtener_perfil_representante') {
+      return res.status(200).json(await obtenerPerfilRepresentante(pool, representanteId));
+    }
+    if (accion === 'analizar_comprobante_representante') {
+      return res.status(200).json(await analizarComprobante(pool, body));
+    }
 
     // Todas las demas acciones necesitan saber de que jugador se trata,
     // y se verifica el vinculo antes de reutilizar la funcion del jugador.
@@ -105,6 +128,11 @@ module.exports = async (req, res) => {
       // logeado) -- no necesitan jugadorId ni la verificacion de vinculo.
       case 'ver_movimientos_evento_representante': return res.status(200).json(await verMovimientosEventoJugador(pool, body));
       case 'ver_comprobante_movimiento_representante': return res.status(200).json(await verComprobanteMovimientoJugador(pool, body));
+      case 'actualizar_datos_jugador_representante': return res.status(200).json(await actualizarMisDatos(pool, jugadorId, body));
+      case 'registrar_pago_comprobante_representante': return res.status(200).json(await registrarPagoComprobante(pool, jugadorId, body));
+      case 'aplicar_pago_representante': return res.status(200).json(await aplicarPago(pool, jugadorId, body));
+      case 'aplicar_pago_evento_representante': return res.status(200).json(await aplicarPagoEvento(pool, jugadorId, body));
+      case 'guardar_saldo_favor_representante': return res.status(200).json(await guardarSaldoFavor(pool, jugadorId, body));
       default:
         return res.status(200).json({ success: false, error: 'Accion no reconocida' });
     }
