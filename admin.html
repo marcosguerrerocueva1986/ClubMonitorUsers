@@ -953,6 +953,7 @@ async function verDetalleJugador(jugadorId){
   const up = d.ultimo_pago;
   const html = `
     <div class="sheet-head"><h2>${esc(d.nombres)} ${esc(d.apellidos)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <button class="block primary" style="margin-bottom:14px" onclick='abrirRepresentantesJugadorAdmin(${jugadorId}, ${JSON.stringify(d.nombres+' '+d.apellidos).replace(/'/g,"&#39;")})'>👨‍👩‍👧 Ver/editar representantes</button>
     <div class="field-line"><div class="fl-label">Teléfono</div><div class="fl-value">${esc(d.telefono)}</div></div>
     <div class="field-line"><div class="fl-label">Cédula</div><div class="fl-value">${esc(d.cedula || '—')}</div></div>
     <div class="field-line"><div class="fl-label">Correo</div><div class="fl-value">${esc(d.correo || '—')}</div></div>
@@ -969,7 +970,6 @@ async function verDetalleJugador(jugadorId){
     <div class="field-line"><div class="fl-label">Multas pagadas (histórico)</div><div class="fl-value">$${d.multas_aprobadas}</div></div>
     <div class="field-line"><div class="fl-label">Partidos confirmados</div><div class="fl-value">${d.partidos_confirmados}</div></div>
     <div class="field-line"><div class="fl-label">Partidos asistidos (check-in)</div><div class="fl-value">${d.partidos_asistidos}</div></div>
-    <button class="block" style="margin-top:12px" onclick="abrirRepresentantesJugadorAdmin(${jugadorId}, ${JSON.stringify(d.nombres+' '+d.apellidos)})">👨‍👩‍👧 Ver/editar representantes</button>
   `;
   abrirSheet(html);
 }

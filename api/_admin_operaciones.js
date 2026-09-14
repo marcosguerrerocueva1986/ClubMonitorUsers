@@ -6,7 +6,7 @@ async function obtenerParametros(pool) {
             (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'invitado' AND activo = true ORDER BY prioridad ASC LIMIT 1) AS costo_invitado,
             valor_multa_inasistencia, valor_multa_invitado_no_show, meses_maximo_atraso, numero_admin,
             to_char(fecha_inicio_recaudacion, 'DD/MM/YYYY') AS fecha_inicio_recaudacion, meses_retener_codigos,
-            eventos_habilitado_jugador, representantes_habilitado
+            eventos_habilitado_jugador, representantes_habilitado, icono_deporte
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return { success: true, data: r.rows[0] };
@@ -22,6 +22,7 @@ async function actualizarParametro(pool, body) {
     meses_maximo_atraso: { sql: `UPDATE sport_control.configuracion_club SET meses_maximo_atraso = $1 WHERE id = 1`, val: valor },
     numero_admin: { sql: `UPDATE sport_control.configuracion_club SET numero_admin = $1 WHERE id = 1`, val: valor },
     meses_retener_codigos: { sql: `UPDATE sport_control.configuracion_club SET meses_retener_codigos = $1 WHERE id = 1`, val: valor },
+    icono_deporte: { sql: `UPDATE sport_control.configuracion_club SET icono_deporte = $1 WHERE id = 1`, val: valor },
   };
   if (campo === 'fecha_inicio_recaudacion') {
     const partes = String(valor).trim().split('/');
