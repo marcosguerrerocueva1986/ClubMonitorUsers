@@ -10,6 +10,7 @@
 // igual que hacia n8n con el nodo 'Clave Correcta App'.
 
 const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido } = require('./_admin_partidos');
+const { obtenerEstadisticasApps, listarUsuariosJugadoresAdmin, listarUsuariosRepresentantesAdmin } = require('./_admin_estadisticas');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin, resetearClaveRepresentanteAdmin } = require('./_admin_jugadores');
 const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios } = require('./_admin_operaciones');
 const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento } = require('./_admin_eventos');
@@ -58,6 +59,9 @@ module.exports = async (req, res) => {
       case 'listar_estado_pagos_app': return res.status(200).json(await listarEstadoPagos(pool));
       case 'enviar_recordatorio_morosos_app': return res.status(200).json(await enviarRecordatorioMorosos(pool, config));
       case 'ver_detalle_jugador_app': return res.status(200).json(await verDetalleJugador(pool, body));
+      case 'obtener_estadisticas_apps_admin': return res.status(200).json(await obtenerEstadisticasApps(pool));
+      case 'listar_usuarios_jugadores_admin': return res.status(200).json(await listarUsuariosJugadoresAdmin(pool));
+      case 'listar_usuarios_representantes_admin': return res.status(200).json(await listarUsuariosRepresentantesAdmin(pool));
       case 'listar_representantes_jugador_admin': return res.status(200).json(await listarRepresentantesJugadorAdmin(pool, body));
       case 'agregar_representante_admin': return res.status(200).json(await agregarRepresentanteAdmin(pool, body));
       case 'editar_representante_admin': return res.status(200).json(await editarRepresentanteAdmin(pool, body));
