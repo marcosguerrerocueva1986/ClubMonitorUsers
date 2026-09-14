@@ -299,6 +299,7 @@ if ('serviceWorker' in navigator) {
         <button class="sm" id="btnSubtabCatMultas" onclick="cambiarSubtabParametros('cat_multas')">📋 Tipos de multa</button>
         <button class="sm" id="btnSubtabCatRelacion" onclick="cambiarSubtabParametros('cat_relacion')">👪 Tipos de parentesco</button>
         <button class="sm" id="btnSubtabCatEventos" onclick="cambiarSubtabParametros('cat_eventos')">🎒 Rubros de eventos</button>
+        <button class="sm" id="btnSubtabDisciplinas" onclick="cambiarSubtabParametros('disciplinas')">🏅 Disciplinas y estadísticas</button>
       </div>
       <div id="parametrosList"><div class="spinner"></div></div>
     </div>
@@ -578,9 +579,18 @@ async function abrirCrearPartido(){
     if(t===null) return;
     tiposCache = t;
   }
+  const disciplinas = await api('listar_disciplinas_activas_admin');
+  if(disciplinas===null) return;
   const opts = tiposCache.map(t=>`<option value="${esc(t.nombre)}">${esc(t.nombre)}${t.costo_default ? ' ($'+t.costo_default+')' : ''}</option>`).join('');
+  const selectorDisciplina = disciplinas.length > 1 ? `
+    <label>Tipo de encuentro</label>
+    <select id="nuevoDisciplinaId">
+      ${disciplinas.map(d=>`<option value="${d.id}">${esc(d.icono)} ${esc(d.nombre)}</option>`).join('')}
+    </select>
+  ` : '';
   const html = `
     <div class="sheet-head"><h2>Crear partido</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${selectorDisciplina}
     <label>Tipo</label>
     <select id="nuevoTipo">${opts}</select>
     <label>Fecha</label>
@@ -608,6 +618,8 @@ async function guardarCrearPartido(){
   };
   const costo = document.getElementById('nuevoCosto').value.trim();
   if(costo) body.costo = costo;
+  const selectorDisciplina = document.getElementById('nuevoDisciplinaId');
+  if(selectorDisciplina) body.disciplinaId = parseInt(selectorDisciplina.value);
   if(!body.fecha || !body.hora || !body.lugar){ toast('Completa fecha, hora y lugar', true); return; }
   const res = await api('crear_partido', body);
   if(res!==null){ toast('Partido creado y anunciado al grupo'); cerrarSheet(); cargarPartidos(); }
@@ -1115,8 +1127,8 @@ let subtabParametrosActual = 'generales';
 
 function cambiarSubtabParametros(sub){
   subtabParametrosActual = sub;
-  ['generales','exentos','cat_multas','cat_relacion','cat_eventos'].forEach(s=>{
-    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion', cat_eventos:'CatEventos'}[s]);
+  ['generales','exentos','cat_multas','cat_relacion','cat_eventos','disciplinas'].forEach(s=>{
+    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion', cat_eventos:'CatEventos', disciplinas:'Disciplinas'}[s]);
     if(btn) btn.classList.toggle('primary', s===sub);
   });
   if(sub==='generales') cargarParametros();
@@ -1124,6 +1136,7 @@ function cambiarSubtabParametros(sub){
   if(sub==='cat_multas') cargarCatalogo('tipos_multa', 'Tipos de multa');
   if(sub==='cat_relacion') cargarCatalogo('tipos_relacion_exento', 'Tipos de parentesco');
   if(sub==='cat_eventos') cargarCatalogoEventos();
+  if(sub==='disciplinas') cargarDisciplinas();
 }
 
 async function cargarCatalogoEventos(){
@@ -1168,6 +1181,113 @@ async function crearTipoMovEvento(){
   if(res===null) return;
   toast('Rubro agregado');
   cargarCatalogoEventos();
+}
+
+/* ---------- Disciplinas y catalogo de estadisticas ---------- */
+async function cargarDisciplinas(){
+  const list = document.getElementById('parametrosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_disciplinas_admin');
+  if(data===null) return;
+  list.innerHTML = `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Si activas más de una disciplina, al crear un partido nuevo te va a pedir elegir a cuál pertenece. Toca una disciplina para administrar sus estadísticas.</p>
+    <div class="card">
+      ${data.map(d=>`
+        <div class="field-line">
+          <div style="cursor:pointer" onclick="abrirCatalogoEstadisticas(${d.id}, '${esc(d.nombre)}', '${esc(d.icono)}')">
+            <div class="fl-value">${esc(d.icono)} ${esc(d.nombre)} ${!d.activo ? '<span class="badge cancelado">Inactiva</span>' : ''}</div>
+            <div class="fl-label">Ver / editar estadísticas →</div>
+          </div>
+          <button class="sm ${d.activo?'danger':'primary'}" onclick="toggleDisciplina(${d.id}, ${!d.activo})">${d.activo?'Desactivar':'Activar'}</button>
+        </div>
+      `).join('')}
+    </div>
+    <label style="margin-top:14px">Nueva disciplina</label>
+    <input id="nuevaDisciplinaNombre" placeholder="Ej: Vóley">
+    <input id="nuevaDisciplinaIcono" placeholder="Emoji (ej: 🏐)" style="margin-top:8px">
+    <button class="primary block" style="margin-top:10px" onclick="crearDisciplinaAccion()">Agregar disciplina</button>
+  `;
+}
+
+async function toggleDisciplina(disciplinaId, activo){
+  const res = await api('toggle_disciplina_admin', {disciplinaId, activo});
+  if(res===null) return;
+  cargarDisciplinas();
+}
+
+async function crearDisciplinaAccion(){
+  const nombre = document.getElementById('nuevaDisciplinaNombre').value.trim();
+  const icono = document.getElementById('nuevaDisciplinaIcono').value.trim();
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('crear_disciplina_admin', {nombre, icono});
+  if(res===null) return;
+  toast('Disciplina agregada');
+  cargarDisciplinas();
+}
+
+let disciplinaEstadisticasActual = null;
+
+async function abrirCatalogoEstadisticas(disciplinaId, nombre, icono){
+  disciplinaEstadisticasActual = {id: disciplinaId, nombre, icono};
+  const data = await api('listar_tipos_estadistica_admin', {disciplinaId});
+  if(data===null) return;
+  mostrarCatalogoEstadisticas(data);
+}
+
+function mostrarCatalogoEstadisticas(data){
+  const d = disciplinaEstadisticasActual;
+  const porJugador = data.filter(t=>t.nivel==='jugador');
+  const porEquipo = data.filter(t=>t.nivel==='equipo');
+  const html = `
+    <div class="sheet-head"><h2>${esc(d.icono)} ${esc(d.nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">El marcador (a favor / en contra) siempre se lleva aparte, no hace falta agregarlo aquí.</p>
+    <div class="card">
+      <div class="card-title"><h3>Por jugador</h3></div>
+      ${porJugador.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguna todavía.</p>' : porJugador.map(t=>`
+        <div class="field-line">
+          <div class="fl-value">${esc(t.nombre)} ${!t.activo ? '<span class="badge cancelado">Inactiva</span>' : ''}</div>
+          <button class="sm ${t.activo?'danger':'primary'}" onclick="toggleTipoEstadisticaAccion(${t.id}, ${!t.activo})">${t.activo?'Desactivar':'Activar'}</button>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Por equipo</h3></div>
+      ${porEquipo.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguna todavía.</p>' : porEquipo.map(t=>`
+        <div class="field-line">
+          <div class="fl-value">${esc(t.nombre)} ${!t.activo ? '<span class="badge cancelado">Inactiva</span>' : ''}</div>
+          <button class="sm ${t.activo?'danger':'primary'}" onclick="toggleTipoEstadisticaAccion(${t.id}, ${!t.activo})">${t.activo?'Desactivar':'Activar'}</button>
+        </div>
+      `).join('')}
+    </div>
+    <label style="margin-top:10px">Nueva estadística</label>
+    <input id="nuevaEstadisticaNombre" placeholder="Ej: Saques de banda">
+    <select id="nuevaEstadisticaNivel" style="margin-top:8px">
+      <option value="jugador">Por jugador (ej: goles, puntos)</option>
+      <option value="equipo">Por equipo (ej: tiros de esquina)</option>
+    </select>
+    <button class="primary block" style="margin-top:10px" onclick="crearTipoEstadisticaAccion()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function crearTipoEstadisticaAccion(){
+  const nombre = document.getElementById('nuevaEstadisticaNombre').value.trim();
+  const nivel = document.getElementById('nuevaEstadisticaNivel').value;
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('crear_tipo_estadistica_admin', {disciplinaId: disciplinaEstadisticasActual.id, nombre, nivel});
+  if(res===null) return;
+  toast('Estadística agregada');
+  const data = await api('listar_tipos_estadistica_admin', {disciplinaId: disciplinaEstadisticasActual.id});
+  if(data===null) return;
+  mostrarCatalogoEstadisticas(data);
+}
+
+async function toggleTipoEstadisticaAccion(tipoEstadisticaId, activo){
+  const res = await api('toggle_tipo_estadistica_admin', {tipoEstadisticaId, activo});
+  if(res===null) return;
+  const data = await api('listar_tipos_estadistica_admin', {disciplinaId: disciplinaEstadisticasActual.id});
+  if(data===null) return;
+  mostrarCatalogoEstadisticas(data);
 }
 
 async function cargarExentosPendientes(){

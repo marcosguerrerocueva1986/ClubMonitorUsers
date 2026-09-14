@@ -18,7 +18,8 @@ const { getPool } = require('./_db');
 async function cargarConfig(pool) {
   const r = await pool.query(
     `SELECT clave_admin_app, grupo_jid, valor_multa_inasistencia, valor_multa_invitado_no_show, instance_evolutionapi,
-            tipo_multa_inasistencia_id, tipo_multa_invitado_id
+            tipo_multa_inasistencia_id, tipo_multa_invitado_id,
+            evolution_api_base_url, whatsapp_checkin_numero, onesignal_app_id, sitio_url_jugador, sitio_url_admin, nombre_club
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return r.rows[0];
@@ -34,7 +35,7 @@ async function enviarWhatsAppGrupo(config, texto) {
   if (!config.grupo_jid) return { enviado: false, razon: 'Falta grupo_jid en configuracion_club' };
   if (!config.instance_evolutionapi) return { enviado: false, razon: 'Falta instance_evolutionapi en configuracion_club' };
   try {
-    const url = `https://evolution-api-production-641b.up.railway.app/message/sendText/${config.instance_evolutionapi}`;
+    const url = `${config.evolution_api_base_url}/message/sendText/${config.instance_evolutionapi}`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
@@ -55,7 +56,7 @@ async function enviarWhatsAppGrupo(config, texto) {
 
 async function enviarWhatsAppPrivado(config, numero, texto) {
   try {
-    await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendText/${config.instance_evolutionapi}`, {
+    await fetch(`${config.evolution_api_base_url}/message/sendText/${config.instance_evolutionapi}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: numero, text: texto }),
@@ -67,7 +68,7 @@ async function enviarWhatsAppPrivado(config, numero, texto) {
 
 async function enviarWhatsAppMedia(config, numero, mediaUrl, caption) {
   try {
-    await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendMedia/${config.instance_evolutionapi}`, {
+    await fetch(`${config.evolution_api_base_url}/message/sendMedia/${config.instance_evolutionapi}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: numero, mediatype: 'image', media: mediaUrl, caption }),
@@ -97,6 +98,16 @@ async function crearPartido(pool, config, body) {
   const tipo = tipoR.rows[0];
   if (!tipo) return { success: false, error: 'Tipo de partido no encontrado' };
 
+  // Disciplina: si el body la trae (el Admin la eligio), se usa esa.
+  // Si no la trae y hay una sola disciplina activa, se asigna sola --
+  // asi un club de un solo deporte nunca tiene que elegir nada.
+  let disciplinaId = body.disciplinaId || null;
+  if (!disciplinaId) {
+    const activas = await pool.query(`SELECT id FROM sport_control.disciplinas WHERE activo = true`);
+    if (activas.rows.length === 1) disciplinaId = activas.rows[0].id;
+    else if (activas.rows.length > 1) return { success: false, error: 'Este club tiene más de una disciplina activa. Indica a cuál pertenece este partido.' };
+  }
+
   const alias = (body.alias || '').trim() || null;
   const costo = (body.costo !== undefined && body.costo !== null && body.costo !== '') ? body.costo : tipo.costo_default;
 
@@ -104,10 +115,10 @@ async function crearPartido(pool, config, body) {
   const fechaIso = `${yyyy}-${mm}-${dd}`;
 
   const ins = await pool.query(
-    `INSERT INTO sport_control.partidos (fecha, hora, lugar, alias, estado, tipo_partido_id, costo_inscripcion, requiere_pago_previo_qr)
-     VALUES ($1::date, $2::time, $3, $4, 'confirmando', $5, $6, $7)
+    `INSERT INTO sport_control.partidos (fecha, hora, lugar, alias, estado, tipo_partido_id, costo_inscripcion, requiere_pago_previo_qr, disciplina_id)
+     VALUES ($1::date, $2::time, $3, $4, 'confirmando', $5, $6, $7, $8)
      RETURNING id, alias, fecha, hora, lugar, estado`,
-    [fechaIso, body.hora, body.lugar, alias, tipo.id, costo, tipo.requiere_pago_previo_qr]
+    [fechaIso, body.hora, body.lugar, alias, tipo.id, costo, tipo.requiere_pago_previo_qr, disciplinaId]
   );
   const p = ins.rows[0];
   const titulo = p.alias ? p.alias : ('Partido #' + p.id);
