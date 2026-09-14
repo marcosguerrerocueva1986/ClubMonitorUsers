@@ -322,6 +322,8 @@ const ACCIONES_VERCEL = new Set([
   'guardar_restante_saldo_favor_jugador',
   'listar_tipos_relacion_exento', 'listar_mis_exentos_jugador', 'agregar_exento_jugador', 'eliminar_exento_jugador',
   'listar_mis_representantes_jugador', 'agregar_representante_jugador', 'editar_representante_jugador', 'eliminar_representante_jugador',
+  'listar_mis_eventos_jugador', 'ver_evento_publico_jugador', 'aplicar_pago_evento_jugador',
+  'ver_movimientos_evento_jugador', 'ver_comprobante_movimiento_jugador',
 ]);
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
@@ -425,6 +427,7 @@ async function entrarApp(){
       });
     }
   }
+  document.getElementById('tabEventos').style.display = perfil && perfil.eventosHabilitado ? 'flex' : 'none';
   cargarPartidos();
 }
 
@@ -440,10 +443,11 @@ function cambiarTab(tab){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+tab).classList.add('active');
-  const subs = {partidos:'MIS PARTIDOS', deuda:'MI CUENTA', docs:'INFORMACIÓN', perfil:'MI PERFIL'};
+  const subs = {partidos:'MIS PARTIDOS', deuda:'MI CUENTA', eventos:'EVENTOS', docs:'INFORMACIÓN', perfil:'MI PERFIL'};
   document.getElementById('screenSub').textContent = subs[tab];
   if(tab==='partidos') cargarPartidos();
   if(tab==='deuda') cargarDeuda();
+  if(tab==='eventos') cargarEventosJugador();
   if(tab==='perfil') cargarPerfil();
 }
 
@@ -1018,6 +1022,163 @@ async function mostrarMisExentos(data){
       ${(tipos||[]).map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}
     </select>
     <button class="primary block" style="margin-top:12px" onclick="agregarExentoJugador()">Enviar para aprobación</button>
+  `;
+  abrirSheet(html);
+}
+
+/* ---------- EVENTOS (jugador) -- solo consulta, sin crear/editar/eliminar ---------- */
+let eventoJugActualId = null;
+let eventoJugActualData = null;
+let eventoJugSubtabActual = 'resumen';
+
+async function cargarEventosJugador(){
+  const cont = document.getElementById('eventosJugadorContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_mis_eventos_jugador');
+  if(data===null) return;
+  if(data.length===0){
+    cont.innerHTML = '<div class="empty"><span class="ic">🎒</span>Todavía no estás inscrito en ningún evento.</div>';
+    return;
+  }
+  cont.innerHTML = data.map(e=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${esc(e.nombre)}</h3>
+        <span class="badge ${e.estado==='activo' ? 'confirmando' : (e.estado==='finalizado' ? 'finalizado' : 'cancelado')}">${esc(e.estado)}</span>
+      </div>
+      <div class="meta">
+        📍 ${esc(e.lugar||'—')}<br>
+        📅 ${e.fecha_inicio ? fechaCorta(e.fecha_inicio) : '—'} ${e.fecha_fin ? '→ '+fechaCorta(e.fecha_fin) : ''}<br>
+        Tu cuota: $${e.montoCuota} · Pagado: $${e.montoPagado} ${Number(e.montoPagado)>=Number(e.montoCuota) ? '✓' : ''}
+      </div>
+      <button class="sm primary" onclick="abrirDetalleEventoJugador(${e.id})">Ver detalle</button>
+    </div>
+  `).join('');
+}
+
+async function abrirDetalleEventoJugador(eventoId){
+  eventoJugActualId = eventoId;
+  eventoJugSubtabActual = 'resumen';
+  const data = await api('ver_evento_publico_jugador', {eventoId});
+  if(data===null) return;
+  eventoJugActualData = data;
+  mostrarDetalleEventoJugador();
+}
+
+function nombreFechaJug(fechaId){
+  if(!fechaId) return 'General';
+  const f = eventoJugActualData.fechas.find(x=>x.id===fechaId);
+  return f ? (f.descripcion || fechaCorta(f.fecha)) : 'General';
+}
+
+function mostrarDetalleEventoJugador(){
+  const data = eventoJugActualData;
+  const e = data.evento;
+  const cont = document.getElementById('eventosJugadorContent');
+
+  const subtabs = [
+    {key:'resumen', label:'📊 Resumen'},
+    {key:'fechas', label:'📅 Fechas'},
+    {key:'movimientos', label:'🧾 Movimientos'},
+  ];
+
+  cont.innerHTML = `
+    <button class="sm" style="margin-bottom:10px" onclick="cargarEventosJugador()">← Volver a mis eventos</button>
+    <div class="card">
+      <div class="card-title">
+        <h3>${esc(e.nombre)}</h3>
+        <span class="badge ${e.estado==='activo' ? 'confirmando' : (e.estado==='finalizado' ? 'finalizado' : 'cancelado')}">${esc(e.estado)}</span>
+      </div>
+      <div class="meta">📍 ${esc(e.lugar||'—')} ${e.fecha_inicio ? '· 📅 '+fechaCorta(e.fecha_inicio) : ''} ${e.fecha_fin ? '→ '+fechaCorta(e.fecha_fin) : ''}</div>
+    </div>
+    <div class="row-actions" id="eventoJugSubtabBar" style="margin:14px 0;flex-wrap:wrap">
+      ${subtabs.map(s=>`<button class="sm ${eventoJugSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEventoJugador('${s.key}')">${s.label}</button>`).join('')}
+    </div>
+    <div id="eventoJugSubtabContent"></div>
+  `;
+  renderSubtabEventoJugadorActual();
+}
+
+function cambiarSubtabEventoJugador(sub){
+  eventoJugSubtabActual = sub;
+  const keys = ['resumen','fechas','movimientos'];
+  document.querySelectorAll('#eventoJugSubtabBar button').forEach((btn,i)=>btn.classList.toggle('primary', keys[i]===sub));
+  renderSubtabEventoJugadorActual();
+}
+
+function renderSubtabEventoJugadorActual(){
+  if(eventoJugSubtabActual==='resumen') document.getElementById('eventoJugSubtabContent').innerHTML = renderResumenEventoJugador();
+  if(eventoJugSubtabActual==='fechas') document.getElementById('eventoJugSubtabContent').innerHTML = renderFechasEventoJugador();
+  if(eventoJugSubtabActual==='movimientos') cargarMovimientosEventoJugador();
+}
+
+function renderResumenEventoJugador(){
+  const d = eventoJugActualData;
+  const pendiente = d.miCuota!==null ? Math.max(d.miCuota - d.miPagado, 0) : null;
+  return `
+    <div class="card">
+      <div class="card-title"><h3>Tu cuota</h3></div>
+      ${d.miCuota===null ? '<p style="color:var(--chalk-dim);font-size:13px">No tienes una cuota asignada en este evento.</p>' : `
+        <div class="field-line"><div class="fl-label">Cuota</div><div class="fl-value">$${d.miCuota.toFixed(2)}</div></div>
+        <div class="field-line"><div class="fl-label">Pagado</div><div class="fl-value" style="color:var(--green-ok)">$${d.miPagado.toFixed(2)}</div></div>
+        <div class="field-line"><div class="fl-label">Pendiente</div><div class="fl-value" style="color:${pendiente>0?'var(--red)':'var(--green-ok)'}">$${pendiente.toFixed(2)} ${pendiente===0?'✓':''}</div></div>
+      `}
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Financiero general del evento</h3></div>
+      <div class="field-line"><div class="fl-label">Total recaudado (todas las cuotas)</div><div class="fl-value" style="color:var(--green-ok)">$${d.totalRecaudado.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Total esperado (todas las cuotas)</div><div class="fl-value">$${d.totalEsperadoCuotas.toFixed(2)}</div></div>
+    </div>
+    ${d.gastosPorRubro.length>0 ? `
+    <div class="card">
+      <div class="card-title"><h3>Gastos por rubro</h3></div>
+      ${d.gastosPorRubro.map(g=>`
+        <div class="field-line"><div class="fl-label">${esc(g.rubro)}</div><div class="fl-value">$${g.gastado} ${g.proyectado>0 ? '<span style="color:var(--chalk-dim);font-size:12px"> / $'+g.proyectado+' proyectado</span>' : ''}</div></div>
+      `).join('')}
+    </div>` : ''}
+  `;
+}
+
+function renderFechasEventoJugador(){
+  const fechas = eventoJugActualData.fechas;
+  if(fechas.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
+  return `<div class="card">${fechas.map(f=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
+        <div class="fl-label">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
+      </div>
+    </div>
+  `).join('')}</div>`;
+}
+
+async function cargarMovimientosEventoJugador(){
+  const cont = document.getElementById('eventoJugSubtabContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const movs = await api('ver_movimientos_evento_jugador', {eventoId: eventoJugActualId});
+  if(movs===null) return;
+  if(movs.length===0){ cont.innerHTML = '<p style="color:var(--chalk-dim);font-size:14px">Sin movimientos registrados todavía.</p>'; return; }
+  cont.innerHTML = movs.map(m=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${esc(m.tipoMovimiento)} ${m.jugador ? '— '+esc(m.jugador) : ''}</div>
+        <div class="fl-label">${fechaCorta(m.fecha)} · ${esc(nombreFechaJug(m.eventoFechaId))} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="fl-value" style="color:${m.tipo==='ingreso' ? 'var(--green-ok)' : 'var(--red)'}">${m.tipo==='ingreso'?'+':'-'}$${m.monto}</div>
+        ${m.tieneComprobante ? `<button class="sm" onclick="verComprobanteMovimientoJugador(${m.id})">📷</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function verComprobanteMovimientoJugador(movimientoId){
+  const res = await api('ver_comprobante_movimiento_jugador', {movimientoId});
+  if(res===null) return;
+  if(!res.comprobante_base64){ toast('No hay foto para este movimiento', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>Comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.comprobante_base64}" style="width:100%;border-radius:12px">
   `;
   abrirSheet(html);
 }

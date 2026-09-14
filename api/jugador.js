@@ -601,10 +601,16 @@ async function verEventoPublico(pool, jugadorId, body) {
     [eventoId]
   );
 
+  const fechas = await pool.query(
+    `SELECT id, fecha, lugar, descripcion FROM sport_control.evento_fechas WHERE evento_id = $1 ORDER BY fecha ASC`,
+    [eventoId]
+  );
+
   return {
     success: true,
     data: {
       evento: evento.rows[0],
+      fechas: fechas.rows,
       miCuota: miCuota.rows[0] ? Number(miCuota.rows[0].montoCuota) : null,
       miPagado: Number(miPagado.rows[0].total),
       totalRecaudado: Number(totalRecaudado.rows[0].total),
@@ -612,6 +618,25 @@ async function verEventoPublico(pool, jugadorId, body) {
       gastosPorRubro: gastosPorRubro.rows,
     },
   };
+}
+
+async function verMovimientosEventoJugador(pool, body) {
+  const { eventoId } = body;
+  const movimientos = await pool.query(
+    `SELECT m.id, m.monto, m.fecha, m.descripcion, m.evento_fecha_id AS "eventoFechaId", t.nombre AS "tipoMovimiento", t.tipo,
+       j.nombres || ' ' || j.apellidos AS jugador, m.comprobante_base64 IS NOT NULL AS "tieneComprobante"
+     FROM sport_control.evento_movimientos m
+     JOIN sport_control.tipos_movimiento_evento t ON t.id = m.tipo_movimiento_id
+     LEFT JOIN sport_control.jugadores j ON j.id = m.jugador_id
+     WHERE m.evento_id = $1 ORDER BY m.fecha DESC, m.id DESC`,
+    [eventoId]
+  );
+  return { success: true, data: movimientos.rows };
+}
+
+async function verComprobanteMovimientoJugador(pool, body) {
+  const r = await pool.query(`SELECT comprobante_base64 FROM sport_control.evento_movimientos WHERE id = $1`, [body.movimientoId]);
+  return { success: true, data: { comprobante_base64: r.rows[0] ? r.rows[0].comprobante_base64 : null } };
 }
 
 async function aplicarPagoEvento(pool, jugadorId, body) {
@@ -683,6 +708,8 @@ module.exports = async (req, res) => {
       case 'guardar_restante_saldo_favor_jugador': return res.status(200).json(await guardarSaldoFavor(pool, jugadorId, body));
       case 'listar_mis_eventos_jugador': return res.status(200).json(await listarMisEventos(pool, jugadorId));
       case 'ver_evento_publico_jugador': return res.status(200).json(await verEventoPublico(pool, jugadorId, body));
+      case 'ver_movimientos_evento_jugador': return res.status(200).json(await verMovimientosEventoJugador(pool, body));
+      case 'ver_comprobante_movimiento_jugador': return res.status(200).json(await verComprobanteMovimientoJugador(pool, body));
       case 'aplicar_pago_evento_jugador': return res.status(200).json(await aplicarPagoEvento(pool, jugadorId, body));
       default:
         return res.status(200).json({ success: false, error: 'Accion no reconocida' });
