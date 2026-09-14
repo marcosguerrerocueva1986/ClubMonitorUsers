@@ -1215,13 +1215,13 @@ async function abrirMisRepresentantes(){
 function mostrarMisRepresentantes(data){
   const html = `
     <div class="sheet-head"><h2>Mis representantes</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Registra aquí a tus padres/tutores u otros representantes, para que el club tenga sus datos de contacto.</p>
+    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Registra aquí a tus padres/tutores u otros representantes, con su cédula — la van a necesitar para ingresar a su propia app más adelante.</p>
     <div id="listaMisRepresentantes">
       ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no has registrado a nadie.</p>' : data.map(r=>`
         <div class="field-line">
           <div>
-            <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)}</div>
-            <div class="fl-label">${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
+            <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)} ${!r.cedula ? '<span class="badge cancelado">Falta cédula</span>' : ''}</div>
+            <div class="fl-label">${esc(r.cedula||'Sin cédula')} · ${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="sm" onclick='abrirEditarRepresentante(${JSON.stringify(r).replace(/"/g,"&quot;")})'>Editar</button>
@@ -1234,6 +1234,8 @@ function mostrarMisRepresentantes(data){
     <input id="repNombres" placeholder="Nombres">
     <label>Apellidos</label>
     <input id="repApellidos" placeholder="Apellidos">
+    <label>Cédula</label>
+    <input id="repCedula" placeholder="La necesitará para ingresar a su app" inputmode="numeric">
     <label>Teléfono</label>
     <input id="repTelefono" placeholder="Opcional" type="tel">
     <label>Descripción</label>
@@ -1246,10 +1248,12 @@ function mostrarMisRepresentantes(data){
 async function agregarRepresentanteJugador(){
   const nombres = document.getElementById('repNombres').value.trim();
   const apellidos = document.getElementById('repApellidos').value.trim();
+  const cedula = document.getElementById('repCedula').value.trim();
   const telefono = document.getElementById('repTelefono').value.trim();
   const descripcion = document.getElementById('repDescripcion').value.trim();
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
-  const res = await api('agregar_representante_jugador', { nombres, apellidos, telefono, descripcion });
+  if(!cedula){ toast('La cédula es obligatoria', true); return; }
+  const res = await api('agregar_representante_jugador', { nombres, apellidos, cedula, telefono, descripcion });
   if(res===null) return;
   toast('Representante agregado');
   const data = await api('listar_mis_representantes_jugador');
@@ -1264,6 +1268,8 @@ function abrirEditarRepresentante(r){
     <input id="repEditNombres" value="${esc(r.nombres)}">
     <label>Apellidos</label>
     <input id="repEditApellidos" value="${esc(r.apellidos)}">
+    <label>Cédula</label>
+    <input id="repEditCedula" value="${esc(r.cedula||'')}" inputmode="numeric" placeholder="La necesitará para ingresar a su app">
     <label>Teléfono</label>
     <input id="repEditTelefono" value="${esc(r.telefono||'')}" type="tel">
     <label>Descripción</label>
@@ -1276,10 +1282,11 @@ function abrirEditarRepresentante(r){
 async function guardarEditarRepresentante(representanteId){
   const nombres = document.getElementById('repEditNombres').value.trim();
   const apellidos = document.getElementById('repEditApellidos').value.trim();
+  const cedula = document.getElementById('repEditCedula').value.trim();
   const telefono = document.getElementById('repEditTelefono').value.trim();
   const descripcion = document.getElementById('repEditDescripcion').value.trim();
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
-  const res = await api('editar_representante_jugador', { representanteId, nombres, apellidos, telefono, descripcion });
+  const res = await api('editar_representante_jugador', { representanteId, nombres, apellidos, cedula, telefono, descripcion });
   if(res===null) return;
   toast('Actualizado');
   const data = await api('listar_mis_representantes_jugador');

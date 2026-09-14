@@ -201,39 +201,82 @@ async function obtenerMiPerfil(pool, jugadorId) {
 
 async function listarMisRepresentantes(pool, jugadorId) {
   const r = await pool.query(
-    `SELECT id, nombres, apellidos, telefono, descripcion FROM sport_control.jugador_representantes WHERE jugador_id = $1 ORDER BY creado_en ASC`,
+    `SELECT jr.id, r.nombres, r.apellidos, r.telefono, r.cedula, jr.descripcion
+     FROM sport_control.jugador_representante jr
+     JOIN sport_control.representantes r ON r.id = jr.representante_id
+     WHERE jr.jugador_id = $1 ORDER BY jr.creado_en ASC`,
     [jugadorId]
   );
   return { success: true, data: r.rows };
 }
 
 async function agregarRepresentante(pool, jugadorId, body) {
-  const { nombres, apellidos, telefono, descripcion } = body;
+  const { nombres, apellidos, telefono, cedula, descripcion } = body;
   if (!nombres || !apellidos) return { success: false, error: 'Completa nombres y apellidos.' };
-  const r = await pool.query(
-    `INSERT INTO sport_control.jugador_representantes (jugador_id, nombres, apellidos, telefono, descripcion, creado_en)
-     VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id`,
-    [jugadorId, nombres, apellidos, telefono || null, descripcion || null]
+  if (!cedula || !cedula.trim()) return { success: false, error: 'La cédula es obligatoria (la necesitará para poder ingresar a su propia app más adelante).' };
+
+  // Si ya existe una persona con esa cedula (porque representa a otro
+  // jugador tambien), se reutiliza -- nunca se duplica a la misma persona.
+  let representanteId;
+  const existente = await pool.query(`SELECT id FROM sport_control.representantes WHERE cedula = $1`, [cedula.trim()]);
+  if (existente.rows[0]) {
+    representanteId = existente.rows[0].id;
+  } else {
+    const nuevo = await pool.query(
+      `INSERT INTO sport_control.representantes (cedula, nombres, apellidos, telefono, creado_en) VALUES ($1, $2, $3, $4, NOW()) RETURNING id`,
+      [cedula.trim(), nombres, apellidos, telefono || null]
+    );
+    representanteId = nuevo.rows[0].id;
+  }
+
+  const yaVinculado = await pool.query(
+    `SELECT id FROM sport_control.jugador_representante WHERE jugador_id = $1 AND representante_id = $2`,
+    [jugadorId, representanteId]
   );
-  return { success: true, data: { id: r.rows[0].id } };
+  if (yaVinculado.rows[0]) return { success: false, error: 'Esa persona ya está registrada como tu representante.' };
+
+  const link = await pool.query(
+    `INSERT INTO sport_control.jugador_representante (jugador_id, representante_id, descripcion, creado_en) VALUES ($1, $2, $3, NOW()) RETURNING id`,
+    [jugadorId, representanteId, descripcion || null]
+  );
+  return { success: true, data: { id: link.rows[0].id } };
 }
 
 async function editarRepresentante(pool, jugadorId, body) {
-  const { representanteId, nombres, apellidos, telefono, descripcion } = body;
-  const check = await pool.query(`SELECT id FROM sport_control.jugador_representantes WHERE id = $1 AND jugador_id = $2`, [representanteId, jugadorId]);
-  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
-  await pool.query(
-    `UPDATE sport_control.jugador_representantes SET nombres = $1, apellidos = $2, telefono = $3, descripcion = $4 WHERE id = $5`,
-    [nombres, apellidos, telefono || null, descripcion || null, representanteId]
+  const { representanteId: linkId, nombres, apellidos, telefono, cedula, descripcion } = body;
+  const check = await pool.query(
+    `SELECT jr.id, jr.representante_id FROM sport_control.jugador_representante jr WHERE jr.id = $1 AND jr.jugador_id = $2`,
+    [linkId, jugadorId]
   );
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
+
+  try {
+    await pool.query(
+      `UPDATE sport_control.representantes SET nombres = $1, apellidos = $2, telefono = $3, cedula = $4 WHERE id = $5`,
+      [nombres, apellidos, telefono || null, cedula || null, check.rows[0].representante_id]
+    );
+  } catch (err) {
+    if (err.code === '23505') return { success: false, error: 'Esa cédula ya está registrada para otro representante.' };
+    throw err;
+  }
+  await pool.query(`UPDATE sport_control.jugador_representante SET descripcion = $1 WHERE id = $2`, [descripcion || null, linkId]);
   return { success: true };
 }
 
 async function eliminarRepresentante(pool, jugadorId, body) {
-  const { representanteId } = body;
-  const check = await pool.query(`SELECT id FROM sport_control.jugador_representantes WHERE id = $1 AND jugador_id = $2`, [representanteId, jugadorId]);
+  const { representanteId: linkId } = body;
+  const check = await pool.query(
+    `SELECT jr.id, jr.representante_id FROM sport_control.jugador_representante jr WHERE jr.id = $1 AND jr.jugador_id = $2`,
+    [linkId, jugadorId]
+  );
   if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
-  await pool.query(`DELETE FROM sport_control.jugador_representantes WHERE id = $1`, [representanteId]);
+  await pool.query(`DELETE FROM sport_control.jugador_representante WHERE id = $1`, [linkId]);
+  // Si esa persona no quedo vinculada a ningun otro jugador, se limpia el
+  // registro huerfano (no afecta a nadie mas, ya no representa a nadie).
+  await pool.query(
+    `DELETE FROM sport_control.representantes WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM sport_control.jugador_representante WHERE representante_id = $1)`,
+    [check.rows[0].representante_id]
+  );
   return { success: true };
 }
 
