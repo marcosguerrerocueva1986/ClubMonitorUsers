@@ -581,9 +581,29 @@ let pagoAdminState = { jugadorId: null, nombreJugador: '', pagoId: null, montoDi
 
 function fileToBase64Admin(file){
   return new Promise((resolve, reject) => {
+    const img = new Image();
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onload = (e) => { img.src = e.target.result; };
     reader.onerror = reject;
+    img.onload = () => {
+      // Las fotos directas de camara pueden pesar varios MB -- se
+      // redimensionan y re-comprimen para que quepan comodamente en el
+      // limite de tamaño de las funciones de Vercel.
+      // Comprimido especificamente para comprobantes/recibos/facturas
+      // (documentos de texto, no fotos generales) -- se puede bajar mas
+      // el tamaño sin perder legibilidad de los montos y numeros.
+      const maxDim = 1280;
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.65).split(',')[1]);
+    };
+    img.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
@@ -1695,7 +1715,7 @@ function renderSubtabEventoActual(){
   if(eventoSubtabActual==='resumen') cont.innerHTML = renderSubtabResumen();
   if(eventoSubtabActual==='fechas') cont.innerHTML = renderSubtabFechas();
   if(eventoSubtabActual==='presupuesto') cont.innerHTML = renderSubtabPresupuesto();
-  if(eventoSubtabActual==='cuotas') cont.innerHTML = renderSubtabCuotas();
+  if(eventoSubtabActual==='cuotas'){ cont.innerHTML = renderSubtabCuotas(); renderListaCuotasFiltrada(); }
   if(eventoSubtabActual==='movimientos') renderSubtabMovimientos();
 }
 
@@ -1776,29 +1796,57 @@ function renderSubtabPresupuesto(){
   `;
 }
 
+let eventoCuotaFiltroTexto = '';
+let eventoCuotaFiltroPendientes = false;
+
 function renderSubtabCuotas(){
   const data = eventoActualData;
   const totalCuotas = data.cuotas.reduce((s,c)=>s+Number(c.montoCuota),0);
   const totalCuotasPagado = data.cuotas.reduce((s,c)=>s+Number(c.montoPagado),0);
   return `
-    <p style="color:var(--chalk-dim);font-size:12px;margin-top:0">Los jugadores en esta lista son los inscritos oficiales del evento (para reportes). Los de refuerzo que no pagan se agregan igual, con cuota $0.</p>
+    <p style="color:var(--chalk-dim);font-size:12px;margin-top:0">Los jugadores en esta lista son los inscritos oficiales del evento (para reportes). Los de refuerzo que no pagan se agregan igual, con cuota $0. Los pagos se pueden registrar de a poco — cada movimiento se suma hasta cubrir la cuota completa.</p>
     <div class="card">
       <div class="card-title"><h3>Total: $${totalCuotas.toFixed(2)} · Pagado: $${totalCuotasPagado.toFixed(2)}</h3></div>
-      ${data.cuotas.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Nadie inscrito todavía.</p>' : data.cuotas.map(c=>`
-        <div class="field-line">
-          <div>
-            <div class="fl-value">${esc(c.jugador)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
-            <div class="fl-label">Cuota: $${c.montoCuota} · Pagado: $${c.montoPagado}</div>
-          </div>
-          <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
-        </div>
-      `).join('')}
     </div>
+    <div class="row-actions" style="margin:10px 0;flex-wrap:wrap">
+      <input id="filtroCuotaTexto" placeholder="Buscar jugador..." style="flex:2;min-width:140px" oninput="aplicarFiltroCuotas()" value="${esc(eventoCuotaFiltroTexto)}">
+      <label style="display:flex;align-items:center;gap:6px;flex:1;min-width:160px;font-size:13px;color:var(--chalk-dim)">
+        <input type="checkbox" id="filtroCuotaPendientes" onchange="aplicarFiltroCuotas()" ${eventoCuotaFiltroPendientes?'checked':''} style="width:18px;height:18px">
+        Solo con saldo pendiente
+      </label>
+    </div>
+    <div class="card" id="listaCuotasFiltrada"></div>
     <div class="row-actions" style="margin-top:10px">
       <button class="sm" onclick="abrirAsignarCuota()">+ Asignar a un jugador</button>
       <button class="sm primary" onclick="abrirAplicarCuotaTodos()">Aplicar a todos</button>
     </div>
   `;
+}
+
+function aplicarFiltroCuotas(){
+  eventoCuotaFiltroTexto = document.getElementById('filtroCuotaTexto').value;
+  eventoCuotaFiltroPendientes = document.getElementById('filtroCuotaPendientes').checked;
+  renderListaCuotasFiltrada();
+}
+
+function renderListaCuotasFiltrada(){
+  const el = document.getElementById('listaCuotasFiltrada');
+  const texto = eventoCuotaFiltroTexto.toLowerCase();
+  const cuotas = eventoActualData.cuotas.filter(c => {
+    if(texto && !c.jugador.toLowerCase().includes(texto)) return false;
+    if(eventoCuotaFiltroPendientes && Number(c.montoPagado) >= Number(c.montoCuota)) return false;
+    return true;
+  });
+  if(cuotas.length===0){ el.innerHTML = '<p style="color:var(--chalk-dim);font-size:13px">Nadie coincide con este filtro.</p>'; return; }
+  el.innerHTML = cuotas.map(c=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${esc(c.jugador)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
+        <div class="fl-label">Cuota: $${c.montoCuota} · Pagado: $${c.montoPagado} ${Number(c.montoPagado)>=Number(c.montoCuota) ? '✓' : '· Pendiente: $'+(Number(c.montoCuota)-Number(c.montoPagado)).toFixed(2)}</div>
+      </div>
+      <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
+    </div>
+  `).join('');
 }
 
 function movimientosFiltrados(){
@@ -2068,7 +2116,7 @@ async function abrirRegistrarMovimiento(){
     <input id="movDescripcion" placeholder="Opcional">
     <label>Foto de respaldo (comprobante, opcional)</label>
     <input type="file" id="movComprobanteFile" accept="image/*">
-    <button class="primary block" style="margin-top:16px" onclick="guardarMovimientoEvento()">Guardar</button>
+    <button class="primary block" id="btnGuardarMovimiento" style="margin-top:16px" onclick="guardarMovimientoEvento()">Guardar</button>
   `;
   abrirSheet(html);
 }
@@ -2084,17 +2132,29 @@ async function guardarMovimientoEvento(){
   const descripcion = document.getElementById('movDescripcion').value.trim();
   if(!monto){ toast('Escribe un monto válido', true); return; }
 
-  let comprobanteBase64 = null;
-  const fileInput = document.getElementById('movComprobanteFile');
-  if(fileInput.files && fileInput.files[0]){
-    comprobanteBase64 = await fileToBase64Admin(fileInput.files[0]);
-  }
+  const btn = document.getElementById('btnGuardarMovimiento');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
 
-  const res = await api('registrar_movimiento_evento_app', {eventoId: eventoActualId, eventoFechaId, tipoMovimientoId, monto, fecha, jugadorId, descripcion, comprobanteBase64});
-  if(res===null) return;
-  toast('Movimiento registrado');
-  cerrarSheet();
-  await recargarDetalleEvento();
+  try {
+    let comprobanteBase64 = null;
+    const fileInput = document.getElementById('movComprobanteFile');
+    if(fileInput.files && fileInput.files[0]){
+      btn.textContent = 'Procesando foto...';
+      comprobanteBase64 = await fileToBase64Admin(fileInput.files[0]);
+      btn.textContent = 'Guardando...';
+    }
+
+    const res = await api('registrar_movimiento_evento_app', {eventoId: eventoActualId, eventoFechaId, tipoMovimientoId, monto, fecha, jugadorId, descripcion, comprobanteBase64});
+    if(res===null){ btn.disabled = false; btn.textContent = 'Guardar'; return; }
+    toast('Movimiento registrado');
+    cerrarSheet();
+    await recargarDetalleEvento();
+  } catch(e) {
+    toast('No se pudo guardar (error al procesar la foto o al conectar). Intenta de nuevo.', true);
+    btn.disabled = false;
+    btn.textContent = 'Guardar';
+  }
 }
 
 async function abrirEditarMovimiento(m){
@@ -2126,7 +2186,7 @@ async function abrirEditarMovimiento(m){
     <input id="movEditDescripcion" value="${esc(m.descripcion||'')}">
     <label>Reemplazar foto de respaldo (opcional, deja vacío para mantener la actual)</label>
     <input type="file" id="movEditComprobanteFile" accept="image/*">
-    <button class="primary block" style="margin-top:16px" onclick="guardarEditarMovimiento(${m.id})">Guardar cambios</button>
+    <button class="primary block" id="btnGuardarEditarMovimiento" style="margin-top:16px" onclick="guardarEditarMovimiento(${m.id})">Guardar cambios</button>
   `;
   abrirSheet(html);
 }
@@ -2142,17 +2202,29 @@ async function guardarEditarMovimiento(movimientoId){
   const descripcion = document.getElementById('movEditDescripcion').value.trim();
   if(!monto){ toast('Escribe un monto válido', true); return; }
 
-  let comprobanteBase64 = null;
-  const fileInput = document.getElementById('movEditComprobanteFile');
-  if(fileInput.files && fileInput.files[0]){
-    comprobanteBase64 = await fileToBase64Admin(fileInput.files[0]);
-  }
+  const btn = document.getElementById('btnGuardarEditarMovimiento');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
 
-  const res = await api('editar_movimiento_evento_app', {movimientoId, eventoFechaId, tipoMovimientoId, monto, fecha, jugadorId, descripcion, comprobanteBase64});
-  if(res===null) return;
-  toast('Movimiento actualizado');
-  cerrarSheet();
-  await recargarDetalleEvento();
+  try {
+    let comprobanteBase64 = null;
+    const fileInput = document.getElementById('movEditComprobanteFile');
+    if(fileInput.files && fileInput.files[0]){
+      btn.textContent = 'Procesando foto...';
+      comprobanteBase64 = await fileToBase64Admin(fileInput.files[0]);
+      btn.textContent = 'Guardando...';
+    }
+
+    const res = await api('editar_movimiento_evento_app', {movimientoId, eventoFechaId, tipoMovimientoId, monto, fecha, jugadorId, descripcion, comprobanteBase64});
+    if(res===null){ btn.disabled = false; btn.textContent = 'Guardar cambios'; return; }
+    toast('Movimiento actualizado');
+    cerrarSheet();
+    await recargarDetalleEvento();
+  } catch(e) {
+    toast('No se pudo guardar (error al procesar la foto o al conectar). Intenta de nuevo.', true);
+    btn.disabled = false;
+    btn.textContent = 'Guardar cambios';
+  }
 }
 
 async function eliminarMovimientoEvento(movimientoId){
