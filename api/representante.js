@@ -18,6 +18,7 @@ const {
   verMisInvitados, listarMisEventos, verEventoPublico, verMovimientosEventoJugador,
   verComprobanteMovimientoJugador, actualizarMisDatos, analizarComprobante,
   registrarPagoComprobante, aplicarPago, aplicarPagoEvento, guardarSaldoFavor,
+  verDetallePartidoStatsJugador, verFotoPartidoAdmin,
 } = require('./jugador');
 
 async function actualizarPerfilRepresentante(pool, representanteId, body) {
@@ -201,6 +202,8 @@ module.exports = async (req, res) => {
     switch (accion) {
       case 'obtener_perfil_jugador_representante': return res.status(200).json(await obtenerMiPerfil(pool, jugadorId));
       case 'ver_partidos_jugador_representante': return res.status(200).json(await verMisPartidos(pool, jugadorId));
+      case 'ver_detalle_partido_stats_representante': return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
+      case 'ver_foto_partido_representante': return res.status(200).json(await verFotoPartidoAdmin(pool, body));
       case 'ver_deuda_jugador_representante': return res.status(200).json(await verPendientesPago(pool, jugadorId));
       case 'ver_qr_jugador_representante': return res.status(200).json(await verMiQr(pool, jugadorId, body.partidoId));
       case 'ver_pagos_jugador_representante': return res.status(200).json(await verMisUltimosPagos(pool, jugadorId));

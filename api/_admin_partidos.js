@@ -115,10 +115,10 @@ async function crearPartido(pool, config, body) {
   const fechaIso = `${yyyy}-${mm}-${dd}`;
 
   const ins = await pool.query(
-    `INSERT INTO sport_control.partidos (fecha, hora, lugar, alias, estado, tipo_partido_id, costo_inscripcion, requiere_pago_previo_qr, disciplina_id)
-     VALUES ($1::date, $2::time, $3, $4, 'confirmando', $5, $6, $7, $8)
+    `INSERT INTO sport_control.partidos (fecha, hora, lugar, alias, estado, tipo_partido_id, costo_inscripcion, requiere_pago_previo_qr, disciplina_id, evento_id, evento_fecha_id)
+     VALUES ($1::date, $2::time, $3, $4, 'confirmando', $5, $6, $7, $8, $9, $10)
      RETURNING id, alias, fecha, hora, lugar, estado`,
-    [fechaIso, body.hora, body.lugar, alias, tipo.id, costo, tipo.requiere_pago_previo_qr, disciplinaId]
+    [fechaIso, body.hora, body.lugar, alias, tipo.id, costo, tipo.requiere_pago_previo_qr, disciplinaId, body.eventoId || null, body.eventoFechaId || null]
   );
   const p = ins.rows[0];
   const titulo = p.alias ? p.alias : ('Partido #' + p.id);
@@ -156,12 +156,20 @@ async function editarPartido(pool, config, body) {
     r = await pool.query(`UPDATE sport_control.partidos SET lugar = $1 WHERE id = $2 RETURNING id, alias, fecha, hora, lugar`, [valor, id]);
   } else if (campo === 'ALIAS') {
     r = await pool.query(`UPDATE sport_control.partidos SET alias = $1 WHERE id = $2 RETURNING id, alias, fecha, hora, lugar`, [valor.trim().length === 0 ? null : valor, id]);
+  } else if (campo === 'EVENTO_ID') {
+    const eventoId = valor ? parseInt(valor) : null;
+    r = await pool.query(`UPDATE sport_control.partidos SET evento_id = $1, evento_fecha_id = NULL WHERE id = $2 RETURNING id, alias, fecha, hora, lugar`, [eventoId, id]);
+  } else if (campo === 'EVENTO_FECHA_ID') {
+    const eventoFechaId = valor ? parseInt(valor) : null;
+    r = await pool.query(`UPDATE sport_control.partidos SET evento_fecha_id = $1 WHERE id = $2 RETURNING id, alias, fecha, hora, lugar`, [eventoFechaId, id]);
   } else {
-    return { success: false, error: 'Campo invalido. Usa FECHA, HORA, LUGAR o ALIAS.' };
+    return { success: false, error: 'Campo invalido. Usa FECHA, HORA, LUGAR, ALIAS, EVENTO_ID o EVENTO_FECHA_ID.' };
   }
   const p = r.rows[0];
-  const titulo = p.alias ? p.alias : ('Partido #' + p.id);
-  await enviarWhatsAppGrupo(config, `✏️ El partido *${titulo}* fue actualizado:\n📅 ${fechaCorta(p.fecha)}  🕐 ${p.hora}\n📍 ${p.lugar}`);
+  if (campo !== 'EVENTO_ID' && campo !== 'EVENTO_FECHA_ID') {
+    const titulo = p.alias ? p.alias : ('Partido #' + p.id);
+    await enviarWhatsAppGrupo(config, `✏️ El partido *${titulo}* fue actualizado:\n📅 ${fechaCorta(p.fecha)}  🕐 ${p.hora}\n📍 ${p.lugar}`);
+  }
   return { success: true, data: p };
 }
 
@@ -193,8 +201,23 @@ async function listarTiposPartido(pool) {
   return { success: true, data: r.rows[0].tipos };
 }
 
+async function verVinculoEventoPartido(pool, body) {
+  const r = await pool.query(`SELECT evento_id, evento_fecha_id FROM sport_control.partidos WHERE id = $1`, [body.partidoId]);
+  return { success: true, data: r.rows[0] };
+}
+
+async function vincularPartidoEvento(pool, body) {
+  const { partidoId, eventoId, eventoFechaId } = body;
+  await pool.query(
+    `UPDATE sport_control.partidos SET evento_id = $1, evento_fecha_id = $2 WHERE id = $3`,
+    [eventoId || null, eventoFechaId || null, partidoId]
+  );
+  return { success: true };
+}
+
 module.exports = {
   getPool, cargarConfig, fechaCorta, enviarWhatsAppGrupo, enviarWhatsAppPrivado, enviarWhatsAppMedia,
   listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido,
   marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido,
+  verVinculoEventoPartido, vincularPartidoEvento,
 };

@@ -732,6 +732,8 @@ async function abrirCrearPartido(){
   }
   const disciplinas = await api('listar_disciplinas_activas_admin');
   if(disciplinas===null) return;
+  const eventosDisponibles = await api('listar_eventos_selector_app');
+  if(eventosDisponibles===null) return;
   const opts = tiposCache.map(t=>`<option value="${esc(t.nombre)}">${esc(t.nombre)}${t.costo_default ? ' ($'+t.costo_default+')' : ''}</option>`).join('');
   const selectorDisciplina = disciplinas.length > 1 ? `
     <label>Tipo de encuentro</label>
@@ -754,9 +756,30 @@ async function abrirCrearPartido(){
     <input id="nuevoAlias" placeholder="Clásico de agosto">
     <label>Costo de inscripción (opcional, deja vacío para usar el default del tipo)</label>
     <input id="nuevoCosto" placeholder="3" inputmode="decimal">
+    <label>¿Es parte de un evento? (opcional)</label>
+    <select id="nuevoEventoId" onchange="actualizarSelectorFechaNuevoPartido()">
+      <option value="">— Ninguno —</option>
+      ${eventosDisponibles.map(e=>`<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
+    </select>
+    <div id="nuevoSelectorFechaEvento"></div>
     <button class="primary block" style="margin-top:20px" onclick="guardarCrearPartido()">Crear partido</button>
   `;
   abrirSheet(html);
+}
+
+async function actualizarSelectorFechaNuevoPartido(){
+  const eventoId = document.getElementById('nuevoEventoId').value;
+  const cont = document.getElementById('nuevoSelectorFechaEvento');
+  if(!eventoId){ cont.innerHTML = ''; return; }
+  const fechas = await api('listar_fechas_evento_selector_app', {eventoId});
+  if(fechas===null || fechas.length===0){ cont.innerHTML = ''; return; }
+  cont.innerHTML = `
+    <label>¿Fecha específica del evento? (opcional)</label>
+    <select id="nuevoEventoFechaId">
+      <option value="">— General del evento —</option>
+      ${fechas.map(f=>`<option value="${f.id}">${esc(f.descripcion || fechaCorta(f.fecha))} — ${fechaCorta(f.fecha)}</option>`).join('')}
+    </select>
+  `;
 }
 
 async function guardarCrearPartido(){
@@ -771,6 +794,10 @@ async function guardarCrearPartido(){
   if(costo) body.costo = costo;
   const selectorDisciplina = document.getElementById('nuevoDisciplinaId');
   if(selectorDisciplina) body.disciplinaId = parseInt(selectorDisciplina.value);
+  const eventoIdVal = document.getElementById('nuevoEventoId').value;
+  if(eventoIdVal) body.eventoId = parseInt(eventoIdVal);
+  const eventoFechaSelect = document.getElementById('nuevoEventoFechaId');
+  if(eventoFechaSelect && eventoFechaSelect.value) body.eventoFechaId = parseInt(eventoFechaSelect.value);
   if(!body.fecha || !body.hora || !body.lugar){ toast('Completa fecha, hora y lugar', true); return; }
   const res = await api('crear_partido', body);
   if(res!==null){ toast('Partido creado y anunciado al grupo'); cerrarSheet(); cargarPartidos(); }
@@ -1830,10 +1857,60 @@ function abrirDetallesPartido(id, alias, estado){
       <button class="block" onclick="abrirEnviarQR(${id})">📲 Enviar QR a un jugador</button>
       <button class="block" onclick="confirmarMarcarEnJuego(${id})">🏃 Marcar en juego</button>
       <button class="block" onclick="abrirRevisionMultas(${id})">🧾 Revisar multas y pendientes</button>
+      <button class="block" onclick="abrirVincularEvento(${id})">🎒 Vincular a evento</button>
       <button class="primary block" onclick="confirmarFinalizar(${id})">🏁 Finalizar partido</button>
     </div>
   `;
   abrirSheet(html);
+}
+
+async function abrirVincularEvento(partidoId){
+  const [actual, eventos] = await Promise.all([
+    api('ver_vinculo_evento_partido_app', {partidoId}),
+    api('listar_eventos_selector_app'),
+  ]);
+  if(actual===null || eventos===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Vincular a evento</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Opcional. Útil si este partido es parte de un torneo o evento especial.</p>
+    <label>Evento</label>
+    <select id="vincEventoId" onchange="actualizarSelectorFechaVincular()">
+      <option value="">— Ninguno —</option>
+      ${eventos.map(e=>`<option value="${e.id}" ${actual.evento_id===e.id?'selected':''}>${esc(e.nombre)}</option>`).join('')}
+    </select>
+    <div id="vincSelectorFecha"></div>
+    <button class="primary block" style="margin-top:16px" onclick="guardarVincularEvento(${partidoId})">Guardar</button>
+  `;
+  abrirSheet(html);
+  if(actual.evento_id) await actualizarSelectorFechaVincular(actual.evento_fecha_id);
+}
+
+async function actualizarSelectorFechaVincular(fechaSeleccionadaActual){
+  const eventoId = document.getElementById('vincEventoId').value;
+  const cont = document.getElementById('vincSelectorFecha');
+  if(!eventoId){ cont.innerHTML = ''; return; }
+  const fechas = await api('listar_fechas_evento_selector_app', {eventoId});
+  if(fechas===null || fechas.length===0){ cont.innerHTML = ''; return; }
+  cont.innerHTML = `
+    <label>Fecha específica del evento (opcional)</label>
+    <select id="vincEventoFechaId">
+      <option value="">— General del evento —</option>
+      ${fechas.map(f=>`<option value="${f.id}" ${fechaSeleccionadaActual===f.id?'selected':''}>${esc(f.descripcion || fechaCorta(f.fecha))} — ${fechaCorta(f.fecha)}</option>`).join('')}
+    </select>
+  `;
+}
+
+async function guardarVincularEvento(partidoId){
+  const eventoIdVal = document.getElementById('vincEventoId').value;
+  const eventoFechaSelect = document.getElementById('vincEventoFechaId');
+  const res = await api('vincular_partido_evento_app', {
+    partidoId,
+    eventoId: eventoIdVal ? parseInt(eventoIdVal) : null,
+    eventoFechaId: eventoFechaSelect && eventoFechaSelect.value ? parseInt(eventoFechaSelect.value) : null,
+  });
+  if(res===null) return;
+  toast('Vínculo actualizado');
+  cerrarSheet();
 }
 
 async function cerrarConfirmaciones(id){

@@ -12,6 +12,7 @@
 //   ONESIGNAL_REST_API_KEY   - para el push de saldo a favor
 
 const { getPool } = require('./_db');
+const { verFotoPartidoAdmin } = require('./_admin_partido_estadisticas');
 
 // ============================================================
 // Helper: normaliza y valida el telefono (0983309625 -> 593983309625)
@@ -287,14 +288,53 @@ async function verMisPartidos(pool, jugadorId) {
   const r = await pool.query(
     `SELECT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado,
             COALESCE(cp.estado, 'sin_confirmar') AS "miEstado",
-            (SELECT COUNT(*) FROM sport_control.invitados_asistencia ia WHERE ia.partido_id = p.id AND ia.jugador_anfitrion_id = $1 AND ia.estado = 'confirmado') AS "cantidadInvitados"
+            (SELECT COUNT(*) FROM sport_control.invitados_asistencia ia WHERE ia.partido_id = p.id AND ia.jugador_anfitrion_id = $1 AND ia.estado = 'confirmado') AS "cantidadInvitados",
+            d.icono AS "disciplinaIcono",
+            (p.marcador_propio IS NOT NULL OR EXISTS(SELECT 1 FROM sport_control.partido_estadisticas pe WHERE pe.partido_id = p.id)) AS "tieneEstadisticas"
      FROM sport_control.partidos p
      LEFT JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.jugador_id = $1
-     WHERE p.estado IN ('confirmando', 'cerrado', 'en_juego') ORDER BY p.fecha ASC`,
+     LEFT JOIN sport_control.disciplinas d ON d.id = p.disciplina_id
+     WHERE p.estado IN ('confirmando', 'cerrado', 'en_juego', 'finalizado')
+     ORDER BY (p.estado = 'finalizado') ASC,
+              CASE WHEN p.estado != 'finalizado' THEN p.fecha END ASC,
+              CASE WHEN p.estado = 'finalizado' THEN p.fecha END DESC
+     LIMIT 30`,
     [jugadorId]
   );
   const data = r.rows.map((p) => ({ ...p, cantidadInvitados: Number(p.cantidadInvitados) }));
   return { success: true, data };
+}
+
+async function verDetallePartidoStatsJugador(pool, body) {
+  const { partidoId } = body;
+  const partidoR = await pool.query(
+    `SELECT p.id, p.alias, p.fecha, p.rival_nombre, p.marcador_propio, p.marcador_rival, p.notas,
+            (p.foto_equipo_base64 IS NOT NULL) AS "tieneFotoEquipo",
+            (p.foto_planilla_base64 IS NOT NULL) AS "tieneFotoPlanilla",
+            d.nombre AS "disciplinaNombre", d.icono AS "disciplinaIcono",
+            (jd.nombres || ' ' || jd.apellidos) AS "jugadorDestacado",
+            e.nombre AS "eventoNombre"
+     FROM sport_control.partidos p
+     LEFT JOIN sport_control.disciplinas d ON d.id = p.disciplina_id
+     LEFT JOIN sport_control.jugadores jd ON jd.id = p.jugador_destacado_id
+     LEFT JOIN sport_control.eventos e ON e.id = p.evento_id
+     WHERE p.id = $1`,
+    [partidoId]
+  );
+  const partido = partidoR.rows[0];
+  if (!partido) return { success: false, error: 'Partido no encontrado.' };
+
+  const valores = await pool.query(
+    `SELECT te.nombre, te.nivel, pe.valor, j.nombres || ' ' || j.apellidos AS jugador
+     FROM sport_control.partido_estadisticas pe
+     JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
+     LEFT JOIN sport_control.jugadores j ON j.id = pe.jugador_id
+     WHERE pe.partido_id = $1 AND pe.valor != 0
+     ORDER BY te.orden, j.nombres`,
+    [partidoId]
+  );
+
+  return { success: true, data: { partido, valores: valores.rows } };
 }
 
 async function verPendientesPago(pool, jugadorId) {
@@ -758,6 +798,8 @@ module.exports = async (req, res) => {
     switch (accion) {
       case 'obtener_mi_perfil_jugador': return res.status(200).json(await obtenerMiPerfil(pool, jugadorId));
       case 'ver_mis_partidos_jugador': return res.status(200).json(await verMisPartidos(pool, jugadorId));
+      case 'ver_detalle_partido_stats_jugador': return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
+      case 'ver_foto_partido_jugador': return res.status(200).json(await verFotoPartidoAdmin(pool, body));
       case 'ver_pendientes_pago_jugador': return res.status(200).json(await verPendientesPago(pool, jugadorId));
       case 'ver_mi_qr_jugador': return res.status(200).json(await verMiQr(pool, jugadorId, body.partidoId));
       case 'actualizar_mis_datos_jugador': return res.status(200).json(await actualizarMisDatos(pool, jugadorId, body));
@@ -804,6 +846,8 @@ module.exports = async (req, res) => {
 // ============================================================
 module.exports.obtenerMiPerfil = obtenerMiPerfil;
 module.exports.verMisPartidos = verMisPartidos;
+module.exports.verDetallePartidoStatsJugador = verDetallePartidoStatsJugador;
+module.exports.verFotoPartidoAdmin = verFotoPartidoAdmin;
 module.exports.verPendientesPago = verPendientesPago;
 module.exports.verMiQr = verMiQr;
 module.exports.verMisUltimosPagos = verMisUltimosPagos;

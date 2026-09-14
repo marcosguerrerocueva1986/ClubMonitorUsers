@@ -459,16 +459,88 @@ async function cargarPartidosRep(){
   cont.innerHTML = partidos.map(p=>`
     <div class="card">
       <div class="card-title">
-        <h3>${p.alias ? esc(p.alias) : 'Partido'}</h3>
-        <span class="badge ${p.miEstado}">${p.miEstado==='confirmado' ? 'Va' : (p.miEstado==='cancelado' ? 'No va' : 'Sin confirmar')}</span>
+        <h3>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${p.alias ? esc(p.alias) : 'Partido'}</h3>
+        <span class="badge ${p.estado==='finalizado' ? 'finalizado' : p.miEstado}">${p.estado==='finalizado' ? 'Finalizado' : (p.miEstado==='confirmado' ? 'Va' : (p.miEstado==='cancelado' ? 'No va' : 'Sin confirmar'))}</span>
       </div>
       <div class="meta">
         📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
         📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
       </div>
-      ${p.miEstado==='confirmado' ? `<button class="sm primary" onclick="verQrRep(${p.id})">📲 Ver código QR</button>` : ''}
+      <div class="row-actions">
+        ${p.estado!=='finalizado' && p.miEstado==='confirmado' ? `<button class="sm primary" onclick="verQrRep(${p.id})">📲 Ver código QR</button>` : ''}
+        ${p.tieneEstadisticas ? `<button class="sm primary" onclick="verEstadisticasPartidoRep(${p.id})">📊 Ver estadísticas</button>` : ''}
+      </div>
     </div>
   `).join('');
+}
+
+async function verEstadisticasPartidoRep(partidoId){
+  const data = await api('ver_detalle_partido_stats_representante', {partidoId});
+  if(data===null) return;
+  mostrarEstadisticasPartidoJugador(data, 'representante');
+}
+
+function mostrarEstadisticasPartidoJugador(data, contexto){
+  const p = data.partido;
+  const grupos = {};
+  data.valores.forEach(v => {
+    const clave = v.jugador || '__equipo__';
+    if(!grupos[clave]) grupos[clave] = [];
+    grupos[clave].push(v);
+  });
+  const equipoStats = grupos['__equipo__'] || [];
+  const jugadorStats = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
+
+  const html = `
+    <div class="sheet-head"><h2>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${p.eventoNombre ? `<p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">🎒 Parte de: ${esc(p.eventoNombre)}</p>` : ''}
+    ${p.marcador_propio!==null && p.marcador_rival!==null ? `
+      <div class="card" style="text-align:center">
+        <div class="fl-label">${fechaCorta(p.fecha)}</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;margin:8px 0">
+          Nosotros ${p.marcador_propio} — ${p.marcador_rival} ${esc(p.rival_nombre||'Rival')}
+        </div>
+      </div>
+    ` : ''}
+    ${p.jugadorDestacado ? `<div class="ok-card">⭐ Jugador destacado: ${esc(p.jugadorDestacado)}</div>` : ''}
+    ${(p.tieneFotoEquipo || p.tieneFotoPlanilla) ? `
+      <div class="row-actions" style="margin-bottom:12px">
+        ${p.tieneFotoEquipo ? `<button class="sm" onclick="verFotoPartidoRep(${p.id}, 'equipo')">📷 Foto del equipo</button>` : ''}
+        ${p.tieneFotoPlanilla ? `<button class="sm" onclick="verFotoPartidoRep(${p.id}, 'planilla')">📋 Planilla de control</button>` : ''}
+      </div>
+    ` : ''}
+    ${equipoStats.length>0 ? `
+      <div class="card">
+        <div class="card-title"><h3>Estadísticas del equipo</h3></div>
+        ${equipoStats.map(v=>`<div class="field-line"><div class="fl-label">${esc(v.nombre)}</div><div class="fl-value">${v.valor}</div></div>`).join('')}
+      </div>
+    ` : ''}
+    ${jugadorStats.length>0 ? `
+      <div class="card">
+        <div class="card-title"><h3>Estadísticas por jugador</h3></div>
+        ${jugadorStats.map(([nombre, stats])=>`
+          <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+            <div class="fl-value" style="margin-bottom:4px">${esc(nombre)}</div>
+            <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    ${p.notas ? `<div class="card"><div class="card-title"><h3>Notas</h3></div><p style="font-size:14px;color:var(--chalk-dim);white-space:pre-wrap">${esc(p.notas)}</p></div>` : ''}
+    ${equipoStats.length===0 && jugadorStats.length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function verFotoPartidoRep(partidoId, tipo){
+  const res = await api('ver_foto_partido_representante', {partidoId, tipo});
+  if(res===null) return;
+  if(!res.foto){ toast('No hay foto', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>${tipo==='planilla'?'Planilla de control':'Foto del equipo'}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.foto}" style="width:100%;border-radius:12px">
+  `;
+  abrirSheet(html);
 }
 
 async function verQrRep(partidoId){

@@ -255,6 +255,19 @@ async function toggleTipoMovimientoEvento(pool, body) {
   return { success: true };
 }
 
+async function listarEventosSelector(pool) {
+  const r = await pool.query(`SELECT id, nombre FROM sport_control.eventos WHERE estado != 'cancelado' ORDER BY creado_en DESC`);
+  return { success: true, data: r.rows };
+}
+
+async function listarFechasEventoSelector(pool, body) {
+  const r = await pool.query(
+    `SELECT id, fecha, lugar, descripcion FROM sport_control.evento_fechas WHERE evento_id = $1 ORDER BY fecha ASC`,
+    [body.eventoId]
+  );
+  return { success: true, data: r.rows };
+}
+
 module.exports = {
   crearEvento, editarEvento, listarEventos,
   crearEventoFecha, editarEventoFecha, eliminarEventoFecha,
@@ -262,4 +275,5 @@ module.exports = {
   asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador,
   registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento,
   listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento,
+  listarEventosSelector, listarFechasEventoSelector,
 };
