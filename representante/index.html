@@ -110,9 +110,11 @@ window._configClubPromise.then(cfg => {
   <div class="login-card">
     <div class="mark">👪</div>
     <h1>Mi Club</h1>
-    <p id="loginSubtitle">Ingresa tu cédula (la misma con la que te registró tu hijo/a en la app)</p>
-    <input type="tel" id="loginCedula" placeholder="Tu cédula" inputmode="numeric">
-    <button class="primary block" onclick="intentarLoginRepresentante()">Ingresar</button>
+    <div id="loginCardContent">
+      <p id="loginSubtitle">Ingresa tu cédula (la misma con la que te registró tu hijo/a en la app)</p>
+      <input type="tel" id="loginCedula" placeholder="Tu cédula" inputmode="numeric">
+      <button class="primary block" onclick="intentarLoginRepresentante()">Ingresar</button>
+    </div>
   </div>
 </div>
 
@@ -238,18 +240,105 @@ async function api(accion, extra){
 }
 
 /* ---------- Login ---------- */
+let cedulaLoginPendiente = '';
+let claveTemporalPendiente = '';
+
 async function intentarLoginRepresentante(){
   const cedula = document.getElementById('loginCedula').value.trim();
   if(!cedula){ toast('Ingresa tu cédula', true); return; }
   const res = await api('login_representante', { cedula });
   if(res===null) return;
   if(!res.registrado){
-    toast('No encontramos esa cédula. Pídele a tu hijo/a que te registre desde su app (Perfil → Mis representantes).', true);
+    toast('No encontramos esa cédula. Pídele a tu hijo/a que te registre desde su app (Perfil → Mis representantes), o consulta con el club.', true);
+    return;
+  }
+  cedulaLoginPendiente = cedula;
+  if(res.tieneClave){
+    mostrarPantallaIngresarClave();
+  } else {
+    mostrarPantallaCrearClave();
+  }
+}
+
+function mostrarPantallaIngresarClave(){
+  document.getElementById('loginCardContent').innerHTML = `
+    <p>Ingresa tu clave de seguridad</p>
+    <input type="password" id="loginClave" placeholder="Clave de 6 dígitos" inputmode="numeric" maxlength="6">
+    <button class="primary block" onclick="verificarClaveLogin()">Ingresar</button>
+    <button class="block" style="margin-top:8px" onclick="volverAIngresarCedula()">← Usar otra cédula</button>
+  `;
+}
+
+function mostrarPantallaCrearClave(){
+  document.getElementById('loginCardContent').innerHTML = `
+    <p>Es tu primera vez aquí. Crea una clave de seguridad de 6 números — la vas a necesitar cada vez que entres.</p>
+    <input type="password" id="loginClaveNueva" placeholder="Crea tu clave (6 dígitos)" inputmode="numeric" maxlength="6">
+    <input type="password" id="loginClaveNuevaConfirmar" placeholder="Repite la clave" inputmode="numeric" maxlength="6">
+    <button class="primary block" onclick="crearClaveLogin()">Crear clave y entrar</button>
+    <button class="block" style="margin-top:8px" onclick="volverAIngresarCedula()">← Usar otra cédula</button>
+  `;
+}
+
+function volverAIngresarCedula(){
+  cedulaLoginPendiente = '';
+  document.getElementById('loginCardContent').innerHTML = `
+    <p id="loginSubtitle">Ingresa tu cédula (la misma con la que te registró tu hijo/a en la app)</p>
+    <input type="tel" id="loginCedula" placeholder="Tu cédula" inputmode="numeric">
+    <button class="primary block" onclick="intentarLoginRepresentante()">Ingresar</button>
+  `;
+}
+
+async function crearClaveLogin(){
+  const clave = document.getElementById('loginClaveNueva').value.trim();
+  const confirmar = document.getElementById('loginClaveNuevaConfirmar').value.trim();
+  if(!/^\d{6}$/.test(clave)){ toast('La clave debe ser de 6 números', true); return; }
+  if(clave !== confirmar){ toast('Las claves no coinciden', true); return; }
+  const res = await api('crear_clave_representante', { cedula: cedulaLoginPendiente, clave });
+  if(res===null) return;
+  TOKEN = res.token;
+  safeSetRep('representante_token', TOKEN);
+  await entrarAppRepresentante(res.nombres);
+}
+
+async function verificarClaveLogin(){
+  const clave = document.getElementById('loginClave').value.trim();
+  if(!/^\d{6}$/.test(clave)){ toast('Ingresa los 6 dígitos de tu clave', true); return; }
+  const res = await api('verificar_clave_representante', { cedula: cedulaLoginPendiente, clave });
+  if(res===null) return;
+  if(res.debeCambiarClave){
+    claveTemporalPendiente = clave;
+    mostrarPantallaCambiarClaveObligatorio();
     return;
   }
   TOKEN = res.token;
   safeSetRep('representante_token', TOKEN);
   await entrarAppRepresentante(res.nombres);
+}
+
+function mostrarPantallaCambiarClaveObligatorio(){
+  document.getElementById('loginCardContent').innerHTML = `
+    <p>Esa era tu clave temporal. Ahora crea tu clave definitiva (6 números).</p>
+    <input type="password" id="loginClaveDefinitiva" placeholder="Nueva clave (6 dígitos)" inputmode="numeric" maxlength="6">
+    <input type="password" id="loginClaveDefinitivaConfirmar" placeholder="Repite la clave" inputmode="numeric" maxlength="6">
+    <button class="primary block" onclick="confirmarCambioClaveObligatorio()">Guardar y entrar</button>
+  `;
+}
+
+async function confirmarCambioClaveObligatorio(){
+  const claveNueva = document.getElementById('loginClaveDefinitiva').value.trim();
+  const confirmar = document.getElementById('loginClaveDefinitivaConfirmar').value.trim();
+  if(!/^\d{6}$/.test(claveNueva)){ toast('La clave debe ser de 6 números', true); return; }
+  if(claveNueva !== confirmar){ toast('Las claves no coinciden', true); return; }
+  // Para cambiar la clave se necesita sesion -- se hace login con la
+  // clave temporal primero (silencioso), y de inmediato se cambia.
+  const login = await api('verificar_clave_representante', { cedula: cedulaLoginPendiente, clave: claveTemporalPendiente });
+  if(login===null) return;
+  TOKEN = login.token;
+  safeSetRep('representante_token', TOKEN);
+  const res = await api('cambiar_clave_representante', { claveActual: claveTemporalPendiente, claveNueva });
+  if(res===null) return;
+  toast('¡Clave actualizada!');
+  await entrarAppRepresentante(login.nombres);
 }
 
 if(TOKEN){
@@ -916,6 +1005,7 @@ async function cargarPerfilRep(){
       <button class="primary block" style="margin-top:10px" onclick="guardarMiPerfilRep()">Guardar mis datos</button>
     </div>
     <button class="block" onclick="abrirSelectorTemaRep()">🎨 Estilo de la app</button>
+    <button class="block" onclick="abrirCambiarClaveRep()">🔒 Cambiar mi clave de seguridad</button>
     <button class="block danger" onclick="cerrarSesionRep()">Cerrar sesión en este dispositivo</button>
   `;
 }
@@ -947,6 +1037,32 @@ function cerrarSesionRep(){
   if(!confirm('¿Cerrar sesión en este dispositivo?')) return;
   safeSetRep('representante_token', '');
   location.reload();
+}
+
+function abrirCambiarClaveRep(){
+  const html = `
+    <div class="sheet-head"><h2>Cambiar mi clave</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Clave actual</label>
+    <input type="password" id="claveActualRep" inputmode="numeric" maxlength="6">
+    <label>Clave nueva (6 dígitos)</label>
+    <input type="password" id="claveNuevaRep" inputmode="numeric" maxlength="6">
+    <label>Repite la clave nueva</label>
+    <input type="password" id="claveNuevaConfirmarRep" inputmode="numeric" maxlength="6">
+    <button class="primary block" style="margin-top:12px" onclick="guardarCambioClaveRep()">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCambioClaveRep(){
+  const claveActual = document.getElementById('claveActualRep').value.trim();
+  const claveNueva = document.getElementById('claveNuevaRep').value.trim();
+  const confirmar = document.getElementById('claveNuevaConfirmarRep').value.trim();
+  if(!/^\d{6}$/.test(claveNueva)){ toast('La clave nueva debe ser de 6 números', true); return; }
+  if(claveNueva !== confirmar){ toast('Las claves no coinciden', true); return; }
+  const res = await api('cambiar_clave_representante', { claveActual, claveNueva });
+  if(res===null) return;
+  toast('Clave actualizada');
+  cerrarSheet();
 }
 
 /* ---------- Temas (igual patron que las otras apps) ---------- */

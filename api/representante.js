@@ -49,13 +49,85 @@ async function crearSesionRepresentante(pool, representanteId) {
   return r.rows[0].token;
 }
 
+const bcrypt = require('bcryptjs');
+const MAX_INTENTOS = 5;
+const MINUTOS_BLOQUEO = 15;
+
+// Paso 1: solo cedula. Dice si existe, y si ya tiene clave creada o no.
 async function loginRepresentante(pool, body) {
   const cedula = String(body.cedula || '').trim();
   if (!cedula) return { success: false, error: 'Ingresa tu cédula.' };
-  const r = await pool.query(`SELECT id, nombres FROM sport_control.representantes WHERE cedula = $1`, [cedula]);
+  const r = await pool.query(`SELECT id, nombres, clave_hash, bloqueado_hasta FROM sport_control.representantes WHERE cedula = $1`, [cedula]);
   if (!r.rows[0]) return { success: true, data: { registrado: false } };
+  if (r.rows[0].bloqueado_hasta && new Date(r.rows[0].bloqueado_hasta) > new Date()) {
+    return { success: false, error: 'Demasiados intentos fallidos. Intenta de nuevo en unos minutos, o pide al Admin que te resetee la clave.' };
+  }
+  return { success: true, data: { registrado: true, tieneClave: !!r.rows[0].clave_hash, nombres: r.rows[0].nombres } };
+}
+
+// Paso 2a: primera vez -- crea su clave (no existia clave_hash todavia).
+async function crearClaveRepresentante(pool, body) {
+  const cedula = String(body.cedula || '').trim();
+  const clave = String(body.clave || '').trim();
+  if (!/^\d{6}$/.test(clave)) return { success: false, error: 'La clave debe ser de exactamente 6 números.' };
+  const r = await pool.query(`SELECT id, nombres, clave_hash FROM sport_control.representantes WHERE cedula = $1`, [cedula]);
+  if (!r.rows[0]) return { success: false, error: 'No se encontró esa cédula.' };
+  if (r.rows[0].clave_hash) return { success: false, error: 'Ya tienes una clave creada. Ingrésala para entrar.' };
+  const hash = await bcrypt.hash(clave, 10);
+  await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, r.rows[0].id]);
   const token = await crearSesionRepresentante(pool, r.rows[0].id);
-  return { success: true, data: { registrado: true, token, nombres: r.rows[0].nombres } };
+  return { success: true, data: { token, nombres: r.rows[0].nombres } };
+}
+
+// Paso 2b: ya tenia clave -- la verifica.
+async function verificarClaveRepresentante(pool, body) {
+  const cedula = String(body.cedula || '').trim();
+  const clave = String(body.clave || '').trim();
+  const r = await pool.query(
+    `SELECT id, nombres, clave_hash, debe_cambiar_clave, clave_reset_expira, intentos_fallidos, bloqueado_hasta
+     FROM sport_control.representantes WHERE cedula = $1`,
+    [cedula]
+  );
+  if (!r.rows[0]) return { success: false, error: 'No se encontró esa cédula.' };
+  const rep = r.rows[0];
+
+  if (rep.bloqueado_hasta && new Date(rep.bloqueado_hasta) > new Date()) {
+    return { success: false, error: 'Demasiados intentos fallidos. Intenta de nuevo en unos minutos, o pide al Admin que te resetee la clave.' };
+  }
+  if (rep.debe_cambiar_clave && rep.clave_reset_expira && new Date(rep.clave_reset_expira) < new Date()) {
+    return { success: false, error: 'Tu clave temporal ya venció. Pídele al Admin que te genere una nueva.' };
+  }
+
+  const coincide = rep.clave_hash && await bcrypt.compare(clave, rep.clave_hash);
+  if (!coincide) {
+    const intentos = rep.intentos_fallidos + 1;
+    if (intentos >= MAX_INTENTOS) {
+      await pool.query(
+        `UPDATE sport_control.representantes SET intentos_fallidos = 0, bloqueado_hasta = NOW() + ($1 || ' minutes')::interval WHERE id = $2`,
+        [MINUTOS_BLOQUEO, rep.id]
+      );
+      return { success: false, error: `Demasiados intentos fallidos. Espera ${MINUTOS_BLOQUEO} minutos o pide al Admin que te resetee la clave.` };
+    }
+    await pool.query(`UPDATE sport_control.representantes SET intentos_fallidos = $1 WHERE id = $2`, [intentos, rep.id]);
+    return { success: false, error: 'Clave incorrecta.' };
+  }
+
+  await pool.query(`UPDATE sport_control.representantes SET intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1`, [rep.id]);
+  const token = await crearSesionRepresentante(pool, rep.id);
+  return { success: true, data: { token, nombres: rep.nombres, debeCambiarClave: rep.debe_cambiar_clave } };
+}
+
+// Cambiar clave estando logeado (uso normal, o para completar un reseteo).
+async function cambiarClaveRepresentante(pool, representanteId, body) {
+  const claveActual = String(body.claveActual || '').trim();
+  const claveNueva = String(body.claveNueva || '').trim();
+  if (!/^\d{6}$/.test(claveNueva)) return { success: false, error: 'La clave nueva debe ser de exactamente 6 números.' };
+  const r = await pool.query(`SELECT clave_hash FROM sport_control.representantes WHERE id = $1`, [representanteId]);
+  const coincide = r.rows[0] && r.rows[0].clave_hash && await bcrypt.compare(claveActual, r.rows[0].clave_hash);
+  if (!coincide) return { success: false, error: 'Tu clave actual no es correcta.' };
+  const hash = await bcrypt.hash(claveNueva, 10);
+  await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, representanteId]);
+  return { success: true };
 }
 
 async function listarMisJugadoresRepresentante(pool, representanteId) {
@@ -89,6 +161,8 @@ module.exports = async (req, res) => {
 
   try {
     if (accion === 'login_representante') return res.status(200).json(await loginRepresentante(pool, body));
+    if (accion === 'crear_clave_representante') return res.status(200).json(await crearClaveRepresentante(pool, body));
+    if (accion === 'verificar_clave_representante') return res.status(200).json(await verificarClaveRepresentante(pool, body));
 
     const representanteId = await resolverSesionRepresentante(pool, token);
     if (!representanteId) return res.status(200).json({ success: false, error: 'Sesion invalida o expirada' });
@@ -98,6 +172,9 @@ module.exports = async (req, res) => {
     }
     if (accion === 'actualizar_perfil_representante') {
       return res.status(200).json(await actualizarPerfilRepresentante(pool, representanteId, body));
+    }
+    if (accion === 'cambiar_clave_representante') {
+      return res.status(200).json(await cambiarClaveRepresentante(pool, representanteId, body));
     }
     if (accion === 'obtener_perfil_representante') {
       return res.status(200).json(await obtenerPerfilRepresentante(pool, representanteId));
@@ -138,6 +215,7 @@ module.exports = async (req, res) => {
     }
   } catch (err) {
     console.error(`Error en /api/representante (accion=${accion}):`, err);
-    return res.status(200).json({ success: false, error: 'Error interno del servidor' });
+    // Temporal: devolvemos el mensaje real del error para diagnosticar.
+    return res.status(200).json({ success: false, error: 'Error interno: ' + (err && err.message ? err.message : String(err)) });
   }
 };

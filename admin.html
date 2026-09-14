@@ -993,8 +993,9 @@ function mostrarRepresentantesJugadorAdmin(data){
             <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)} ${!r.cedula ? '<span class="badge cancelado">Falta cédula</span>' : ''}</div>
             <div class="fl-label">${esc(r.cedula||'Sin cédula')} · ${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
+          <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
             <button class="sm" onclick='abrirEditarRepresentanteAdmin(${JSON.stringify(r).replace(/"/g,"&quot;")})'>Editar</button>
+            <button class="sm" onclick="resetearClaveRepresentanteAdminAccion(${r.representanteId}, ${JSON.stringify(r.nombres).replace(/"/g,'&quot;')})">🔒 Resetear clave</button>
             <button class="sm danger" onclick="eliminarRepresentanteAdminAccion(${r.id})">Quitar</button>
           </div>
         </div>
@@ -1066,6 +1067,24 @@ async function eliminarRepresentanteAdminAccion(linkId){
   if(res===null) return;
   toast('Representante quitado');
   abrirRepresentantesJugadorAdmin(representantesAdminState.jugadorId, representantesAdminState.nombreJugador);
+}
+
+async function resetearClaveRepresentanteAdminAccion(representanteId, nombres){
+  if(!confirm('¿Generar una clave temporal nueva para '+nombres+'? Su clave actual dejará de funcionar de inmediato.')) return;
+  const res = await api('resetear_clave_representante_admin', { representanteId });
+  if(res===null) return;
+  const telefonoLimpio = (res.telefono || '').replace(/\D/g,'');
+  const linkWhatsapp = telefonoLimpio ? `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(res.mensajeWhatsapp)}` : null;
+  const html = `
+    <div class="sheet-head"><h2>Clave temporal generada</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">CLAVE TEMPORAL (válida 24 horas, un solo uso)</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:36px;color:var(--gold);font-weight:700;letter-spacing:4px;margin:8px 0">${res.claveTemporal}</div>
+    </div>
+    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.6">Compártesela a ${esc(nombres)}. Al ingresar con esta clave, la app le va a pedir de inmediato crear su clave definitiva.</p>
+    ${linkWhatsapp ? `<button class="primary block" onclick="window.open('${linkWhatsapp}','_blank')">📤 Enviar por WhatsApp</button>` : '<p class="meta">No tiene teléfono registrado — comparte la clave manualmente.</p>'}
+  `;
+  abrirSheet(html);
 }
 
 async function verPagosJugador(jugadorId, nombre){
@@ -1273,6 +1292,21 @@ async function cargarParametros(){
       <p class="meta">${p.representantes_habilitado ? 'Los jugadores YA PUEDEN registrar a sus representantes en su Perfil.' : 'Oculto por ahora. Actívalo si el club trabaja con menores de edad y necesitas datos de contacto de sus representantes.'}</p>
       <button class="block ${p.representantes_habilitado ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleRepresentantes(${!p.representantes_habilitado})">${p.representantes_habilitado ? 'Ocultar de los jugadores' : 'Activar para los jugadores'}</button>
     </div>
+    <div class="card">
+      <div class="card-title"><h3>👨‍👩‍👧 Mis invitados exentos</h3></div>
+      <p class="meta">${p.mis_exentos_habilitado_jugador ? 'Visible en el Perfil del jugador.' : 'Oculto para los jugadores.'}</p>
+      <button class="block ${p.mis_exentos_habilitado_jugador ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleMisExentos(${!p.mis_exentos_habilitado_jugador})">${p.mis_exentos_habilitado_jugador ? 'Ocultar' : 'Mostrar'}</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>💳 Menú "Mi Cuenta"</h3></div>
+      <p class="meta">${p.mi_cuenta_habilitado_jugador ? 'Los jugadores ven su deuda y pueden subir comprobantes.' : 'Oculto — los jugadores no ven esta pestaña.'}</p>
+      <button class="block ${p.mi_cuenta_habilitado_jugador ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleMiCuenta(${!p.mi_cuenta_habilitado_jugador})">${p.mi_cuenta_habilitado_jugador ? 'Ocultar' : 'Mostrar'}</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>🧾 Movimientos de Eventos (jugador)</h3></div>
+      <p class="meta">${p.movimientos_evento_solo_propios ? 'Cada jugador ve SOLO sus propios movimientos.' : 'Transparencia total: cada jugador ve los movimientos de todos (el representante siempre ve todo, esto no lo afecta).'}</p>
+      <button class="block ${p.movimientos_evento_solo_propios ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleMovimientosSoloPropios(${!p.movimientos_evento_solo_propios})">${p.movimientos_evento_solo_propios ? 'Volver a mostrar todos' : 'Restringir a solo propios'}</button>
+    </div>
     <div class="card">` + campos.map(c=>`
     <div class="field-line">
       <div>
@@ -1296,6 +1330,27 @@ async function toggleRepresentantes(habilitado){
   const res = await api('toggle_representantes_app', {habilitado});
   if(res===null) return;
   toast(habilitado ? 'Representantes activado' : 'Representantes ocultado');
+  cargarParametros();
+}
+
+async function toggleMisExentos(habilitado){
+  const res = await api('toggle_mis_exentos_jugador_app', {habilitado});
+  if(res===null) return;
+  toast(habilitado ? 'Mostrando "Mis invitados exentos"' : 'Ocultado "Mis invitados exentos"');
+  cargarParametros();
+}
+
+async function toggleMiCuenta(habilitado){
+  const res = await api('toggle_mi_cuenta_jugador_app', {habilitado});
+  if(res===null) return;
+  toast(habilitado ? 'Mostrando "Mi Cuenta"' : 'Ocultado "Mi Cuenta"');
+  cargarParametros();
+}
+
+async function toggleMovimientosSoloPropios(habilitado){
+  const res = await api('toggle_movimientos_solo_propios_app', {habilitado});
+  if(res===null) return;
+  toast(habilitado ? 'Ahora cada jugador ve solo sus propios movimientos' : 'Ahora los jugadores ven todos los movimientos');
   cargarParametros();
 }
 

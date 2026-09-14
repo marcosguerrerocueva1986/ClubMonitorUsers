@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "jimp": "^0.22.12",
     "pg": "^8.23.0"
   }

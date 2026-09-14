@@ -238,8 +238,34 @@ async function eliminarRepresentanteAdmin(pool, body) {
   return { success: true };
 }
 
+async function resetearClaveRepresentanteAdmin(pool, body) {
+  const bcrypt = require('bcryptjs');
+  const { representanteId } = body;
+  const check = await pool.query(`SELECT id, nombres, apellidos, telefono FROM sport_control.representantes WHERE id = $1`, [representanteId]);
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
+
+  // Clave temporal: 6 digitos, solo numeros. Se muestra UNA sola vez al
+  // Admin (en texto plano, para que la comparta) -- nunca se vuelve a
+  // poder ver despues de este momento, solo queda su hash guardado.
+  const claveTemporal = String(Math.floor(100000 + Math.random() * 900000));
+  const hash = await bcrypt.hash(claveTemporal, 10);
+  await pool.query(
+    `UPDATE sport_control.representantes
+     SET clave_hash = $1, debe_cambiar_clave = true, clave_reset_expira = NOW() + INTERVAL '24 hours',
+         intentos_fallidos = 0, bloqueado_hasta = NULL
+     WHERE id = $2`,
+    [hash, representanteId]
+  );
+
+  const rep = check.rows[0];
+  const mensajeWhatsapp = `Hola ${rep.nombres}, tu clave temporal para entrar a la app del club es: ${claveTemporal}\n\nEs válida por 24 horas y solo funciona una vez -- al ingresar con ella, la app te va a pedir crear tu clave definitiva.`;
+
+  return { success: true, data: { claveTemporal, telefono: rep.telefono, mensajeWhatsapp } };
+}
+
 module.exports = {
   listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual,
   verConfirmadosPartido, verCheckinPartido, verInvitadosPartido,
   listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin,
+  resetearClaveRepresentanteAdmin,
 };
