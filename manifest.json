@@ -8,9 +8,9 @@
   "background_color": "#14231A",
   "theme_color": "#14231A",
   "icons": [
-    { "src": "/api/logo", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/api/logo", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/api/logo", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/api/logo", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/api/logo?badge=jugador", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/api/logo?badge=jugador", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/api/logo?badge=jugador", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/api/logo?badge=jugador", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

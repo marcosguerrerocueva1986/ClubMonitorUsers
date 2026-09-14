@@ -5,19 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Mi Club</title>
 <link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/api/logo" type="image/png">
-<link rel="apple-touch-icon" href="/api/logo">
+<link rel="icon" href="/api/logo?badge=jugador" type="image/png">
+<link rel="apple-touch-icon" href="/api/logo?badge=jugador">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mi Club">
 <meta name="theme-color" content="#14231A">
+<script>
+window._configClubPromise = fetch('/api/config').then(r=>r.json()).catch(()=>({onesignalAppId:null, iconoDeporte:'⚽'}));
+window._iconoDeporteActual = '⚽';
+window._configClubPromise.then(cfg => {
+  window._iconoDeporteActual = cfg.iconoDeporte || '⚽';
+  document.querySelectorAll('.ic-deporte').forEach(el => el.textContent = window._iconoDeporteActual);
+});
+</script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function(OneSignal) {
     try {
-      const res = await fetch('/api/config');
-      const cfg = await res.json();
+      const cfg = await window._configClubPromise;
       if (cfg.onesignalAppId) await OneSignal.init({ appId: cfg.onesignalAppId });
     } catch (e) {
       console.error('No se pudo inicializar OneSignal:', e);
@@ -131,7 +138,7 @@
 
 <div id="loginScreen">
   <div class="login-card">
-    <div class="mark">⚽</div>
+    <div class="mark ic-deporte">⚽</div>
     <h1>Mi Club</h1>
     <p id="loginSubtitle">Ingresa tu número de celular o tu cédula (con la que ya estés registrado)</p>
     <input type="tel" id="loginTelefono" placeholder="0991234567 o tu cédula" autocomplete="tel" inputmode="numeric">
@@ -153,7 +160,7 @@
 
 <div id="appRoot" style="display:none">
   <header class="top">
-    <img src="/api/logo" alt="" style="width:28px;height:28px;border-radius:7px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 id="saludoHeader" style="display:inline">Hola 👋</h1>
+    <img src="/api/logo?badge=jugador" alt="" style="width:28px;height:28px;border-radius:7px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 id="saludoHeader" style="display:inline">Hola 👋</h1>
     <div class="sub" id="screenSub">MIS PARTIDOS</div>
     <div class="centerline"></div>
   </header>
@@ -190,7 +197,7 @@
   </main>
 
   <nav class="tabs">
-    <button class="active" data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic">⚽</span>Partidos</button>
+    <button class="active" data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic ic-deporte">⚽</span>Partidos</button>
     <button data-tab="deuda" onclick="cambiarTab('deuda')"><span class="ic">💳</span>Mi cuenta</button>
     <button data-tab="eventos" id="tabEventos" onclick="cambiarTab('eventos')" style="display:none"><span class="ic">🎒</span>Eventos</button>
     <button data-tab="docs" onclick="cambiarTab('docs')"><span class="ic">📖</span>Info</button>
@@ -463,7 +470,7 @@ async function cargarPartidos(){
   const partidos = await api('ver_mis_partidos_jugador');
   if(partidos===null) return;
   if(partidos.length===0){
-    list.innerHTML = '<div class="empty"><span class="ic">⚽</span>No hay partidos activos por ahora.</div>';
+    list.innerHTML = '<div class="empty"><span class="ic">' + window._iconoDeporteActual + '</span>No hay partidos activos por ahora.</div>';
     return;
   }
   list.innerHTML = partidos.map(p=>`

@@ -6,9 +6,17 @@
 <title>Mi Club - Representantes</title>
 <meta name="theme-color" content="#14231A">
 <link rel="manifest" href="/representante-manifest.json">
-<link rel="icon" href="/api/logo" type="image/png">
-<link rel="apple-touch-icon" href="/api/logo">
+<link rel="icon" href="/api/logo?badge=representante" type="image/png">
+<link rel="apple-touch-icon" href="/api/logo?badge=representante">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<script>
+window._configClubPromise = fetch('/api/config').then(r=>r.json()).catch(()=>({iconoDeporte:'⚽'}));
+window._iconoDeporteActual = '⚽';
+window._configClubPromise.then(cfg => {
+  window._iconoDeporteActual = cfg.iconoDeporte || '⚽';
+  document.querySelectorAll('.ic-deporte').forEach(el => el.textContent = window._iconoDeporteActual);
+});
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -110,7 +118,7 @@
 
 <div id="appRoot">
   <header class="top">
-    <img src="/api/logo" alt="" style="width:28px;height:28px;border-radius:7px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 id="saludoHeaderRep" style="display:inline">Hola 👋</h1>
+    <img src="/api/logo?badge=representante" alt="" style="width:28px;height:28px;border-radius:7px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 id="saludoHeaderRep" style="display:inline">Hola 👋</h1>
     <div class="sub" id="verJugadorHeader" style="cursor:pointer" onclick="abrirSelectorJugador()">VIENDO A: —</div>
     <div class="centerline"></div>
   </header>
@@ -131,7 +139,7 @@
   </main>
 
   <nav class="tabs">
-    <button class="active" data-tab="partidosRep" onclick="cambiarTabRep('partidosRep')"><span class="ic">⚽</span>Partidos</button>
+    <button class="active" data-tab="partidosRep" onclick="cambiarTabRep('partidosRep')"><span class="ic ic-deporte">⚽</span>Partidos</button>
     <button data-tab="cuentaRep" onclick="cambiarTabRep('cuentaRep')"><span class="ic">💳</span>Cuenta</button>
     <button data-tab="eventosRep" id="tabEventosRep" onclick="cambiarTabRep('eventosRep')" style="display:none"><span class="ic">🎒</span>Eventos</button>
     <button data-tab="perfilRep" onclick="cambiarTabRep('perfilRep')"><span class="ic">👤</span>Perfil</button>
@@ -330,7 +338,7 @@ async function cargarPartidosRep(){
   const partidos = await api('ver_partidos_jugador_representante');
   if(partidos===null) return;
   if(partidos.length===0){
-    cont.innerHTML = '<div class="empty"><span class="ic">⚽</span>No hay partidos activos por ahora.</div>';
+    cont.innerHTML = '<div class="empty"><span class="ic">' + window._iconoDeporteActual + '</span>No hay partidos activos por ahora.</div>';
     return;
   }
   cont.innerHTML = partidos.map(p=>`

@@ -11,13 +11,20 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Panel Club">
 <meta name="theme-color" content="#14231A">
+<script>
+window._configClubPromise = fetch('/api/config').then(r=>r.json()).catch(()=>({onesignalAppId:null, iconoDeporte:'⚽'}));
+window._iconoDeporteActual = '⚽';
+window._configClubPromise.then(cfg => {
+  window._iconoDeporteActual = cfg.iconoDeporte || '⚽';
+  document.querySelectorAll('.ic-deporte').forEach(el => el.textContent = window._iconoDeporteActual);
+});
+</script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script>
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function(OneSignal) {
     try {
-      const res = await fetch('/api/config');
-      const cfg = await res.json();
+      const cfg = await window._configClubPromise;
       if (cfg.onesignalAppId) await OneSignal.init({ appId: cfg.onesignalAppId });
     } catch (e) {
       console.error('No se pudo inicializar OneSignal:', e);
@@ -300,7 +307,7 @@
 
   <nav class="tabs">
     <button class="active" data-tab="dashboard" onclick="cambiarTab('dashboard')"><span class="ic">📊</span>Dashboard</button>
-    <button data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic">⚽</span>Partidos</button>
+    <button data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic ic-deporte">⚽</span>Partidos</button>
     <button data-tab="jugadores" onclick="cambiarTab('jugadores')"><span class="ic">👥</span>Jugadores</button>
     <button data-tab="parametros" onclick="cambiarTab('parametros')"><span class="ic">⚙️</span>Parámetros</button>
     <button data-tab="eventos" onclick="cambiarTab('eventos')"><span class="ic">🎒</span>Eventos</button>
@@ -494,7 +501,7 @@ async function cargarPartidos(){
   const partidos = await api('listar_partidos');
   if(partidos===null) return;
   if(partidos.length===0){
-    list.innerHTML = '<div class="empty"><span class="ic">⚽</span>No hay partidos activos.<br>Toca + para crear uno.</div>';
+    list.innerHTML = '<div class="empty"><span class="ic">' + window._iconoDeporteActual + '</span>No hay partidos activos.<br>Toca + para crear uno.</div>';
     return;
   }
   list.innerHTML = partidos.map(p=>`
@@ -962,8 +969,103 @@ async function verDetalleJugador(jugadorId){
     <div class="field-line"><div class="fl-label">Multas pagadas (histórico)</div><div class="fl-value">$${d.multas_aprobadas}</div></div>
     <div class="field-line"><div class="fl-label">Partidos confirmados</div><div class="fl-value">${d.partidos_confirmados}</div></div>
     <div class="field-line"><div class="fl-label">Partidos asistidos (check-in)</div><div class="fl-value">${d.partidos_asistidos}</div></div>
+    <button class="block" style="margin-top:12px" onclick="abrirRepresentantesJugadorAdmin(${jugadorId}, ${JSON.stringify(d.nombres+' '+d.apellidos)})">👨‍👩‍👧 Ver/editar representantes</button>
   `;
   abrirSheet(html);
+}
+
+let representantesAdminState = { jugadorId: null, nombreJugador: '' };
+
+async function abrirRepresentantesJugadorAdmin(jugadorId, nombreJugador){
+  representantesAdminState = { jugadorId, nombreJugador };
+  const data = await api('listar_representantes_jugador_admin', {jugadorId});
+  if(data===null) return;
+  mostrarRepresentantesJugadorAdmin(data);
+}
+
+function mostrarRepresentantesJugadorAdmin(data){
+  const html = `
+    <div class="sheet-head"><h2>Representantes de ${esc(representantesAdminState.nombreJugador)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div id="listaRepresentantesAdmin">
+      ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin representantes registrados.</p>' : data.map(r=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)} ${!r.cedula ? '<span class="badge cancelado">Falta cédula</span>' : ''}</div>
+            <div class="fl-label">${esc(r.cedula||'Sin cédula')} · ${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="sm" onclick='abrirEditarRepresentanteAdmin(${JSON.stringify(r).replace(/"/g,"&quot;")})'>Editar</button>
+            <button class="sm danger" onclick="eliminarRepresentanteAdminAccion(${r.id})">Quitar</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <label style="margin-top:18px">Nombres</label>
+    <input id="repAdminNombres" placeholder="Nombres">
+    <label>Apellidos</label>
+    <input id="repAdminApellidos" placeholder="Apellidos">
+    <label>Cédula</label>
+    <input id="repAdminCedula" placeholder="Obligatoria" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="repAdminTelefono" placeholder="Opcional" type="tel">
+    <label>Descripción</label>
+    <input id="repAdminDescripcion" placeholder="Ej: Mamá, Papá, Tío...">
+    <button class="primary block" style="margin-top:12px" onclick="agregarRepresentanteAdminAccion()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function agregarRepresentanteAdminAccion(){
+  const nombres = document.getElementById('repAdminNombres').value.trim();
+  const apellidos = document.getElementById('repAdminApellidos').value.trim();
+  const cedula = document.getElementById('repAdminCedula').value.trim();
+  const telefono = document.getElementById('repAdminTelefono').value.trim();
+  const descripcion = document.getElementById('repAdminDescripcion').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  if(!cedula){ toast('La cédula es obligatoria', true); return; }
+  const res = await api('agregar_representante_admin', { jugadorId: representantesAdminState.jugadorId, nombres, apellidos, cedula, telefono, descripcion });
+  if(res===null) return;
+  toast('Representante agregado');
+  abrirRepresentantesJugadorAdmin(representantesAdminState.jugadorId, representantesAdminState.nombreJugador);
+}
+
+function abrirEditarRepresentanteAdmin(r){
+  const html = `
+    <div class="sheet-head"><h2>Editar representante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="repAdminEditNombres" value="${esc(r.nombres)}">
+    <label>Apellidos</label>
+    <input id="repAdminEditApellidos" value="${esc(r.apellidos)}">
+    <label>Cédula</label>
+    <input id="repAdminEditCedula" value="${esc(r.cedula||'')}" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="repAdminEditTelefono" value="${esc(r.telefono||'')}" type="tel">
+    <label>Descripción</label>
+    <input id="repAdminEditDescripcion" value="${esc(r.descripcion||'')}">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarRepresentanteAdmin(${r.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarRepresentanteAdmin(linkId){
+  const nombres = document.getElementById('repAdminEditNombres').value.trim();
+  const apellidos = document.getElementById('repAdminEditApellidos').value.trim();
+  const cedula = document.getElementById('repAdminEditCedula').value.trim();
+  const telefono = document.getElementById('repAdminEditTelefono').value.trim();
+  const descripcion = document.getElementById('repAdminEditDescripcion').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('editar_representante_admin', { linkId, nombres, apellidos, cedula, telefono, descripcion });
+  if(res===null) return;
+  toast('Actualizado');
+  abrirRepresentantesJugadorAdmin(representantesAdminState.jugadorId, representantesAdminState.nombreJugador);
+}
+
+async function eliminarRepresentanteAdminAccion(linkId){
+  if(!confirm('¿Quitar a este representante?')) return;
+  const res = await api('eliminar_representante_admin', { linkId });
+  if(res===null) return;
+  toast('Representante quitado');
+  abrirRepresentantesJugadorAdmin(representantesAdminState.jugadorId, representantesAdminState.nombreJugador);
 }
 
 async function verPagosJugador(jugadorId, nombre){
@@ -1142,6 +1244,7 @@ async function cargarParametros(){
     {key:'numero_admin', label:'Número del admin', val:p.numero_admin, prefix:''},
     {key:'fecha_inicio_recaudacion', label:'Inicio de recaudación (DD/MM/AAAA)', val:p.fecha_inicio_recaudacion, prefix:''},
     {key:'meses_retener_codigos', label:'Meses para conservar códigos QR usados', val:p.meses_retener_codigos, prefix:''},
+    {key:'icono_deporte', label:'Ícono del deporte (emoji, ej: ⚽ 🏀 🏐 🎾)', val:p.icono_deporte, prefix:''},
   ];
   document.getElementById('parametrosList').innerHTML = `
     <div class="card">

@@ -1,18 +1,21 @@
 // api/logo.js
-// Sirve el logo del club como una imagen REAL (no como texto/base64
-// dentro de una respuesta JSON), para que pueda usarse directamente
-// como icono de instalacion (PWA), favicon de las paginas, y como
-// icono de las notificaciones push -- todos estos necesitan una URL
-// que devuelva bytes de imagen de verdad, con su Content-Type correcto.
+// Sirve el logo del club como una imagen REAL, para iconos de
+// instalacion (PWA), favicons, y notificaciones push.
 //
 // GET /api/logo -- el logo tal cual.
-// GET /api/logo?badge=admin -- el logo con la insignia dorada del
-// Admin superpuesta (para diferenciarlo visualmente del icono del
-// jugador, incluso cuando el club cambie su logo).
+// GET /api/logo?badge=admin|jugador|representante -- el logo con la
+// insignia correspondiente superpuesta, para diferenciar visualmente
+// cada app aunque el club cambie su logo.
 
 const path = require('path');
 const { getPool } = require('./_db');
 const Jimp = require('jimp');
+
+const BADGES = {
+  admin: '_admin-badge.png',
+  jugador: '_jugador-badge.png',
+  representante: '_representante-badge.png',
+};
 
 module.exports = async (req, res) => {
   try {
@@ -26,11 +29,11 @@ module.exports = async (req, res) => {
 
     let buffer = Buffer.from(base64, 'base64');
 
-    if (req.query && req.query.badge === 'admin') {
+    const badgeArchivo = req.query && BADGES[req.query.badge];
+    if (badgeArchivo) {
       const logoImg = await Jimp.read(buffer);
-      const badgeImg = await Jimp.read(path.join(__dirname, '_admin-badge.png'));
+      const badgeImg = await Jimp.read(path.join(__dirname, badgeArchivo));
       const w = logoImg.getWidth();
-      // Insignia proporcional al tamaño del logo, en la esquina inferior derecha.
       const badgeSize = Math.round(w * 0.34);
       badgeImg.resize(badgeSize, badgeSize);
       const margin = Math.round(w * 0.03);

@@ -168,7 +168,78 @@ async function verInvitadosPartido(pool, body) {
   return { success: true, data: r.rows[0].invitados };
 }
 
+async function listarRepresentantesJugadorAdmin(pool, body) {
+  const r = await pool.query(
+    `SELECT jr.id, r.id AS "representanteId", r.nombres, r.apellidos, r.telefono, r.cedula, jr.descripcion
+     FROM sport_control.jugador_representante jr
+     JOIN sport_control.representantes r ON r.id = jr.representante_id
+     WHERE jr.jugador_id = $1 ORDER BY jr.creado_en ASC`,
+    [body.jugadorId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function agregarRepresentanteAdmin(pool, body) {
+  const { jugadorId, nombres, apellidos, telefono, cedula, descripcion } = body;
+  if (!nombres || !apellidos) return { success: false, error: 'Completa nombres y apellidos.' };
+  if (!cedula || !cedula.trim()) return { success: false, error: 'La cédula es obligatoria.' };
+
+  let representanteId;
+  const existente = await pool.query(`SELECT id FROM sport_control.representantes WHERE cedula = $1`, [cedula.trim()]);
+  if (existente.rows[0]) {
+    representanteId = existente.rows[0].id;
+  } else {
+    const nuevo = await pool.query(
+      `INSERT INTO sport_control.representantes (cedula, nombres, apellidos, telefono, creado_en) VALUES ($1, $2, $3, $4, NOW()) RETURNING id`,
+      [cedula.trim(), nombres, apellidos, telefono || null]
+    );
+    representanteId = nuevo.rows[0].id;
+  }
+
+  const yaVinculado = await pool.query(
+    `SELECT id FROM sport_control.jugador_representante WHERE jugador_id = $1 AND representante_id = $2`,
+    [jugadorId, representanteId]
+  );
+  if (yaVinculado.rows[0]) return { success: false, error: 'Esa persona ya está registrada como representante de este jugador.' };
+
+  const link = await pool.query(
+    `INSERT INTO sport_control.jugador_representante (jugador_id, representante_id, descripcion, creado_en) VALUES ($1, $2, $3, NOW()) RETURNING id`,
+    [jugadorId, representanteId, descripcion || null]
+  );
+  return { success: true, data: { id: link.rows[0].id } };
+}
+
+async function editarRepresentanteAdmin(pool, body) {
+  const { linkId, nombres, apellidos, telefono, cedula, descripcion } = body;
+  const check = await pool.query(`SELECT representante_id FROM sport_control.jugador_representante WHERE id = $1`, [linkId]);
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
+  try {
+    await pool.query(
+      `UPDATE sport_control.representantes SET nombres = $1, apellidos = $2, telefono = $3, cedula = $4 WHERE id = $5`,
+      [nombres, apellidos, telefono || null, cedula || null, check.rows[0].representante_id]
+    );
+  } catch (err) {
+    if (err.code === '23505') return { success: false, error: 'Esa cédula ya está registrada para otro representante.' };
+    throw err;
+  }
+  await pool.query(`UPDATE sport_control.jugador_representante SET descripcion = $1 WHERE id = $2`, [descripcion || null, linkId]);
+  return { success: true };
+}
+
+async function eliminarRepresentanteAdmin(pool, body) {
+  const { linkId } = body;
+  const check = await pool.query(`SELECT representante_id FROM sport_control.jugador_representante WHERE id = $1`, [linkId]);
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
+  await pool.query(`DELETE FROM sport_control.jugador_representante WHERE id = $1`, [linkId]);
+  await pool.query(
+    `DELETE FROM sport_control.representantes WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM sport_control.jugador_representante WHERE representante_id = $1)`,
+    [check.rows[0].representante_id]
+  );
+  return { success: true };
+}
+
 module.exports = {
   listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual,
   verConfirmadosPartido, verCheckinPartido, verInvitadosPartido,
+  listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin,
 };

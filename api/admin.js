@@ -10,7 +10,7 @@
 // igual que hacia n8n con el nodo 'Clave Correcta App'.
 
 const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido } = require('./_admin_partidos');
-const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido } = require('./_admin_jugadores');
+const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin } = require('./_admin_jugadores');
 const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub } = require('./_admin_operaciones');
 const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento } = require('./_admin_eventos');
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
@@ -58,6 +58,10 @@ module.exports = async (req, res) => {
       case 'listar_estado_pagos_app': return res.status(200).json(await listarEstadoPagos(pool));
       case 'enviar_recordatorio_morosos_app': return res.status(200).json(await enviarRecordatorioMorosos(pool, config));
       case 'ver_detalle_jugador_app': return res.status(200).json(await verDetalleJugador(pool, body));
+      case 'listar_representantes_jugador_admin': return res.status(200).json(await listarRepresentantesJugadorAdmin(pool, body));
+      case 'agregar_representante_admin': return res.status(200).json(await agregarRepresentanteAdmin(pool, body));
+      case 'editar_representante_admin': return res.status(200).json(await editarRepresentanteAdmin(pool, body));
+      case 'eliminar_representante_admin': return res.status(200).json(await eliminarRepresentanteAdmin(pool, body));
       case 'ver_pendientes_jugador_app': return res.status(200).json(await verPendientesJugador(pool, body));
       case 'marcar_multa_pagada_app': return res.status(200).json(await marcarMultaPagada(pool, body));
       case 'toggle_eventos_jugador_app': return res.status(200).json(await toggleEventosJugador(pool, body));
