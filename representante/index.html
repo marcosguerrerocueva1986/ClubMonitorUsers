@@ -158,8 +158,8 @@ if ('serviceWorker' in navigator) {
   </main>
 
   <nav class="tabs">
-    <button class="active" data-tab="partidosRep" onclick="cambiarTabRep('partidosRep')"><span class="ic ic-deporte">⚽</span>Partidos</button>
-    <button data-tab="cuentaRep" onclick="cambiarTabRep('cuentaRep')"><span class="ic">💳</span>Cuenta</button>
+    <button class="active" data-tab="partidosRep" id="tabPartidosRep" onclick="cambiarTabRep('partidosRep')"><span class="ic ic-deporte">⚽</span>Partidos</button>
+    <button data-tab="cuentaRep" id="tabCuentaRep" onclick="cambiarTabRep('cuentaRep')"><span class="ic">💳</span>Cuenta</button>
     <button data-tab="eventosRep" id="tabEventosRep" onclick="cambiarTabRep('eventosRep')" style="display:none"><span class="ic">🎒</span>Eventos</button>
     <button data-tab="perfilRep" onclick="cambiarTabRep('perfilRep')"><span class="ic">👤</span>Perfil</button>
   </nav>
@@ -392,6 +392,15 @@ async function entrarAppRepresentante(nombresLogin, jugadoresPrecargados){
   const perfilParaFlags = await api('obtener_perfil_jugador_representante');
   if(perfilParaFlags && perfilParaFlags.eventosHabilitado){
     document.getElementById('tabEventosRep').style.display = 'flex';
+  }
+
+  const misPermisos = await api('obtener_perfil_representante');
+  if(misPermisos){
+    document.getElementById('tabCuentaRep').style.display = misPermisos.miCuentaHabilitado === false ? 'none' : 'flex';
+    document.getElementById('tabPartidosRep').style.display = misPermisos.partidosHabilitado === false ? 'none' : 'flex';
+    if(misPermisos.partidosHabilitado === false){
+      cambiarTabRep(misPermisos.miCuentaHabilitado === false ? 'perfilRep' : 'cuentaRep', true);
+    }
   }
 }
 

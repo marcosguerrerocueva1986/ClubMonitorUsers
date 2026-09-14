@@ -191,12 +191,15 @@ async function obtenerMiPerfil(pool, jugadorId) {
     `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo,
             (SELECT eventos_habilitado_jugador FROM sport_control.configuracion_club WHERE id = 1) AS eventos_habilitado,
             (SELECT whatsapp_checkin_numero FROM sport_control.configuracion_club WHERE id = 1) AS whatsapp_checkin_numero,
-            (SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1) AS representantes_habilitado
+            (SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1) AS representantes_habilitado,
+            (SELECT mis_exentos_habilitado_jugador FROM sport_control.configuracion_club WHERE id = 1) AS mis_exentos_habilitado,
+            (SELECT COALESCE((SELECT habilitado FROM sport_control.permisos_pantallas WHERE funcionalidad = 'mi_cuenta' AND rol = 'jugador'), true)) AS mi_cuenta_habilitado,
+            (SELECT COALESCE((SELECT habilitado FROM sport_control.permisos_pantallas WHERE funcionalidad = 'partidos' AND rol = 'jugador'), true)) AS partidos_habilitado
      FROM sport_control.jugadores j WHERE j.id = $1`,
     [jugadorId]
   );
   const row = r.rows[0];
-  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado } };
+  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado, misExentosHabilitado: row.mis_exentos_habilitado, miCuentaHabilitado: row.mi_cuenta_habilitado, partidosHabilitado: row.partidos_habilitado } };
 }
 
 async function listarMisRepresentantes(pool, jugadorId) {
@@ -686,16 +689,22 @@ async function verEventoPublico(pool, jugadorId, body) {
   };
 }
 
-async function verMovimientosEventoJugador(pool, body) {
+async function verMovimientosEventoJugador(pool, body, jugadorIdViewer) {
   const { eventoId } = body;
+  let soloPropios = false;
+  if (jugadorIdViewer) {
+    const cfg = await pool.query(`SELECT movimientos_evento_solo_propios FROM sport_control.configuracion_club WHERE id = 1`);
+    soloPropios = !!(cfg.rows[0] && cfg.rows[0].movimientos_evento_solo_propios);
+  }
   const movimientos = await pool.query(
     `SELECT m.id, m.monto, m.fecha, m.descripcion, m.evento_fecha_id AS "eventoFechaId", m.jugador_id AS "jugadorId", t.nombre AS "tipoMovimiento", t.tipo,
        j.nombres || ' ' || j.apellidos AS jugador, m.comprobante_base64 IS NOT NULL AS "tieneComprobante"
      FROM sport_control.evento_movimientos m
      JOIN sport_control.tipos_movimiento_evento t ON t.id = m.tipo_movimiento_id
      LEFT JOIN sport_control.jugadores j ON j.id = m.jugador_id
-     WHERE m.evento_id = $1 ORDER BY m.fecha DESC, m.id DESC`,
-    [eventoId]
+     WHERE m.evento_id = $1 ${soloPropios ? 'AND m.jugador_id = $2' : ''}
+     ORDER BY m.fecha DESC, m.id DESC`,
+    soloPropios ? [eventoId, jugadorIdViewer] : [eventoId]
   );
   return { success: true, data: movimientos.rows };
 }
@@ -774,7 +783,7 @@ module.exports = async (req, res) => {
       case 'guardar_restante_saldo_favor_jugador': return res.status(200).json(await guardarSaldoFavor(pool, jugadorId, body));
       case 'listar_mis_eventos_jugador': return res.status(200).json(await listarMisEventos(pool, jugadorId));
       case 'ver_evento_publico_jugador': return res.status(200).json(await verEventoPublico(pool, jugadorId, body));
-      case 'ver_movimientos_evento_jugador': return res.status(200).json(await verMovimientosEventoJugador(pool, body));
+      case 'ver_movimientos_evento_jugador': return res.status(200).json(await verMovimientosEventoJugador(pool, body, jugadorId));
       case 'ver_comprobante_movimiento_jugador': return res.status(200).json(await verComprobanteMovimientoJugador(pool, body));
       case 'aplicar_pago_evento_jugador': return res.status(200).json(await aplicarPagoEvento(pool, jugadorId, body));
       default:

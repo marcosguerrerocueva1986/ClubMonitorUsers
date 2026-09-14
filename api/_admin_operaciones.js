@@ -6,7 +6,8 @@ async function obtenerParametros(pool) {
             (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'invitado' AND activo = true ORDER BY prioridad ASC LIMIT 1) AS costo_invitado,
             valor_multa_inasistencia, valor_multa_invitado_no_show, meses_maximo_atraso, numero_admin,
             to_char(fecha_inicio_recaudacion, 'DD/MM/YYYY') AS fecha_inicio_recaudacion, meses_retener_codigos,
-            eventos_habilitado_jugador, representantes_habilitado, icono_deporte
+            eventos_habilitado_jugador, representantes_habilitado, icono_deporte,
+            mis_exentos_habilitado_jugador, mi_cuenta_habilitado_jugador, movimientos_evento_solo_propios
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return { success: true, data: r.rows[0] };
@@ -175,6 +176,36 @@ async function toggleRepresentantesClub(pool, body) {
   return { success: true };
 }
 
+async function toggleMisExentosJugador(pool, body) {
+  await pool.query(`UPDATE sport_control.configuracion_club SET mis_exentos_habilitado_jugador = $1 WHERE id = 1`, [!!body.habilitado]);
+  return { success: true };
+}
+
+async function toggleMiCuentaJugador(pool, body) {
+  await pool.query(`UPDATE sport_control.configuracion_club SET mi_cuenta_habilitado_jugador = $1 WHERE id = 1`, [!!body.habilitado]);
+  return { success: true };
+}
+
+async function toggleMovimientosSoloPropios(pool, body) {
+  await pool.query(`UPDATE sport_control.configuracion_club SET movimientos_evento_solo_propios = $1 WHERE id = 1`, [!!body.habilitado]);
+  return { success: true };
+}
+
+async function listarPermisosPantallas(pool) {
+  const r = await pool.query(`SELECT funcionalidad, rol, habilitado FROM sport_control.permisos_pantallas ORDER BY funcionalidad, rol`);
+  return { success: true, data: r.rows };
+}
+
+async function togglePermisoPantalla(pool, body) {
+  const { funcionalidad, rol, habilitado } = body;
+  await pool.query(
+    `INSERT INTO sport_control.permisos_pantallas (funcionalidad, rol, habilitado) VALUES ($1, $2, $3)
+     ON CONFLICT (funcionalidad, rol) DO UPDATE SET habilitado = EXCLUDED.habilitado`,
+    [funcionalidad, rol, !!habilitado]
+  );
+  return { success: true };
+}
+
 async function actualizarLogoClub(pool, body) {
   const { logoBase64 } = body;
   if (!logoBase64) return { success: false, error: 'No se recibió ninguna imagen.' };
@@ -186,4 +217,6 @@ module.exports = {
   obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas,
   toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada,
   toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub,
+  toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios,
+  listarPermisosPantallas, togglePermisoPantalla,
 };

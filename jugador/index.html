@@ -206,7 +206,7 @@ if ('serviceWorker' in navigator) {
   </main>
 
   <nav class="tabs">
-    <button class="active" data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic ic-deporte">⚽</span>Partidos</button>
+    <button class="active" data-tab="partidos" id="tabPartidos" onclick="cambiarTab('partidos')"><span class="ic ic-deporte">⚽</span>Partidos</button>
     <button data-tab="deuda" id="tabCuenta" onclick="cambiarTab('deuda')"><span class="ic">💳</span>Mi cuenta</button>
     <button data-tab="eventos" id="tabEventos" onclick="cambiarTab('eventos')" style="display:none"><span class="ic">🎒</span>Eventos</button>
     <button data-tab="docs" onclick="cambiarTab('docs')"><span class="ic">📖</span>Info</button>
@@ -445,6 +445,11 @@ async function entrarApp(){
   }
   document.getElementById('tabEventos').style.display = perfil && perfil.eventosHabilitado ? 'flex' : 'none';
   document.getElementById('tabCuenta').style.display = (perfil && perfil.miCuentaHabilitado === false) ? 'none' : 'flex';
+  document.getElementById('tabPartidos').style.display = (perfil && perfil.partidosHabilitado === false) ? 'none' : 'flex';
+  if(perfil && perfil.partidosHabilitado === false){
+    cambiarTab(perfil.miCuentaHabilitado === false ? 'perfil' : 'deuda');
+    return;
+  }
   cargarPartidos();
 }
 

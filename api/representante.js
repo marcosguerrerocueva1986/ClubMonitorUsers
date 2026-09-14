@@ -30,7 +30,14 @@ async function actualizarPerfilRepresentante(pool, representanteId, body) {
 
 async function obtenerPerfilRepresentante(pool, representanteId) {
   const r = await pool.query(`SELECT nombres, apellidos, telefono, cedula FROM sport_control.representantes WHERE id = $1`, [representanteId]);
-  return { success: true, data: r.rows[0] };
+  const permisos = await pool.query(`SELECT funcionalidad, habilitado FROM sport_control.permisos_pantallas WHERE rol = 'representante'`);
+  const mapa = {};
+  permisos.rows.forEach(p => { mapa[p.funcionalidad] = p.habilitado; });
+  return { success: true, data: {
+    ...r.rows[0],
+    miCuentaHabilitado: mapa.mi_cuenta !== undefined ? mapa.mi_cuenta : true,
+    partidosHabilitado: mapa.partidos !== undefined ? mapa.partidos : true,
+  }};
 }
 
 async function resolverSesionRepresentante(pool, token) {

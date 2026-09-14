@@ -14,7 +14,7 @@ const { obtenerEstadisticasApps, listarUsuariosJugadoresAdmin, listarUsuariosRep
 const { listarDisciplinas, listarDisciplinasActivas, crearDisciplina, editarDisciplina, toggleDisciplina, listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica } = require('./_admin_disciplinas');
 const { verEstadisticasPartidoAdmin, guardarEstadisticasPartidoAdmin, verFotoPartidoAdmin } = require('./_admin_partido_estadisticas');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin, resetearClaveRepresentanteAdmin } = require('./_admin_jugadores');
-const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios } = require('./_admin_operaciones');
+const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios, listarPermisosPantallas, togglePermisoPantalla } = require('./_admin_operaciones');
 const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento } = require('./_admin_eventos');
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
 const { listarJugadoresDisponibles, agregarJugadorPartido, listarConfirmadosRemovibles, quitarJugadorPartido, quitarInvitadoPartido } = require('./_admin_gestion_partido');
@@ -87,6 +87,8 @@ module.exports = async (req, res) => {
       case 'toggle_mis_exentos_jugador_app': return res.status(200).json(await toggleMisExentosJugador(pool, body));
       case 'toggle_mi_cuenta_jugador_app': return res.status(200).json(await toggleMiCuentaJugador(pool, body));
       case 'toggle_movimientos_solo_propios_app': return res.status(200).json(await toggleMovimientosSoloPropios(pool, body));
+      case 'listar_permisos_pantallas_admin': return res.status(200).json(await listarPermisosPantallas(pool));
+      case 'toggle_permiso_pantalla_admin': return res.status(200).json(await togglePermisoPantalla(pool, body));
       case 'actualizar_logo_club_app': return res.status(200).json(await actualizarLogoClub(pool, body));
       case 'crear_evento_app': return res.status(200).json(await crearEvento(pool, body));
       case 'editar_evento_app': return res.status(200).json(await editarEvento(pool, body));

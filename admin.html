@@ -300,6 +300,7 @@ if ('serviceWorker' in navigator) {
         <button class="sm" id="btnSubtabCatRelacion" onclick="cambiarSubtabParametros('cat_relacion')">👪 Tipos de parentesco</button>
         <button class="sm" id="btnSubtabCatEventos" onclick="cambiarSubtabParametros('cat_eventos')">🎒 Rubros de eventos</button>
         <button class="sm" id="btnSubtabDisciplinas" onclick="cambiarSubtabParametros('disciplinas')">🏅 Disciplinas y estadísticas</button>
+        <button class="sm" id="btnSubtabPermisos" onclick="cambiarSubtabParametros('permisos')">🔐 Permisos por rol</button>
       </div>
       <div id="parametrosList"><div class="spinner"></div></div>
     </div>
@@ -1277,8 +1278,8 @@ let subtabParametrosActual = 'generales';
 
 function cambiarSubtabParametros(sub){
   subtabParametrosActual = sub;
-  ['generales','exentos','cat_multas','cat_relacion','cat_eventos','disciplinas'].forEach(s=>{
-    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion', cat_eventos:'CatEventos', disciplinas:'Disciplinas'}[s]);
+  ['generales','exentos','cat_multas','cat_relacion','cat_eventos','disciplinas','permisos'].forEach(s=>{
+    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion', cat_eventos:'CatEventos', disciplinas:'Disciplinas', permisos:'Permisos'}[s]);
     if(btn) btn.classList.toggle('primary', s===sub);
   });
   if(sub==='generales') cargarParametros();
@@ -1287,6 +1288,7 @@ function cambiarSubtabParametros(sub){
   if(sub==='cat_relacion') cargarCatalogo('tipos_relacion_exento', 'Tipos de parentesco');
   if(sub==='cat_eventos') cargarCatalogoEventos();
   if(sub==='disciplinas') cargarDisciplinas();
+  if(sub==='permisos') cargarPermisosPantallas();
 }
 
 async function cargarCatalogoEventos(){
@@ -1440,6 +1442,50 @@ async function toggleTipoEstadisticaAccion(tipoEstadisticaId, activo){
   mostrarCatalogoEstadisticas(data);
 }
 
+/* ---------- Permisos por rol (matriz funcionalidad x rol) ---------- */
+const FUNCIONALIDADES_PERMISOS = [
+  {clave:'mi_cuenta', nombre:'Mi Cuenta', icono:'💳'},
+  {clave:'partidos', nombre:'Partidos', icono:'⚽'},
+];
+const ROLES_PERMISOS = [
+  {clave:'jugador', nombre:'Jugador', disponible:true},
+  {clave:'representante', nombre:'Representante', disponible:true},
+  {clave:'entrenador', nombre:'Entrenador', disponible:false},
+];
+
+async function cargarPermisosPantallas(){
+  const list = document.getElementById('parametrosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_permisos_pantallas_admin');
+  if(data===null) return;
+  const mapa = {};
+  data.forEach(p => { mapa[p.funcionalidad+'|'+p.rol] = p.habilitado; });
+
+  list.innerHTML = `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Controla qué pantallas ve cada rol. "Entrenador" todavía no existe como app — aparece listo para cuando lo construyamos.</p>
+    ${FUNCIONALIDADES_PERMISOS.map(f=>`
+      <div class="card">
+        <div class="card-title"><h3>${f.icono} ${esc(f.nombre)}</h3></div>
+        ${ROLES_PERMISOS.map(r=>{
+          const habilitado = mapa[f.clave+'|'+r.clave] !== undefined ? mapa[f.clave+'|'+r.clave] : true;
+          return `
+            <label style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);${!r.disponible?'opacity:.5':''}">
+              <span style="font-size:14px">${esc(r.nombre)}${!r.disponible ? ' <span style="font-size:11px;color:var(--chalk-dim)">(próximamente)</span>' : ''}</span>
+              <input type="checkbox" ${habilitado?'checked':''} ${!r.disponible?'disabled':''} style="width:20px;height:20px" onchange="togglePermisoPantallaAccion('${f.clave}','${r.clave}', this.checked)">
+            </label>
+          `;
+        }).join('')}
+      </div>
+    `).join('')}
+  `;
+}
+
+async function togglePermisoPantallaAccion(funcionalidad, rol, habilitado){
+  const res = await api('toggle_permiso_pantalla_admin', {funcionalidad, rol, habilitado});
+  if(res===null){ cargarPermisosPantallas(); return; }
+  toast('Actualizado');
+}
+
 async function cargarExentosPendientes(){
   const list = document.getElementById('parametrosList');
   list.innerHTML = '<div class="spinner"></div>';
@@ -1571,11 +1617,6 @@ async function cargarParametros(){
       <div class="card-title"><h3>👨‍👩‍👧 Mis invitados exentos</h3></div>
       <p class="meta">${p.mis_exentos_habilitado_jugador ? 'Visible en el Perfil del jugador.' : 'Oculto para los jugadores.'}</p>
       <button class="block ${p.mis_exentos_habilitado_jugador ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleMisExentos(${!p.mis_exentos_habilitado_jugador})">${p.mis_exentos_habilitado_jugador ? 'Ocultar' : 'Mostrar'}</button>
-    </div>
-    <div class="card">
-      <div class="card-title"><h3>💳 Menú "Mi Cuenta"</h3></div>
-      <p class="meta">${p.mi_cuenta_habilitado_jugador ? 'Los jugadores ven su deuda y pueden subir comprobantes.' : 'Oculto — los jugadores no ven esta pestaña.'}</p>
-      <button class="block ${p.mi_cuenta_habilitado_jugador ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleMiCuenta(${!p.mi_cuenta_habilitado_jugador})">${p.mi_cuenta_habilitado_jugador ? 'Ocultar' : 'Mostrar'}</button>
     </div>
     <div class="card">
       <div class="card-title"><h3>🧾 Movimientos de Eventos (jugador)</h3></div>
