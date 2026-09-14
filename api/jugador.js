@@ -762,3 +762,21 @@ module.exports = async (req, res) => {
     return res.status(200).json({ success: false, error: 'Error interno del servidor' });
   }
 };
+
+// ============================================================
+// Exportaciones adicionales (solo lectura) para que api/representante.js
+// pueda reutilizar exactamente la misma logica, sin duplicar codigo.
+// Esto NO cambia en nada el comportamiento de este archivo como
+// funcion serverless -- module.exports sigue siendo el mismo handler
+// de siempre, solo se le agregan propiedades adicionales.
+// ============================================================
+module.exports.obtenerMiPerfil = obtenerMiPerfil;
+module.exports.verMisPartidos = verMisPartidos;
+module.exports.verPendientesPago = verPendientesPago;
+module.exports.verMiQr = verMiQr;
+module.exports.verMisUltimosPagos = verMisUltimosPagos;
+module.exports.verMisInvitados = verMisInvitados;
+module.exports.listarMisEventos = listarMisEventos;
+module.exports.verEventoPublico = verEventoPublico;
+module.exports.verMovimientosEventoJugador = verMovimientosEventoJugador;
+module.exports.verComprobanteMovimientoJugador = verComprobanteMovimientoJugador;
