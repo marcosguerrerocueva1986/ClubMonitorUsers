@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Panel Club</title>
 <link rel="manifest" href="/admin-manifest.json">
-<link rel="icon" href="/admin-icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="/admin-apple-touch-icon.png">
+<link rel="icon" href="/api/logo?badge=admin" type="image/png">
+<link rel="apple-touch-icon" href="/api/logo?badge=admin">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Panel Club">
@@ -42,6 +42,12 @@
     --green-ok:#6FCF97;
     --radius:14px;
   }
+  [data-theme="light"]{
+    --pitch-0:#F7F9F5; --pitch-1:#FFFFFF; --pitch-2:#EEF2EA; --pitch-3:#E0E8DA;
+    --line:#C9D6C2; --chalk:#16241A; --chalk-dim:#5A6B54; --gold:#C9971F; --gold-dim:#8C7A2A;
+    --red:#C0392B; --green-ok:#2E9E5B;
+  }
+  [data-theme="light"] body{ background: var(--pitch-0); }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
   body{
@@ -252,7 +258,7 @@
 
 <div id="appRoot" style="display:none">
   <header class="top">
-    <div class="brand"><h1>Panel del Club</h1></div>
+    <div class="brand"><img src="/api/logo?badge=admin" alt="" style="width:32px;height:32px;border-radius:8px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 style="display:inline">Panel del Club</h1></div>
     <div class="sub" id="screenSub">PANEL DE PAGOS</div>
     <div class="centerline"></div>
   </header>
@@ -301,6 +307,106 @@
   </nav>
 </div>
 
+<script>
+/* ============================================================
+   SISTEMA DE TEMAS -- mismo sistema que la app del jugador.
+   ============================================================ */
+(function aplicarTemaGuardadoAlInicio(){
+  const t = safeStorageGet('temaApp') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  if(t === 'club'){
+    const colores = safeStorageGet('temaClubColores');
+    if(colores){
+      try {
+        const c = JSON.parse(colores);
+        document.documentElement.style.setProperty('--gold', c.principal);
+        document.documentElement.style.setProperty('--green-ok', c.secundario);
+      } catch(e){}
+    }
+  }
+})();
+
+function extraerColoresDelLogoAdmin(){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, size, size);
+        const data = ctx.getImageData(0,0,size,size).data;
+        const buckets = {};
+        for(let i=0;i<data.length;i+=4){
+          const r=data[i], g=data[i+1], b=data[i+2], a=data[i+3];
+          if(a<200) continue;
+          const max=Math.max(r,g,b), min=Math.min(r,g,b);
+          const sat = max===0?0:(max-min)/max;
+          const lum = (r+g+b)/3;
+          if(sat<0.25 || lum>235 || lum<25) continue;
+          const key = [Math.round(r/24)*24, Math.round(g/24)*24, Math.round(b/24)*24].join(',');
+          buckets[key] = (buckets[key]||0)+1;
+        }
+        const ordenado = Object.entries(buckets).sort((a,b)=>b[1]-a[1]);
+        if(ordenado.length===0){ resolve(null); return; }
+        const [r,g,b] = ordenado[0][0].split(',').map(Number);
+        let r2=r,g2=g,b2=b;
+        for(const [k] of ordenado.slice(1)){
+          const [rr,gg,bb] = k.split(',').map(Number);
+          if(Math.abs(rr-r)+Math.abs(gg-g)+Math.abs(bb-b) > 60){ r2=rr;g2=gg;b2=bb; break; }
+        }
+        resolve({ principal: `rgb(${r},${g},${b})`, secundario: `rgb(${r2},${g2},${b2})` });
+      } catch(e){ resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = '/api/logo';
+  });
+}
+
+async function cambiarTemaAdmin(tema){
+  document.documentElement.setAttribute('data-theme', tema);
+  safeStorageSet('temaApp', tema);
+  document.documentElement.style.removeProperty('--gold');
+  document.documentElement.style.removeProperty('--green-ok');
+  if(tema === 'club'){
+    let colores = null;
+    try { colores = JSON.parse(safeStorageGet('temaClubColores') || 'null'); } catch(e){}
+    if(!colores){
+      colores = await extraerColoresDelLogoAdmin();
+      if(colores) safeStorageSet('temaClubColores', JSON.stringify(colores));
+    }
+    if(colores){
+      document.documentElement.style.setProperty('--gold', colores.principal);
+      document.documentElement.style.setProperty('--green-ok', colores.secundario);
+    } else {
+      toast('No se pudo leer el logo todavía, usa el tema oscuro o claro por ahora', true);
+    }
+  }
+  cerrarSheet();
+}
+
+function abrirSelectorTemaAdmin(){
+  const actual = safeStorageGet('temaApp') || 'dark';
+  const html = `
+    <div class="sheet-head"><h2>Estilo del panel</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaAdmin('dark')">
+      <div><div class="fl-value">🌙 Oscuro</div><div class="fl-label">El de siempre</div></div>
+      ${actual==='dark' ? '<span class="badge confirmando">Activo</span>' : ''}
+    </div>
+    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaAdmin('light')">
+      <div><div class="fl-value">☀️ Claro</div><div class="fl-label">Fondo blanco</div></div>
+      ${actual==='light' ? '<span class="badge confirmando">Activo</span>' : ''}
+    </div>
+    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaAdmin('club')">
+      <div><div class="fl-value">🎨 Del club</div><div class="fl-label">Colores tomados del logo del club</div></div>
+      ${actual==='club' ? '<span class="badge confirmando">Activo</span>' : ''}
+    </div>
+  `;
+  abrirSheet(html);
+}
+</script>
 <script>
 const API_URL = '/api/admin';
 function safeStorageGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
@@ -1038,6 +1144,10 @@ async function cargarParametros(){
     {key:'meses_retener_codigos', label:'Meses para conservar códigos QR usados', val:p.meses_retener_codigos, prefix:''},
   ];
   document.getElementById('parametrosList').innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>🎨 Estilo del panel</h3></div>
+      <button class="block" onclick="abrirSelectorTemaAdmin()">Cambiar estilo (oscuro / claro / del club)</button>
+    </div>
     <div class="card" id="adminPushCard">
       <div class="card-title"><h3>🔔 Notificaciones del Admin</h3></div>
       <p class="meta" id="adminPushEstadoTexto">Revisando el estado...</p>
