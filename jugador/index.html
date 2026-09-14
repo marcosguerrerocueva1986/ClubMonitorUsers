@@ -211,6 +211,7 @@ const ACCIONES_VERCEL = new Set([
   'analizar_comprobante_jugador', 'registrar_pago_comprobante_jugador', 'aplicar_pago_jugador',
   'guardar_restante_saldo_favor_jugador',
   'listar_tipos_relacion_exento', 'listar_mis_exentos_jugador', 'agregar_exento_jugador', 'eliminar_exento_jugador',
+  'listar_mis_representantes_jugador', 'agregar_representante_jugador', 'editar_representante_jugador', 'eliminar_representante_jugador',
 ]);
 
 function safeGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
@@ -599,7 +600,7 @@ function abrirSubirComprobante(){
       El sistema va a leer el monto y los datos automáticamente. En el siguiente paso podrás revisar y corregir esa información antes de continuar.
     </p>
     <label>Foto del comprobante</label>
-    <input type="file" id="comprobanteFile" accept="image/*" capture="environment">
+    <input type="file" id="comprobanteFile" accept="image/*">
     <button class="primary block" style="margin-top:16px" onclick="analizarComprobante()">Analizar comprobante</button>
     <div id="comprobanteLoading" style="display:none;text-align:center;margin-top:16px">
       <div class="spinner"></div>
@@ -831,6 +832,7 @@ async function cargarPerfil(){
       <button class="primary block" style="margin-top:16px" onclick="guardarPerfil()">Guardar cambios</button>
     </div>
     <button class="block" onclick="abrirMisExentos()">👨‍👩‍👧 Mis invitados exentos (hijos, etc.)</button>
+    ${PERFIL?.representantesHabilitado ? '<button class="block" onclick="abrirMisRepresentantes()">📇 Mis representantes</button>' : ''}
     <button class="block danger" onclick="cerrarSesion()">Cerrar sesión en este dispositivo</button>
   `;
   actualizarEstadoPush();
@@ -901,6 +903,97 @@ async function agregarExentoJugador(){
   const data = await api('listar_mis_exentos_jugador');
   if(data===null) return;
   mostrarMisExentos(data);
+}
+
+async function abrirMisRepresentantes(){
+  const data = await api('listar_mis_representantes_jugador');
+  if(data===null) return;
+  mostrarMisRepresentantes(data);
+}
+
+function mostrarMisRepresentantes(data){
+  const html = `
+    <div class="sheet-head"><h2>Mis representantes</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Registra aquí a tus padres/tutores u otros representantes, para que el club tenga sus datos de contacto.</p>
+    <div id="listaMisRepresentantes">
+      ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no has registrado a nadie.</p>' : data.map(r=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)}</div>
+            <div class="fl-label">${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="sm" onclick='abrirEditarRepresentante(${JSON.stringify(r).replace(/"/g,"&quot;")})'>Editar</button>
+            <button class="sm danger" onclick="eliminarRepresentanteJugador(${r.id})">Quitar</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <label style="margin-top:18px">Nombres</label>
+    <input id="repNombres" placeholder="Nombres">
+    <label>Apellidos</label>
+    <input id="repApellidos" placeholder="Apellidos">
+    <label>Teléfono</label>
+    <input id="repTelefono" placeholder="Opcional" type="tel">
+    <label>Descripción</label>
+    <input id="repDescripcion" placeholder="Ej: Mamá, Papá, Tío...">
+    <button class="primary block" style="margin-top:12px" onclick="agregarRepresentanteJugador()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function agregarRepresentanteJugador(){
+  const nombres = document.getElementById('repNombres').value.trim();
+  const apellidos = document.getElementById('repApellidos').value.trim();
+  const telefono = document.getElementById('repTelefono').value.trim();
+  const descripcion = document.getElementById('repDescripcion').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('agregar_representante_jugador', { nombres, apellidos, telefono, descripcion });
+  if(res===null) return;
+  toast('Representante agregado');
+  const data = await api('listar_mis_representantes_jugador');
+  if(data===null) return;
+  mostrarMisRepresentantes(data);
+}
+
+function abrirEditarRepresentante(r){
+  const html = `
+    <div class="sheet-head"><h2>Editar representante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="repEditNombres" value="${esc(r.nombres)}">
+    <label>Apellidos</label>
+    <input id="repEditApellidos" value="${esc(r.apellidos)}">
+    <label>Teléfono</label>
+    <input id="repEditTelefono" value="${esc(r.telefono||'')}" type="tel">
+    <label>Descripción</label>
+    <input id="repEditDescripcion" value="${esc(r.descripcion||'')}">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarRepresentante(${r.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarRepresentante(representanteId){
+  const nombres = document.getElementById('repEditNombres').value.trim();
+  const apellidos = document.getElementById('repEditApellidos').value.trim();
+  const telefono = document.getElementById('repEditTelefono').value.trim();
+  const descripcion = document.getElementById('repEditDescripcion').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await api('editar_representante_jugador', { representanteId, nombres, apellidos, telefono, descripcion });
+  if(res===null) return;
+  toast('Actualizado');
+  const data = await api('listar_mis_representantes_jugador');
+  if(data===null) return;
+  mostrarMisRepresentantes(data);
+}
+
+async function eliminarRepresentanteJugador(representanteId){
+  if(!confirm('¿Quitar a este representante?')) return;
+  const res = await api('eliminar_representante_jugador', { representanteId });
+  if(res===null) return;
+  toast('Representante quitado');
+  const data = await api('listar_mis_representantes_jugador');
+  if(data===null) return;
+  mostrarMisRepresentantes(data);
 }
 
 function esInstaladaComoApp(){

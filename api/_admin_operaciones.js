@@ -6,7 +6,7 @@ async function obtenerParametros(pool) {
             (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'invitado' AND activo = true ORDER BY prioridad ASC LIMIT 1) AS costo_invitado,
             valor_multa_inasistencia, valor_multa_invitado_no_show, meses_maximo_atraso, numero_admin,
             to_char(fecha_inicio_recaudacion, 'DD/MM/YYYY') AS fecha_inicio_recaudacion, meses_retener_codigos,
-            eventos_habilitado_jugador
+            eventos_habilitado_jugador, representantes_habilitado
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return { success: true, data: r.rows[0] };
@@ -169,6 +169,11 @@ async function toggleEventosJugador(pool, body) {
   return { success: true };
 }
 
+async function toggleRepresentantesClub(pool, body) {
+  await pool.query(`UPDATE sport_control.configuracion_club SET representantes_habilitado = $1 WHERE id = 1`, [!!body.habilitado]);
+  return { success: true };
+}
+
 async function actualizarLogoClub(pool, body) {
   const { logoBase64 } = body;
   if (!logoBase64) return { success: false, error: 'No se recibió ninguna imagen.' };
@@ -179,5 +184,5 @@ async function actualizarLogoClub(pool, body) {
 module.exports = {
   obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas,
   toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada,
-  toggleEventosJugador, actualizarLogoClub,
+  toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub,
 };

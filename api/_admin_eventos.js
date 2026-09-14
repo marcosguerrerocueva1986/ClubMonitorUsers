@@ -102,7 +102,8 @@ async function verDetalleEvento(pool, body) {
   );
 
   const movimientos = await pool.query(
-    `SELECT m.id, m.monto, m.fecha, m.descripcion, m.evento_fecha_id AS "eventoFechaId", t.nombre AS "tipoMovimiento", t.tipo,
+    `SELECT m.id, m.monto, m.fecha, m.descripcion, m.evento_fecha_id AS "eventoFechaId", m.tipo_movimiento_id AS "tipoMovimientoId", m.jugador_id AS "jugadorId",
+       t.nombre AS "tipoMovimiento", t.tipo,
        j.nombres || ' ' || j.apellidos AS jugador, m.comprobante_base64 IS NOT NULL AS "tieneComprobante"
      FROM sport_control.evento_movimientos m
      JOIN sport_control.tipos_movimiento_evento t ON t.id = m.tipo_movimiento_id
@@ -199,6 +200,26 @@ async function eliminarMovimientoEvento(pool, body) {
   return { success: true };
 }
 
+async function editarMovimientoEvento(pool, body) {
+  const { movimientoId, eventoFechaId, tipoMovimientoId, jugadorId, monto, fecha, descripcion, comprobanteBase64 } = body;
+  if (comprobanteBase64) {
+    await pool.query(
+      `UPDATE sport_control.evento_movimientos
+       SET evento_fecha_id = $1, tipo_movimiento_id = $2, jugador_id = $3, monto = $4, fecha = $5, descripcion = $6, comprobante_base64 = $7
+       WHERE id = $8`,
+      [eventoFechaId || null, tipoMovimientoId, jugadorId || null, monto, fecha, descripcion || null, comprobanteBase64, movimientoId]
+    );
+  } else {
+    await pool.query(
+      `UPDATE sport_control.evento_movimientos
+       SET evento_fecha_id = $1, tipo_movimiento_id = $2, jugador_id = $3, monto = $4, fecha = $5, descripcion = $6
+       WHERE id = $7`,
+      [eventoFechaId || null, tipoMovimientoId, jugadorId || null, monto, fecha, descripcion || null, movimientoId]
+    );
+  }
+  return { success: true };
+}
+
 async function verComprobanteMovimiento(pool, body) {
   const r = await pool.query(`SELECT comprobante_base64 FROM sport_control.evento_movimientos WHERE id = $1`, [body.movimientoId]);
   return { success: true, data: { comprobante_base64: r.rows[0] ? r.rows[0].comprobante_base64 : null } };
@@ -239,6 +260,6 @@ module.exports = {
   crearEventoFecha, editarEventoFecha, eliminarEventoFecha,
   verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem,
   asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador,
-  registrarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento,
+  registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento,
   listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento,
 };

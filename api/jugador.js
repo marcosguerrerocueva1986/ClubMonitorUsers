@@ -48,12 +48,13 @@ async function avisarGrupo(pool, partidoId) {
       `SELECT p.alias, p.fecha, p.hora, p.lugar, p.estado,
               sport_control.lista_confirmados_partido(p.id) AS lista,
               (SELECT grupo_jid FROM sport_control.configuracion_club WHERE id = 1) AS grupo_jid,
-              (SELECT instance_evolutionapi FROM sport_control.configuracion_club WHERE id = 1) AS instance_evolutionapi
+              (SELECT instance_evolutionapi FROM sport_control.configuracion_club WHERE id = 1) AS instance_evolutionapi,
+              (SELECT evolution_api_base_url FROM sport_control.configuracion_club WHERE id = 1) AS evolution_api_base_url
        FROM sport_control.partidos p WHERE p.id = $1`,
       [partidoId]
     );
     const p = info.rows[0];
-    if (!p || !p.grupo_jid || !p.instance_evolutionapi) return;
+    if (!p || !p.grupo_jid || !p.instance_evolutionapi || !p.evolution_api_base_url) return;
 
     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     const d = new Date(p.fecha);
@@ -63,7 +64,7 @@ async function avisarGrupo(pool, partidoId) {
     const lineas = lista.map((item, i) => item.tipo === 'invitado' ? `${i + 1}. 🎟️ ${item.nombre} (invitado de ${item.anfitrion})` : `${i + 1}. ${item.nombre}`);
     const texto = '⚽ *' + titulo + '* (' + p.estado + ')\n📅 ' + fechaCorta + '  🕐 ' + (p.hora || '') + '\n📍 ' + (p.lugar || '') + '\n\nConfirmados (' + lista.length + '):\n\n' + (lineas.length > 0 ? lineas.join('\n') : 'Nadie confirmado todavía.');
 
-    await fetch(`https://evolution-api-production-641b.up.railway.app/message/sendText/${p.instance_evolutionapi}`, {
+    await fetch(`${p.evolution_api_base_url}/message/sendText/${p.instance_evolutionapi}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: p.grupo_jid, text: texto }),
@@ -76,8 +77,11 @@ async function avisarGrupo(pool, partidoId) {
 // ============================================================
 // Helper: push de OneSignal cuando se guarda saldo a favor
 // ============================================================
-async function enviarPushSaldoFavor(jugadorId, monto) {
+async function enviarPushSaldoFavor(pool, jugadorId, monto) {
   try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_jugador FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
     await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -85,12 +89,12 @@ async function enviarPushSaldoFavor(jugadorId, monto) {
         'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify({
-        app_id: '94fc2cb8-f935-4abc-b237-ea9d81c1eb81',
+        app_id: c.onesignal_app_id,
         include_aliases: { external_id: [String(jugadorId)] },
         target_channel: 'push',
         headings: { en: '💰 Tienes saldo sin distribuir' },
         contents: { en: `Guardamos $${Number(monto).toFixed(2)} como saldo a favor. Toca para asignarlo a una deuda.` },
-        url: 'https://club-monitor-users.vercel.app/jugador/',
+        url: c.sitio_url_jugador || '',
       }),
     });
   } catch (e) {
@@ -98,8 +102,11 @@ async function enviarPushSaldoFavor(jugadorId, monto) {
   }
 }
 
-async function enviarPushAdmin(titulo, mensaje) {
+async function enviarPushAdmin(pool, titulo, mensaje) {
   try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_admin FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
     await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -107,12 +114,12 @@ async function enviarPushAdmin(titulo, mensaje) {
         'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify({
-        app_id: '94fc2cb8-f935-4abc-b237-ea9d81c1eb81',
+        app_id: c.onesignal_app_id,
         include_aliases: { external_id: ['admin_club'] },
         target_channel: 'push',
         headings: { en: titulo },
         contents: { en: mensaje },
-        url: 'https://club-monitor-users.vercel.app/admin.html',
+        url: c.sitio_url_admin || '',
       }),
     });
   } catch (e) {
@@ -153,11 +160,53 @@ async function registrarJugadorPwa(pool, body) {
 
 async function obtenerMiPerfil(pool, jugadorId) {
   const r = await pool.query(
-    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo FROM sport_control.jugadores j WHERE j.id = $1`,
+    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo,
+            (SELECT eventos_habilitado_jugador FROM sport_control.configuracion_club WHERE id = 1) AS eventos_habilitado,
+            (SELECT whatsapp_checkin_numero FROM sport_control.configuracion_club WHERE id = 1) AS whatsapp_checkin_numero,
+            (SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1) AS representantes_habilitado
+     FROM sport_control.jugadores j WHERE j.id = $1`,
     [jugadorId]
   );
   const row = r.rows[0];
-  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo } };
+  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado } };
+}
+
+async function listarMisRepresentantes(pool, jugadorId) {
+  const r = await pool.query(
+    `SELECT id, nombres, apellidos, telefono, descripcion FROM sport_control.jugador_representantes WHERE jugador_id = $1 ORDER BY creado_en ASC`,
+    [jugadorId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function agregarRepresentante(pool, jugadorId, body) {
+  const { nombres, apellidos, telefono, descripcion } = body;
+  if (!nombres || !apellidos) return { success: false, error: 'Completa nombres y apellidos.' };
+  const r = await pool.query(
+    `INSERT INTO sport_control.jugador_representantes (jugador_id, nombres, apellidos, telefono, descripcion, creado_en)
+     VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id`,
+    [jugadorId, nombres, apellidos, telefono || null, descripcion || null]
+  );
+  return { success: true, data: { id: r.rows[0].id } };
+}
+
+async function editarRepresentante(pool, jugadorId, body) {
+  const { representanteId, nombres, apellidos, telefono, descripcion } = body;
+  const check = await pool.query(`SELECT id FROM sport_control.jugador_representantes WHERE id = $1 AND jugador_id = $2`, [representanteId, jugadorId]);
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
+  await pool.query(
+    `UPDATE sport_control.jugador_representantes SET nombres = $1, apellidos = $2, telefono = $3, descripcion = $4 WHERE id = $5`,
+    [nombres, apellidos, telefono || null, descripcion || null, representanteId]
+  );
+  return { success: true };
+}
+
+async function eliminarRepresentante(pool, jugadorId, body) {
+  const { representanteId } = body;
+  const check = await pool.query(`SELECT id FROM sport_control.jugador_representantes WHERE id = $1 AND jugador_id = $2`, [representanteId, jugadorId]);
+  if (!check.rows[0]) return { success: false, error: 'No se encontró ese representante.' };
+  await pool.query(`DELETE FROM sport_control.jugador_representantes WHERE id = $1`, [representanteId]);
+  return { success: true };
 }
 
 async function verMisPartidos(pool, jugadorId) {
@@ -326,7 +375,7 @@ async function agregarExento(pool, jugadorId, body) {
 
   const j = await pool.query(`SELECT nombres, apellidos FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
   const nombreJugador = j.rows[0] ? (j.rows[0].nombres + ' ' + j.rows[0].apellidos) : 'Un jugador';
-  await enviarPushAdmin('👨‍👩‍👧 Nuevo exento por aprobar', `${nombreJugador} registró a ${nombres} ${apellidos} como exento. Revísalo en Parámetros.`);
+  await enviarPushAdmin(pool, '👨‍👩‍👧 Nuevo exento por aprobar', `${nombreJugador} registró a ${nombres} ${apellidos} como exento. Revísalo en Parámetros.`);
 
   return { success: true, data: { id: r.rows[0].id } };
 }
@@ -407,7 +456,7 @@ async function registrarPagoComprobante(pool, jugadorId, body) {
 
   const j = await pool.query(`SELECT nombres, apellidos FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
   const nombreJugador = j.rows[0] ? (j.rows[0].nombres + ' ' + j.rows[0].apellidos) : 'Un jugador';
-  await enviarPushAdmin('💵 Nuevo pago registrado', `${nombreJugador} registró un pago de $${Number(monto).toFixed(2)}.`);
+  await enviarPushAdmin(pool, '💵 Nuevo pago registrado', `${nombreJugador} registró un pago de $${Number(monto).toFixed(2)}.`);
 
   return { success: true, data: { pagoId: result.rows[0].id, monto } };
 }
@@ -468,13 +517,100 @@ async function aplicarPago(pool, jugadorId, body) {
 async function guardarSaldoFavor(pool, jugadorId, body) {
   const { monto, pagoId } = body;
   await pool.query(`SELECT sport_control.crear_saldo_favor($1, $2, $3) AS saldo_id`, [jugadorId, monto, pagoId]);
-  await enviarPushSaldoFavor(jugadorId, monto);
+  await enviarPushSaldoFavor(pool, jugadorId, monto);
   return { success: true, data: true };
 }
 
 // ============================================================
-// Router principal
+// Eventos (torneos, viajes especiales) -- oculto hasta que
+// configuracion_club.eventos_habilitado_jugador = true
 // ============================================================
+
+async function listarMisEventos(pool, jugadorId) {
+  const r = await pool.query(
+    `SELECT e.id, e.nombre, e.lugar, e.fecha_inicio, e.fecha_fin, e.estado,
+       ec.monto_cuota AS "montoCuota",
+       COALESCE((SELECT SUM(m.monto) FROM sport_control.evento_movimientos m WHERE m.evento_id = e.id AND m.jugador_id = $1), 0) AS "montoPagado"
+     FROM sport_control.evento_cuota_jugador ec
+     JOIN sport_control.eventos e ON e.id = ec.evento_id
+     WHERE ec.jugador_id = $1 AND e.estado != 'cancelado'
+     ORDER BY e.fecha_inicio DESC NULLS LAST`,
+    [jugadorId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function verEventoPublico(pool, jugadorId, body) {
+  const { eventoId } = body;
+  const evento = await pool.query(`SELECT id, nombre, descripcion, lugar, fecha_inicio, fecha_fin, estado FROM sport_control.eventos WHERE id = $1`, [eventoId]);
+  if (!evento.rows[0]) return { success: false, error: 'Evento no encontrado.' };
+
+  const miCuota = await pool.query(
+    `SELECT monto_cuota AS "montoCuota" FROM sport_control.evento_cuota_jugador WHERE evento_id = $1 AND jugador_id = $2`,
+    [eventoId, jugadorId]
+  );
+  const miPagado = await pool.query(
+    `SELECT COALESCE(SUM(monto), 0) AS total FROM sport_control.evento_movimientos WHERE evento_id = $1 AND jugador_id = $2`,
+    [eventoId, jugadorId]
+  );
+
+  // Info PUBLICA: solo totales agregados, sin nombres ni montos individuales de otros jugadores.
+  const totalRecaudado = await pool.query(
+    `SELECT COALESCE(SUM(m.monto), 0) AS total FROM sport_control.evento_movimientos m JOIN sport_control.tipos_movimiento_evento t ON t.id = m.tipo_movimiento_id WHERE m.evento_id = $1 AND t.tipo = 'ingreso'`,
+    [eventoId]
+  );
+  const totalEsperadoCuotas = await pool.query(
+    `SELECT COALESCE(SUM(monto_cuota), 0) AS total FROM sport_control.evento_cuota_jugador WHERE evento_id = $1`,
+    [eventoId]
+  );
+  const gastosPorRubro = await pool.query(
+    `SELECT t.nombre AS rubro, COALESCE(SUM(m.monto), 0) AS gastado, COALESCE(p.monto_proyectado, 0) AS proyectado
+     FROM sport_control.tipos_movimiento_evento t
+     LEFT JOIN sport_control.evento_movimientos m ON m.tipo_movimiento_id = t.id AND m.evento_id = $1
+     LEFT JOIN sport_control.evento_presupuesto p ON p.tipo_movimiento_id = t.id AND p.evento_id = $1
+     WHERE t.tipo = 'gasto' AND (m.id IS NOT NULL OR p.monto_proyectado > 0)
+     GROUP BY t.nombre, p.monto_proyectado ORDER BY t.nombre`,
+    [eventoId]
+  );
+
+  return {
+    success: true,
+    data: {
+      evento: evento.rows[0],
+      miCuota: miCuota.rows[0] ? Number(miCuota.rows[0].montoCuota) : null,
+      miPagado: Number(miPagado.rows[0].total),
+      totalRecaudado: Number(totalRecaudado.rows[0].total),
+      totalEsperadoCuotas: Number(totalEsperadoCuotas.rows[0].total),
+      gastosPorRubro: gastosPorRubro.rows,
+    },
+  };
+}
+
+async function aplicarPagoEvento(pool, jugadorId, body) {
+  const { pagoId, monto, eventoId } = body;
+  const config = await pool.query(`SELECT tipo_movimiento_cuota_jugador_id FROM sport_control.configuracion_club WHERE id = 1`);
+  const tipoCuotaId = config.rows[0] && config.rows[0].tipo_movimiento_cuota_jugador_id;
+  if (!tipoCuotaId) return { success: false, error: 'No está configurado el rubro de "Cuota jugador". Contacta al administrador.' };
+
+  const miCuota = await pool.query(`SELECT monto_cuota FROM sport_control.evento_cuota_jugador WHERE evento_id = $1 AND jugador_id = $2`, [eventoId, jugadorId]);
+  if (!miCuota.rows[0]) return { success: false, error: 'No tienes una cuota asignada para este evento.' };
+
+  const yaPagado = await pool.query(`SELECT COALESCE(SUM(monto), 0) AS total FROM sport_control.evento_movimientos WHERE evento_id = $1 AND jugador_id = $2`, [eventoId, jugadorId]);
+  const pendiente = Math.max(Number(miCuota.rows[0].monto_cuota) - Number(yaPagado.rows[0].total), 0);
+  const montoAAplicar = Math.min(Number(monto), pendiente);
+  const restante = Number(monto) - montoAAplicar;
+
+  if (montoAAplicar > 0) {
+    await pool.query(
+      `INSERT INTO sport_control.evento_movimientos (evento_id, tipo_movimiento_id, jugador_id, monto, fecha, descripcion, creado_en)
+       VALUES ($1, $2, $3, $4, CURRENT_DATE, 'Pago de cuota via app', NOW())`,
+      [eventoId, tipoCuotaId, jugadorId, montoAAplicar]
+    );
+  }
+
+  const mensaje = montoAAplicar > 0 ? `Se aplicaron $${montoAAplicar.toFixed(2)} a tu cuota del evento.` : 'Tu cuota de este evento ya estaba cubierta.';
+  return { success: true, data: { mensaje, restante, pagoId } };
+}
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
 
@@ -507,12 +643,19 @@ module.exports = async (req, res) => {
       case 'listar_mis_exentos_jugador': return res.status(200).json(await listarMisExentos(pool, jugadorId));
       case 'agregar_exento_jugador': return res.status(200).json(await agregarExento(pool, jugadorId, body));
       case 'eliminar_exento_jugador': return res.status(200).json(await eliminarExento(pool, jugadorId, body));
+      case 'listar_mis_representantes_jugador': return res.status(200).json(await listarMisRepresentantes(pool, jugadorId));
+      case 'agregar_representante_jugador': return res.status(200).json(await agregarRepresentante(pool, jugadorId, body));
+      case 'editar_representante_jugador': return res.status(200).json(await editarRepresentante(pool, jugadorId, body));
+      case 'eliminar_representante_jugador': return res.status(200).json(await eliminarRepresentante(pool, jugadorId, body));
       case 'agregar_invitado_partido_jugador': return res.status(200).json(await agregarInvitado(pool, jugadorId, body));
       case 'quitar_invitado_partido_jugador': return res.status(200).json(await quitarInvitado(pool, jugadorId, body));
       case 'analizar_comprobante_jugador': return res.status(200).json(await analizarComprobante(pool, body));
       case 'registrar_pago_comprobante_jugador': return res.status(200).json(await registrarPagoComprobante(pool, jugadorId, body));
       case 'aplicar_pago_jugador': return res.status(200).json(await aplicarPago(pool, jugadorId, body));
       case 'guardar_restante_saldo_favor_jugador': return res.status(200).json(await guardarSaldoFavor(pool, jugadorId, body));
+      case 'listar_mis_eventos_jugador': return res.status(200).json(await listarMisEventos(pool, jugadorId));
+      case 'ver_evento_publico_jugador': return res.status(200).json(await verEventoPublico(pool, jugadorId, body));
+      case 'aplicar_pago_evento_jugador': return res.status(200).json(await aplicarPagoEvento(pool, jugadorId, body));
       default:
         return res.status(200).json({ success: false, error: 'Accion no reconocida' });
     }

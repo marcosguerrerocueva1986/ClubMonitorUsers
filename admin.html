@@ -1035,6 +1035,11 @@ async function cargarParametros(){
       <p class="meta">${p.eventos_habilitado_jugador ? 'Los jugadores YA PUEDEN ver la pestaña de Eventos en su app.' : 'Oculto para los jugadores por ahora — solo tú lo ves aquí.'}</p>
       <button class="block ${p.eventos_habilitado_jugador ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleEventosJugador(${!p.eventos_habilitado_jugador})">${p.eventos_habilitado_jugador ? 'Ocultar de los jugadores' : 'Liberar a los jugadores'}</button>
     </div>
+    <div class="card">
+      <div class="card-title"><h3>👨‍👩‍👧 Representantes (clubes infantiles)</h3></div>
+      <p class="meta">${p.representantes_habilitado ? 'Los jugadores YA PUEDEN registrar a sus representantes en su Perfil.' : 'Oculto por ahora. Actívalo si el club trabaja con menores de edad y necesitas datos de contacto de sus representantes.'}</p>
+      <button class="block ${p.representantes_habilitado ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleRepresentantes(${!p.representantes_habilitado})">${p.representantes_habilitado ? 'Ocultar de los jugadores' : 'Activar para los jugadores'}</button>
+    </div>
     <div class="card">` + campos.map(c=>`
     <div class="field-line">
       <div>
@@ -1051,6 +1056,13 @@ async function toggleEventosJugador(habilitado){
   const res = await api('toggle_eventos_jugador_app', {habilitado});
   if(res===null) return;
   toast(habilitado ? 'Eventos liberado a los jugadores' : 'Eventos ocultado de los jugadores');
+  cargarParametros();
+}
+
+async function toggleRepresentantes(habilitado){
+  const res = await api('toggle_representantes_app', {habilitado});
+  if(res===null) return;
+  toast(habilitado ? 'Representantes activado' : 'Representantes ocultado');
   cargarParametros();
 }
 
@@ -1536,6 +1548,10 @@ async function enviarResumenGrupoMultas(){
 /* ---------- EVENTOS ---------- */
 let eventoActualId = null;
 let eventoActualFechas = [];
+let eventoActualData = null;
+let eventoSubtabActual = 'resumen';
+let eventoMovFiltroFecha = '';
+let eventoMovFiltroTipo = '';
 
 function selectorFechas(idAttr, incluirTodas){
   let opts = incluirTodas ? '<option value="">Todas las fechas</option>' : '<option value="">General (sin fecha específica)</option>';
@@ -1609,79 +1625,230 @@ async function guardarNuevoEvento(){
   cargarEventos();
 }
 
+// ============================================================
+// DETALLE DE EVENTO -- ahora es su propio mini-modulo dentro de
+// la pantalla de Eventos (no una hoja emergente gigante), con
+// sub-pestanas propias para que cada seccion se mantenga manejable
+// aunque haya muchos movimientos/jugadores/rubros.
+// ============================================================
+
 async function abrirDetalleEvento(eventoId){
   eventoActualId = eventoId;
-  const data = await api('ver_detalle_evento_app', {eventoId});
-  if(data===null) return;
-  eventoActualFechas = data.fechas;
-  mostrarDetalleEvento(data);
+  eventoSubtabActual = 'resumen';
+  eventoMovFiltroFecha = '';
+  eventoMovFiltroTipo = '';
+  await recargarDetalleEvento();
 }
 
-function mostrarDetalleEvento(data){
-  const e = data.evento;
-  const gastos = data.presupuesto.filter(p=>p.tipo==='gasto');
-  const totalCuotas = data.cuotas.reduce((s,c)=>s+Number(c.montoCuota),0);
-  const totalCuotasPagado = data.cuotas.reduce((s,c)=>s+Number(c.montoPagado),0);
+async function recargarDetalleEvento(){
+  const data = await api('ver_detalle_evento_app', {eventoId: eventoActualId});
+  if(data===null) return;
+  eventoActualFechas = data.fechas;
+  eventoActualData = data;
+  mostrarDetalleEvento();
+}
 
-  const html = `
-    <div class="sheet-head"><h2>${esc(e.nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">📍 ${esc(e.lugar||'—')} · Estado: <b>${esc(e.estado)}</b></p>
-    <div class="row-actions" style="margin-bottom:14px">
-      <button class="sm" onclick="abrirEditarEvento(${e.id}, ${JSON.stringify(e).replace(/"/g,'&quot;')})">Editar evento</button>
+function mostrarDetalleEvento(){
+  const data = eventoActualData;
+  const e = data.evento;
+  const list = document.getElementById('eventosList');
+
+  const subtabs = [
+    {key:'resumen', label:'📊 Resumen'},
+    {key:'fechas', label:'📅 Fechas'},
+    {key:'presupuesto', label:'💰 Presupuesto'},
+    {key:'cuotas', label:'👥 Cuotas'},
+    {key:'movimientos', label:'🧾 Movimientos'},
+  ];
+
+  list.innerHTML = `
+    <button class="sm" style="margin-bottom:10px" onclick="cargarEventos()">← Volver a eventos</button>
+    <div class="card">
+      <div class="card-title">
+        <h3>${esc(e.nombre)}</h3>
+        <span class="badge ${e.estado==='activo' ? 'confirmando' : (e.estado==='finalizado' ? 'finalizado' : 'cancelado')}">${esc(e.estado)}</span>
+      </div>
+      <div class="meta">📍 ${esc(e.lugar||'—')} ${e.fecha_inicio ? '· 📅 '+fechaCorta(e.fecha_inicio) : ''} ${e.fecha_fin ? '→ '+fechaCorta(e.fecha_fin) : ''}</div>
+      <button class="sm" style="margin-top:8px" onclick='abrirEditarEvento(${e.id}, ${JSON.stringify(e).replace(/"/g,"&quot;")})'>Editar evento</button>
     </div>
 
-    <h3 style="margin:10px 0">📅 Fechas / sedes de este evento</h3>
-    ${data.fechas.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Este evento tiene una sola sede/fecha (usa "General" en presupuesto, cuotas y movimientos). Agrega fechas solo si necesitas separar gastos o cuotas por cada una.</p>' : data.fechas.map(f=>`
-      <div class="field-line">
-        <div>
-          <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
-          <div class="fl-label">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="sm" onclick='abrirEditarEventoFecha(${JSON.stringify(f).replace(/"/g,"&quot;")})'>Editar</button>
-          <button class="sm danger" onclick="eliminarEventoFecha(${f.id})">✕</button>
-        </div>
-      </div>
-    `).join('')}
-    <button class="block" style="margin-top:8px" onclick="abrirCrearEventoFecha()">+ Agregar fecha/sede</button>
+    <div class="row-actions" id="eventoSubtabBar" style="margin:14px 0;flex-wrap:wrap">
+      ${subtabs.map(s=>`<button class="sm ${eventoSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEvento('${s.key}')">${s.label}</button>`).join('')}
+    </div>
 
-    <h3 style="margin:16px 0 10px">📊 Presupuesto (proyectado vs real)</h3>
-    ${gastos.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin rubros presupuestados todavía.</p>' : gastos.map(p=>`
-      <div class="field-line">
-        <div>
-          <div class="fl-value">${esc(p.nombre)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(p.eventoFechaId))})</span></div>
-          <div class="fl-label">Proyectado: $${p.montoProyectado} · Real: $${p.montoReal}</div>
-        </div>
-        <button class="sm" onclick="editarPresupuestoItem(${p.tipoMovimientoId}, '${esc(p.nombre)}', ${p.montoProyectado}, ${p.eventoFechaId||'null'})">Editar</button>
-      </div>
-    `).join('')}
-    <button class="block" style="margin-top:8px" onclick="abrirNuevoPresupuestoItem()">+ Presupuestar un rubro</button>
+    <div id="eventoSubtabContent"></div>
+  `;
+  renderSubtabEventoActual();
+}
 
-    <h3 style="margin:16px 0 10px">👥 Cuotas de jugadores (Total: $${totalCuotas} · Pagado: $${totalCuotasPagado})</h3>
-    ${data.cuotas.map(c=>`
-      <div class="field-line">
-        <div>
-          <div class="fl-value">${esc(c.jugador)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
-          <div class="fl-label">Cuota: $${c.montoCuota} · Pagado: $${c.montoPagado}</div>
+function cambiarSubtabEvento(sub){
+  eventoSubtabActual = sub;
+  document.querySelectorAll('#eventoSubtabBar button').forEach((btn,i)=>{
+    const keys = ['resumen','fechas','presupuesto','cuotas','movimientos'];
+    btn.classList.toggle('primary', keys[i]===sub);
+  });
+  renderSubtabEventoActual();
+}
+
+function renderSubtabEventoActual(){
+  const cont = document.getElementById('eventoSubtabContent');
+  if(eventoSubtabActual==='resumen') cont.innerHTML = renderSubtabResumen();
+  if(eventoSubtabActual==='fechas') cont.innerHTML = renderSubtabFechas();
+  if(eventoSubtabActual==='presupuesto') cont.innerHTML = renderSubtabPresupuesto();
+  if(eventoSubtabActual==='cuotas') cont.innerHTML = renderSubtabCuotas();
+  if(eventoSubtabActual==='movimientos') renderSubtabMovimientos();
+}
+
+function renderSubtabResumen(){
+  const data = eventoActualData;
+  const ingresos = data.movimientos.filter(m=>m.tipo==='ingreso').reduce((s,m)=>s+Number(m.monto),0);
+  const gastos = data.movimientos.filter(m=>m.tipo==='gasto').reduce((s,m)=>s+Number(m.monto),0);
+  const totalCuotas = data.cuotas.reduce((s,c)=>s+Number(c.montoCuota),0);
+  const totalCuotasPagado = data.cuotas.reduce((s,c)=>s+Number(c.montoPagado),0);
+  const totalProyectado = data.presupuesto.reduce((s,p)=>s+Number(p.montoProyectado),0);
+  const totalRealPresupuesto = data.presupuesto.reduce((s,p)=>s+Number(p.montoReal),0);
+  const proximasFechas = [...data.fechas].filter(f=>new Date(f.fecha) >= new Date(new Date().toDateString())).slice(0,3);
+
+  return `
+    <div class="card">
+      <div class="card-title"><h3>Balance general</h3></div>
+      <div class="field-line"><div class="fl-label">Ingresos totales</div><div class="fl-value" style="color:var(--green-ok)">+$${ingresos.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Gastos totales</div><div class="fl-value" style="color:var(--red)">-$${gastos.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Saldo neto</div><div class="fl-value" style="color:var(--gold)">$${(ingresos-gastos).toFixed(2)}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Cuotas de jugadores</h3></div>
+      <div class="field-line"><div class="fl-label">Jugadores inscritos</div><div class="fl-value">${data.cuotas.length}</div></div>
+      <div class="field-line"><div class="fl-label">Total esperado</div><div class="fl-value">$${totalCuotas.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Total pagado</div><div class="fl-value" style="color:var(--green-ok)">$${totalCuotasPagado.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Pendiente</div><div class="fl-value" style="color:var(--red)">$${(totalCuotas-totalCuotasPagado).toFixed(2)}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Presupuesto</h3></div>
+      <div class="field-line"><div class="fl-label">Proyectado</div><div class="fl-value">$${totalProyectado.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Real (gastado)</div><div class="fl-value">$${totalRealPresupuesto.toFixed(2)}</div></div>
+    </div>
+    ${proximasFechas.length>0 ? `
+    <div class="card">
+      <div class="card-title"><h3>Próximas fechas</h3></div>
+      ${proximasFechas.map(f=>`<div class="field-line"><div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div><div class="fl-label">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div></div>`).join('')}
+    </div>` : ''}
+  `;
+}
+
+function renderSubtabFechas(){
+  const data = eventoActualData;
+  return `
+    <div class="card">
+      ${data.fechas.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Este evento tiene una sola sede/fecha (usa "General" en presupuesto, cuotas y movimientos). Agrega fechas solo si necesitas separar gastos o cuotas por cada una.</p>' : data.fechas.map(f=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
+            <div class="fl-label">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="sm" onclick='abrirEditarEventoFecha(${JSON.stringify(f).replace(/"/g,"&quot;")})'>Editar</button>
+            <button class="sm danger" onclick="eliminarEventoFecha(${f.id})">✕</button>
+          </div>
         </div>
-        <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
-      </div>
-    `).join('')}
+      `).join('')}
+    </div>
+    <button class="block" style="margin-top:10px" onclick="abrirCrearEventoFecha()">+ Agregar fecha/sede</button>
+  `;
+}
+
+function renderSubtabPresupuesto(){
+  const data = eventoActualData;
+  const gastos = data.presupuesto.filter(p=>p.tipo==='gasto');
+  return `
+    <div class="card">
+      ${gastos.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin rubros presupuestados todavía.</p>' : gastos.map(p=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(p.nombre)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(p.eventoFechaId))})</span></div>
+            <div class="fl-label">Proyectado: $${p.montoProyectado} · Real: $${p.montoReal}</div>
+          </div>
+          <button class="sm" onclick="editarPresupuestoItem(${p.tipoMovimientoId}, '${esc(p.nombre)}', ${p.montoProyectado}, ${p.eventoFechaId||'null'})">Editar</button>
+        </div>
+      `).join('')}
+    </div>
+    <button class="block" style="margin-top:10px" onclick="abrirNuevoPresupuestoItem()">+ Presupuestar un rubro</button>
+  `;
+}
+
+function renderSubtabCuotas(){
+  const data = eventoActualData;
+  const totalCuotas = data.cuotas.reduce((s,c)=>s+Number(c.montoCuota),0);
+  const totalCuotasPagado = data.cuotas.reduce((s,c)=>s+Number(c.montoPagado),0);
+  return `
+    <p style="color:var(--chalk-dim);font-size:12px;margin-top:0">Los jugadores en esta lista son los inscritos oficiales del evento (para reportes). Los de refuerzo que no pagan se agregan igual, con cuota $0.</p>
+    <div class="card">
+      <div class="card-title"><h3>Total: $${totalCuotas.toFixed(2)} · Pagado: $${totalCuotasPagado.toFixed(2)}</h3></div>
+      ${data.cuotas.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Nadie inscrito todavía.</p>' : data.cuotas.map(c=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(c.jugador)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
+            <div class="fl-label">Cuota: $${c.montoCuota} · Pagado: $${c.montoPagado}</div>
+          </div>
+          <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
+        </div>
+      `).join('')}
+    </div>
     <div class="row-actions" style="margin-top:10px">
       <button class="sm" onclick="abrirAsignarCuota()">+ Asignar a un jugador</button>
       <button class="sm primary" onclick="abrirAplicarCuotaTodos()">Aplicar a todos</button>
     </div>
-
-    <h3 style="margin:16px 0 10px">🧾 Movimientos registrados</h3>
-    <div id="listaMovimientosEvento">${renderMovimientosEvento(data.movimientos)}</div>
-    <button class="primary block" style="margin-top:10px" onclick="abrirRegistrarMovimiento()">+ Registrar movimiento (con foto)</button>
   `;
-  abrirSheet(html);
 }
 
-function renderMovimientosEvento(movimientos){
-  if(movimientos.length===0) return '<p style="color:var(--chalk-dim);font-size:14px">Sin movimientos todavía.</p>';
-  return movimientos.map(m=>`
+function movimientosFiltrados(){
+  return eventoActualData.movimientos.filter(m => {
+    if(eventoMovFiltroFecha === 'general' && m.eventoFechaId) return false;
+    if(eventoMovFiltroFecha && eventoMovFiltroFecha !== 'general' && m.eventoFechaId !== parseInt(eventoMovFiltroFecha)) return false;
+    if(eventoMovFiltroTipo && m.tipoMovimientoId !== parseInt(eventoMovFiltroTipo)) return false;
+    return true;
+  });
+}
+
+function renderSubtabMovimientos(){
+  const cont = document.getElementById('eventoSubtabContent');
+  const data = eventoActualData;
+  const tiposUsados = [...new Map(data.movimientos.map(m=>[m.tipoMovimientoId, m.tipoMovimiento])).entries()];
+
+  cont.innerHTML = `
+    <div class="row-actions" style="margin-bottom:10px;flex-wrap:wrap">
+      <select id="filtroMovFecha" onchange="aplicarFiltroMovimientos()" style="flex:1;min-width:140px">
+        <option value="">Todas las fechas</option>
+        <option value="general">Solo generales</option>
+        ${eventoActualFechas.map(f=>`<option value="${f.id}">${esc(f.descripcion || fechaCorta(f.fecha))}</option>`).join('')}
+      </select>
+      <select id="filtroMovTipo" onchange="aplicarFiltroMovimientos()" style="flex:1;min-width:140px">
+        <option value="">Todos los rubros</option>
+        ${tiposUsados.map(([id,nombre])=>`<option value="${id}">${esc(nombre)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="listaMovimientosEvento"></div>
+    <button class="primary block" style="margin-top:10px" onclick="abrirRegistrarMovimiento()">+ Registrar movimiento (con foto)</button>
+  `;
+  document.getElementById('filtroMovFecha').value = eventoMovFiltroFecha;
+  document.getElementById('filtroMovTipo').value = eventoMovFiltroTipo;
+  renderListaMovimientosFiltrada();
+}
+
+function aplicarFiltroMovimientos(){
+  eventoMovFiltroFecha = document.getElementById('filtroMovFecha').value;
+  eventoMovFiltroTipo = document.getElementById('filtroMovTipo').value;
+  renderListaMovimientosFiltrada();
+}
+
+function renderListaMovimientosFiltrada(){
+  const movs = movimientosFiltrados();
+  const el = document.getElementById('listaMovimientosEvento');
+  if(movs.length===0){ el.innerHTML = '<p style="color:var(--chalk-dim);font-size:14px">No hay movimientos con este filtro.</p>'; return; }
+  const totalFiltrado = movs.reduce((s,m)=> s + (m.tipo==='ingreso' ? Number(m.monto) : -Number(m.monto)), 0);
+  el.innerHTML = `
+    <p style="color:var(--chalk-dim);font-size:12px">Mostrando ${movs.length} movimiento(s) · Neto: $${totalFiltrado.toFixed(2)}</p>
+    ${movs.map(m=>`
     <div class="field-line">
       <div>
         <div class="fl-value">${esc(m.tipoMovimiento)} ${m.jugador ? '— '+esc(m.jugador) : ''}</div>
@@ -1690,10 +1857,11 @@ function renderMovimientosEvento(movimientos){
       <div style="display:flex;gap:6px;align-items:center">
         <div class="fl-value" style="color:${m.tipo==='ingreso' ? 'var(--green-ok)' : 'var(--red)'}">${m.tipo==='ingreso'?'+':'-'}$${m.monto}</div>
         ${m.tieneComprobante ? `<button class="sm" onclick="verComprobanteMovimiento(${m.id})">📷</button>` : ''}
+        <button class="sm" onclick='abrirEditarMovimiento(${JSON.stringify(m).replace(/"/g,"&quot;")})'>✎</button>
         <button class="sm danger" onclick="eliminarMovimientoEvento(${m.id})">✕</button>
       </div>
     </div>
-  `).join('');
+  `).join('')}`;
 }
 
 /* --- Fechas del evento --- */
@@ -1719,7 +1887,8 @@ async function guardarCrearEventoFecha(){
   const res = await api('crear_evento_fecha_app', {eventoId: eventoActualId, fecha, lugar, descripcion});
   if(res===null) return;
   toast('Fecha agregada');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 function abrirEditarEventoFecha(f){
@@ -1743,7 +1912,8 @@ async function guardarEditarEventoFecha(eventoFechaId){
   const res = await api('editar_evento_fecha_app', {eventoFechaId, fecha, lugar, descripcion});
   if(res===null) return;
   toast('Fecha actualizada');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 async function eliminarEventoFecha(eventoFechaId){
@@ -1751,7 +1921,7 @@ async function eliminarEventoFecha(eventoFechaId){
   const res = await api('eliminar_evento_fecha_app', {eventoFechaId});
   if(res===null) return;
   toast('Fecha eliminada');
-  abrirDetalleEvento(eventoActualId);
+  await recargarDetalleEvento();
 }
 
 /* --- Presupuesto --- */
@@ -1778,11 +1948,12 @@ async function guardarNuevoPresupuestoItem(){
   const eventoFechaIdVal = document.getElementById('presNuevoFechaId').value;
   const eventoFechaId = eventoFechaIdVal ? parseInt(eventoFechaIdVal) : null;
   const montoProyectado = parseFloat(document.getElementById('presNuevoMonto').value);
-  if(!montoProyectado){ toast('Escribe un monto válido', true); return; }
+  if(isNaN(montoProyectado) || montoProyectado < 0){ toast('Escribe un monto válido', true); return; }
   const res = await api('guardar_presupuesto_item_app', {eventoId: eventoActualId, eventoFechaId, tipoMovimientoId, montoProyectado});
   if(res===null) return;
   toast('Presupuesto guardado');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 function editarPresupuestoItem(tipoMovimientoId, nombre, montoActual, eventoFechaId){
@@ -1800,7 +1971,8 @@ async function guardarPresupuestoItem(tipoMovimientoId, eventoFechaId){
   const res = await api('guardar_presupuesto_item_app', {eventoId: eventoActualId, eventoFechaId, tipoMovimientoId, montoProyectado});
   if(res===null) return;
   toast('Presupuesto actualizado');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 /* --- Cuotas --- */
@@ -1809,6 +1981,7 @@ async function abrirAsignarCuota(){
   if(jugadores===null) return;
   const html = `
     <div class="sheet-head"><h2>Asignar cuota</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:12px">Para jugadores de refuerzo que no pagan, deja el monto en 0 — igual quedan inscritos.</p>
     <label>Jugador</label>
     <select id="cuotaJugadorId">
       ${jugadores.map(j=>`<option value="${j.id}">${esc(j.nombres)} ${esc(j.apellidos)}</option>`).join('')}
@@ -1816,7 +1989,7 @@ async function abrirAsignarCuota(){
     <label>¿Cuota general del evento o de una fecha específica?</label>
     ${selectorFechas('cuotaFechaId', false)}
     <label>Monto de la cuota</label>
-    <input id="cuotaMonto" type="number" step="0.01" placeholder="0.00">
+    <input id="cuotaMonto" type="number" step="0.01" placeholder="0.00" value="0">
     <button class="primary block" style="margin-top:16px" onclick="guardarCuotaJugador()">Guardar</button>
   `;
   abrirSheet(html);
@@ -1827,11 +2000,12 @@ async function guardarCuotaJugador(){
   const eventoFechaIdVal = document.getElementById('cuotaFechaId').value;
   const eventoFechaId = eventoFechaIdVal ? parseInt(eventoFechaIdVal) : null;
   const montoCuota = parseFloat(document.getElementById('cuotaMonto').value);
-  if(!montoCuota){ toast('Escribe un monto válido', true); return; }
+  if(isNaN(montoCuota) || montoCuota < 0){ toast('Escribe un monto válido (puede ser 0 para jugadores de refuerzo)', true); return; }
   const res = await api('asignar_cuota_jugador_app', {eventoId: eventoActualId, eventoFechaId, jugadorId, montoCuota});
   if(res===null) return;
   toast('Cuota asignada');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 function abrirAplicarCuotaTodos(){
@@ -1850,12 +2024,13 @@ async function guardarCuotaTodos(){
   const eventoFechaIdVal = document.getElementById('cuotaTodosFechaId').value;
   const eventoFechaId = eventoFechaIdVal ? parseInt(eventoFechaIdVal) : null;
   const montoCuota = parseFloat(document.getElementById('cuotaTodosMonto').value);
-  if(!montoCuota){ toast('Escribe un monto válido', true); return; }
+  if(isNaN(montoCuota) || montoCuota < 0){ toast('Escribe un monto válido (puede ser 0)', true); return; }
   if(!confirm('¿Aplicar $'+montoCuota+' de cuota a TODOS los jugadores activos?')) return;
   const res = await api('aplicar_cuota_todos_app', {eventoId: eventoActualId, eventoFechaId, montoCuota});
   if(res===null) return;
   toast('Cuota aplicada a todos');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 async function quitarCuotaJugador(cuotaId){
@@ -1863,7 +2038,7 @@ async function quitarCuotaJugador(cuotaId){
   const res = await api('quitar_cuota_jugador_app', {cuotaId});
   if(res===null) return;
   toast('Cuota quitada');
-  abrirDetalleEvento(eventoActualId);
+  await recargarDetalleEvento();
 }
 
 /* --- Movimientos --- */
@@ -1891,8 +2066,8 @@ async function abrirRegistrarMovimiento(){
     </select>
     <label>Descripción</label>
     <input id="movDescripcion" placeholder="Opcional">
-    <label>Foto de respaldo (comprobante)</label>
-    <input type="file" id="movComprobanteFile" accept="image/*" capture="environment">
+    <label>Foto de respaldo (comprobante, opcional)</label>
+    <input type="file" id="movComprobanteFile" accept="image/*">
     <button class="primary block" style="margin-top:16px" onclick="guardarMovimientoEvento()">Guardar</button>
   `;
   abrirSheet(html);
@@ -1918,7 +2093,66 @@ async function guardarMovimientoEvento(){
   const res = await api('registrar_movimiento_evento_app', {eventoId: eventoActualId, eventoFechaId, tipoMovimientoId, monto, fecha, jugadorId, descripcion, comprobanteBase64});
   if(res===null) return;
   toast('Movimiento registrado');
-  abrirDetalleEvento(eventoActualId);
+  cerrarSheet();
+  await recargarDetalleEvento();
+}
+
+async function abrirEditarMovimiento(m){
+  const tipos = await api('listar_tipos_movimiento_evento_app');
+  if(tipos===null) return;
+  const jugadores = await api('listar_jugadores', {busqueda:''});
+  if(jugadores===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Editar movimiento</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Rubro</label>
+    <select id="movEditTipoId">
+      ${tipos.map(t=>`<option value="${t.id}" ${t.id===m.tipoMovimientoId?'selected':''}>${t.tipo==='ingreso'?'💰':'💸'} ${esc(t.nombre)}</option>`).join('')}
+    </select>
+    <label>¿General del evento o de una fecha específica?</label>
+    <select id="movEditFechaId">
+      <option value="">General (sin fecha específica)</option>
+      ${eventoActualFechas.map(f=>`<option value="${f.id}" ${f.id===m.eventoFechaId?'selected':''}>${esc(f.descripcion || fechaCorta(f.fecha))} — ${fechaCorta(f.fecha)}</option>`).join('')}
+    </select>
+    <label>Monto</label>
+    <input id="movEditMonto" type="number" step="0.01" value="${m.monto}">
+    <label>Fecha del movimiento</label>
+    <input id="movEditFecha" type="date" value="${m.fecha.slice(0,10)}">
+    <label>Jugador (solo si es pago de cuota de alguien puntual)</label>
+    <select id="movEditJugadorId">
+      <option value="">— No aplica —</option>
+      ${jugadores.map(j=>`<option value="${j.id}" ${j.id===m.jugadorId?'selected':''}>${esc(j.nombres)} ${esc(j.apellidos)}</option>`).join('')}
+    </select>
+    <label>Descripción</label>
+    <input id="movEditDescripcion" value="${esc(m.descripcion||'')}">
+    <label>Reemplazar foto de respaldo (opcional, deja vacío para mantener la actual)</label>
+    <input type="file" id="movEditComprobanteFile" accept="image/*">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarMovimiento(${m.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarMovimiento(movimientoId){
+  const tipoMovimientoId = parseInt(document.getElementById('movEditTipoId').value);
+  const eventoFechaIdVal = document.getElementById('movEditFechaId').value;
+  const eventoFechaId = eventoFechaIdVal ? parseInt(eventoFechaIdVal) : null;
+  const monto = parseFloat(document.getElementById('movEditMonto').value);
+  const fecha = document.getElementById('movEditFecha').value;
+  const jugadorIdVal = document.getElementById('movEditJugadorId').value;
+  const jugadorId = jugadorIdVal ? parseInt(jugadorIdVal) : null;
+  const descripcion = document.getElementById('movEditDescripcion').value.trim();
+  if(!monto){ toast('Escribe un monto válido', true); return; }
+
+  let comprobanteBase64 = null;
+  const fileInput = document.getElementById('movEditComprobanteFile');
+  if(fileInput.files && fileInput.files[0]){
+    comprobanteBase64 = await fileToBase64Admin(fileInput.files[0]);
+  }
+
+  const res = await api('editar_movimiento_evento_app', {movimientoId, eventoFechaId, tipoMovimientoId, monto, fecha, jugadorId, descripcion, comprobanteBase64});
+  if(res===null) return;
+  toast('Movimiento actualizado');
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 async function eliminarMovimientoEvento(movimientoId){
@@ -1926,7 +2160,7 @@ async function eliminarMovimientoEvento(movimientoId){
   const res = await api('eliminar_movimiento_evento_app', {movimientoId});
   if(res===null) return;
   toast('Movimiento eliminado');
-  abrirDetalleEvento(eventoActualId);
+  await recargarDetalleEvento();
 }
 
 async function verComprobanteMovimiento(movimientoId){
@@ -1972,8 +2206,8 @@ async function guardarEditarEvento(eventoId){
   const res = await api('editar_evento_app', {eventoId, nombre, descripcion, lugar, fechaInicio, fechaFin, estado});
   if(res===null) return;
   toast('Evento actualizado');
-  abrirDetalleEvento(eventoId);
-  cargarEventos();
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 async function verInformeConsolidadoEventos(){

@@ -11,8 +11,8 @@
 
 const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido } = require('./_admin_partidos');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido } = require('./_admin_jugadores');
-const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub } = require('./_admin_operaciones');
-const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento } = require('./_admin_eventos');
+const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub } = require('./_admin_operaciones');
+const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento } = require('./_admin_eventos');
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
 const { listarJugadoresDisponibles, agregarJugadorPartido, listarConfirmadosRemovibles, quitarJugadorPartido, quitarInvitadoPartido } = require('./_admin_gestion_partido');
 const { revisarMultasPartido, enviarMultasJugadoresApp, enviarResumenMultasGrupoApp } = require('./_admin_multas_revision');
@@ -61,6 +61,7 @@ module.exports = async (req, res) => {
       case 'ver_pendientes_jugador_app': return res.status(200).json(await verPendientesJugador(pool, body));
       case 'marcar_multa_pagada_app': return res.status(200).json(await marcarMultaPagada(pool, body));
       case 'toggle_eventos_jugador_app': return res.status(200).json(await toggleEventosJugador(pool, body));
+      case 'toggle_representantes_app': return res.status(200).json(await toggleRepresentantesClub(pool, body));
       case 'actualizar_logo_club_app': return res.status(200).json(await actualizarLogoClub(pool, body));
       case 'crear_evento_app': return res.status(200).json(await crearEvento(pool, body));
       case 'editar_evento_app': return res.status(200).json(await editarEvento(pool, body));
@@ -75,6 +76,7 @@ module.exports = async (req, res) => {
       case 'aplicar_cuota_todos_app': return res.status(200).json(await aplicarCuotaATodos(pool, body));
       case 'quitar_cuota_jugador_app': return res.status(200).json(await quitarCuotaJugador(pool, body));
       case 'registrar_movimiento_evento_app': return res.status(200).json(await registrarMovimientoEvento(pool, body));
+      case 'editar_movimiento_evento_app': return res.status(200).json(await editarMovimientoEvento(pool, body));
       case 'eliminar_movimiento_evento_app': return res.status(200).json(await eliminarMovimientoEvento(pool, body));
       case 'ver_comprobante_movimiento_app': return res.status(200).json(await verComprobanteMovimiento(pool, body));
       case 'listar_informe_consolidado_eventos_app': return res.status(200).json(await listarInformeConsolidadoEventos(pool));
