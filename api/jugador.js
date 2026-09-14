@@ -301,7 +301,24 @@ async function verPendientesPago(pool, jugadorId) {
     [jugadorId]
   );
   const row = r.rows[0];
-  return { success: true, data: { pendientes: row.pendientes, saldoAFavor: Number(row.saldo_a_favor) } };
+  const pendientes = row.pendientes;
+
+  // Cuotas de eventos pendientes -- se calculan aparte (tabla independiente,
+  // evento_cuota_jugador/evento_movimientos, nada que ver con pendientes_jugador())
+  // y se agregan al mismo objeto para que la pantalla de deuda las muestre juntas.
+  const eventosCuota = await pool.query(
+    `SELECT e.id AS "eventoId", e.nombre AS "eventoNombre", ec.monto_cuota AS "montoCuota",
+       COALESCE((SELECT SUM(m.monto) FROM sport_control.evento_movimientos m WHERE m.evento_id = e.id AND m.jugador_id = $1), 0) AS "montoPagado"
+     FROM sport_control.evento_cuota_jugador ec
+     JOIN sport_control.eventos e ON e.id = ec.evento_id
+     WHERE ec.jugador_id = $1 AND e.estado != 'cancelado'`,
+    [jugadorId]
+  );
+  pendientes.eventos_pendientes = eventosCuota.rows
+    .map(e => ({ eventoId: e.eventoId, eventoNombre: e.eventoNombre, montoCuota: Number(e.montoCuota), montoPagado: Number(e.montoPagado), pendiente: Math.max(Number(e.montoCuota) - Number(e.montoPagado), 0) }))
+    .filter(e => e.pendiente > 0.009);
+
+  return { success: true, data: { pendientes, saldoAFavor: Number(row.saldo_a_favor) } };
 }
 
 async function verMiQr(pool, jugadorId, partidoId) {
@@ -372,7 +389,13 @@ async function verMisUltimosPagos(pool, jugadorId) {
          SELECT COALESCE(m.pagada_en, m.aprobada_en) AS fecha, m.monto, 'Multa: ' || tm.nombre AS motivo
          FROM sport_control.multas m JOIN sport_control.tipos_multa tm ON tm.id = m.tipo_multa_id
          WHERE m.jugador_id = $1 AND m.pagada = true
-       ) sub ORDER BY fecha DESC LIMIT 5
+         UNION ALL
+         SELECT em.creado_en AS fecha, em.monto, 'Cuota evento: ' || e.nombre AS motivo
+         FROM sport_control.evento_movimientos em
+         JOIN sport_control.eventos e ON e.id = em.evento_id
+         JOIN sport_control.tipos_movimiento_evento t ON t.id = em.tipo_movimiento_id
+         WHERE em.jugador_id = $1 AND t.tipo = 'ingreso'
+       ) sub ORDER BY fecha DESC LIMIT 8
      ) t`,
     [jugadorId]
   );
@@ -666,7 +689,7 @@ async function verEventoPublico(pool, jugadorId, body) {
 async function verMovimientosEventoJugador(pool, body) {
   const { eventoId } = body;
   const movimientos = await pool.query(
-    `SELECT m.id, m.monto, m.fecha, m.descripcion, m.evento_fecha_id AS "eventoFechaId", t.nombre AS "tipoMovimiento", t.tipo,
+    `SELECT m.id, m.monto, m.fecha, m.descripcion, m.evento_fecha_id AS "eventoFechaId", m.jugador_id AS "jugadorId", t.nombre AS "tipoMovimiento", t.tipo,
        j.nombres || ' ' || j.apellidos AS jugador, m.comprobante_base64 IS NOT NULL AS "tieneComprobante"
      FROM sport_control.evento_movimientos m
      JOIN sport_control.tipos_movimiento_evento t ON t.id = m.tipo_movimiento_id

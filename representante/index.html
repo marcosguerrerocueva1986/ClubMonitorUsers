@@ -396,6 +396,9 @@ async function cargarCuentaRep(){
   if((p.invitados_pendientes||[]).length>0){
     html += `<div class="card"><div class="card-title"><h3>🎟️ Invitados sin pagar</h3></div><p class="meta">${p.invitados_pendientes.length} invitado(s) — $${p.total_invitados}</p></div>`;
   }
+  if((p.eventos_pendientes||[]).length>0){
+    html += `<div class="alert-card">🎒 ${p.eventos_pendientes.length} cuota(s) de evento pendiente(s): ${p.eventos_pendientes.map(e=>esc(e.eventoNombre)+' ($'+e.pendiente.toFixed(2)+')').join(', ')}</div>`;
+  }
 
   html += `
     <div class="card">
@@ -415,9 +418,10 @@ async function verMisUltimosPagosRep(){
   if(pagos===null) return;
   const html = `
     <div class="sheet-head"><h2>Últimos pagos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">Incluye pagos generales del club y cuotas de eventos.</p>
     ${pagos.length===0 ? '<p style="color:var(--chalk-dim)">Aún no hay pagos registrados.</p>' : pagos.map(p=>`
       <div class="field-line">
-        <div><div class="fl-value">${esc(p.tipo_concepto||p.tipo||'Pago')}</div><div class="fl-label">${p.fecha_comprobante||''}</div></div>
+        <div><div class="fl-value">${esc(p.motivo||'Pago')}</div><div class="fl-label">${p.fecha ? fechaCorta(p.fecha) : ''}</div></div>
         <div class="fl-value">$${p.monto}</div>
       </div>
     `).join('')}
@@ -520,6 +524,11 @@ function mostrarDistribucionRep(p){
   (p.partidos_especiales||[]).forEach(pe=>{
     filas.push({tipo:'partido_especial', label:'Partido especial: '+esc(pe.alias||''), monto:pe.monto, partidoId:pe.partido_id, conceptoMonto:pe.monto});
   });
+  // Cuotas de eventos pendientes -- se muestran junto a lo demas, pero se
+  // aplican por separado (tabla independiente), guardando de que evento es.
+  (p.eventos_pendientes||[]).forEach(ev=>{
+    filas.push({tipo:'evento_cuota', label:'🎒 Cuota evento: '+esc(ev.eventoNombre), monto:ev.pendiente, eventoId:ev.eventoId});
+  });
 
   const html = `
     <div class="sheet-head"><h2>¿A qué lo aplicamos?</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
@@ -542,14 +551,20 @@ function mostrarDistribucionRep(p){
 async function aplicarPagoConceptoRep(f){
   const montoAAplicar = Math.min(pagoStateRep.montoDisponible, Number(f.monto));
   const sobrante = pagoStateRep.montoDisponible - montoAAplicar;
-  const res = await api('aplicar_pago_representante', {
-    tipoConcepto: f.tipo, monto: montoAAplicar, origenSaldoFavor: pagoStateRep.origenSaldoFavor,
-    pagoId: pagoStateRep.pagoId, partidoId: f.partidoId, conceptoMonto: f.conceptoMonto,
-  });
+  let res;
+  if(f.tipo === 'evento_cuota'){
+    res = await api('aplicar_pago_evento_representante', { pagoId: pagoStateRep.pagoId, monto: montoAAplicar, eventoId: f.eventoId });
+  } else {
+    res = await api('aplicar_pago_representante', {
+      tipoConcepto: f.tipo, monto: montoAAplicar, origenSaldoFavor: pagoStateRep.origenSaldoFavor,
+      pagoId: pagoStateRep.pagoId, partidoId: f.partidoId, conceptoMonto: f.conceptoMonto,
+    });
+  }
   if(res===null) return;
   if(res.pagoId) pagoStateRep.pagoId = res.pagoId;
   pagoStateRep.origenSaldoFavor = false;
   res.restante = sobrante + Number(res.restante || 0);
+  if(!res.mensaje) res.mensaje = 'Pago aplicado a la cuota del evento.';
   mostrarResultadoPagoRep(res);
 }
 
@@ -656,6 +671,7 @@ function renderSubtabEventoRepActual(){
 function renderResumenEventoRep(){
   const d = eventoRepActualData;
   const pendiente = d.miCuota!==null ? Math.max(d.miCuota - d.miPagado, 0) : null;
+  const totalGastos = (d.gastosPorRubro||[]).reduce((s,g)=>s+Number(g.gastado),0);
   return `
     <div class="card">
       <div class="card-title"><h3>Cuota de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
@@ -663,29 +679,147 @@ function renderResumenEventoRep(){
         <div class="field-line"><div class="fl-label">Cuota</div><div class="fl-value">$${d.miCuota.toFixed(2)}</div></div>
         <div class="field-line"><div class="fl-label">Pagado</div><div class="fl-value" style="color:var(--green-ok)">$${d.miPagado.toFixed(2)}</div></div>
         <div class="field-line"><div class="fl-label">Pendiente</div><div class="fl-value" style="color:${pendiente>0?'var(--red)':'var(--green-ok)'}">$${pendiente.toFixed(2)} ${pendiente===0?'✓':''}</div></div>
-        ${pendiente>0 ? `<button class="primary block" style="margin-top:10px" onclick="abrirPagarCuotaEventoRep()">📤 Pagar cuota del evento</button>` : ''}
+        <button class="sm" style="margin-top:8px" onclick="abrirDetalleCuotaRep()">Ver detalle de mis aportes</button>
+        ${pendiente>0 ? `<button class="primary block" style="margin-top:8px" onclick="abrirPagarCuotaEventoRep()">📤 Pagar cuota del evento</button>` : ''}
       `}
     </div>
     <div class="card">
       <div class="card-title"><h3>Financiero general</h3></div>
       <div class="field-line"><div class="fl-label">Recaudado</div><div class="fl-value" style="color:var(--green-ok)">$${d.totalRecaudado.toFixed(2)}</div></div>
       <div class="field-line"><div class="fl-label">Esperado</div><div class="fl-value">$${d.totalEsperadoCuotas.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Gastado</div><div class="fl-value" style="color:var(--red)">$${totalGastos.toFixed(2)}</div></div>
+      <button class="sm" style="margin-top:8px" onclick="abrirDetalleFinancieroRep()">Ver detalle agrupado</button>
     </div>
   `;
 }
+
+async function abrirDetalleCuotaRep(){
+  const movs = await api('ver_movimientos_evento_representante', {eventoId: eventoRepActualId});
+  if(movs===null) return;
+  const aportes = movs.filter(m => m.jugadorId === JUGADOR_ACTUAL.id && m.tipo==='ingreso');
+  const html = `
+    <div class="sheet-head"><h2>Aportes de ${esc(JUGADOR_ACTUAL.nombres)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${aportes.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin aportes registrados todavía.</p>' : aportes.map(m=>`
+      <div class="field-line">
+        <div><div class="fl-value">$${m.monto}</div><div class="fl-label">${fechaCorta(m.fecha)} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div></div>
+        ${m.tieneComprobante ? `<button class="sm" onclick="verComprobanteMovimientoRep(${m.id})">📷</button>` : ''}
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+async function abrirDetalleFinancieroRep(){
+  const movs = await api('ver_movimientos_evento_representante', {eventoId: eventoRepActualId});
+  if(movs===null) return;
+  const grupos = {ingreso: {}, gasto: {}};
+  movs.forEach(m => {
+    if(!grupos[m.tipo][m.tipoMovimiento]) grupos[m.tipo][m.tipoMovimiento] = 0;
+    grupos[m.tipo][m.tipoMovimiento] += Number(m.monto);
+  });
+  function renderGrupo(titulo, obj, color){
+    const rubros = Object.entries(obj);
+    const total = rubros.reduce((s,[,v])=>s+v,0);
+    return `
+      <div class="card">
+        <div class="card-title"><h3>${titulo}</h3><span class="fl-value" style="color:${color}">$${total.toFixed(2)}</span></div>
+        ${rubros.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin movimientos.</p>' : rubros.map(([rubro,monto])=>`
+          <div class="field-line"><div class="fl-label">${esc(rubro)}</div><div class="fl-value">$${monto.toFixed(2)}</div></div>
+        `).join('')}
+      </div>
+    `;
+  }
+  const html = `
+    <div class="sheet-head"><h2>Detalle financiero</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${renderGrupo('💰 Ingresos por rubro', grupos.ingreso, 'var(--green-ok)')}
+    ${renderGrupo('💸 Egresos por rubro', grupos.gasto, 'var(--red)')}
+  `;
+  abrirSheet(html);
+}
+
+let movimientosRepCache = [];
+let movFiltroSoloMios = false;
+let movFiltroDesde = '';
+let movFiltroHasta = '';
 
 async function cargarMovimientosEventoRep(){
   const cont = document.getElementById('eventoRepSubtabContent');
   cont.innerHTML = '<div class="spinner"></div>';
   const movs = await api('ver_movimientos_evento_representante', {eventoId: eventoRepActualId});
   if(movs===null) return;
-  if(movs.length===0){ cont.innerHTML = '<p style="color:var(--chalk-dim);font-size:14px">Sin movimientos todavía.</p>'; return; }
-  cont.innerHTML = movs.map(m=>`
+  movimientosRepCache = movs;
+  cont.innerHTML = `
+    <div class="row-actions" style="margin-bottom:10px;flex-wrap:wrap">
+      <input type="date" id="movRepDesde" style="flex:1;min-width:130px" onchange="aplicarFiltroMovRep()">
+      <input type="date" id="movRepHasta" style="flex:1;min-width:130px" onchange="aplicarFiltroMovRep()">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;font-size:13px;color:var(--chalk-dim);margin-bottom:10px;text-transform:none">
+      <input type="checkbox" id="movRepSoloMios" style="width:18px;height:18px" onchange="aplicarFiltroMovRep()">
+      Ver solo los movimientos de ${esc(JUGADOR_ACTUAL.nombres)}
+    </label>
+    <div id="listaMovRepFiltrada"></div>
+    <button class="block" style="margin-top:10px" onclick="descargarCsvMovimientosRep()">⬇️ Descargar CSV de este filtro</button>
+  `;
+  renderListaMovRepFiltrada();
+}
+
+function aplicarFiltroMovRep(){
+  movFiltroSoloMios = document.getElementById('movRepSoloMios').checked;
+  movFiltroDesde = document.getElementById('movRepDesde').value;
+  movFiltroHasta = document.getElementById('movRepHasta').value;
+  renderListaMovRepFiltrada();
+}
+
+function movimientosRepFiltrados(){
+  return movimientosRepCache.filter(m => {
+    if(movFiltroSoloMios && m.jugadorId !== JUGADOR_ACTUAL.id) return false;
+    if(movFiltroDesde && m.fecha < movFiltroDesde) return false;
+    if(movFiltroHasta && m.fecha > movFiltroHasta) return false;
+    return true;
+  });
+}
+
+function renderListaMovRepFiltrada(){
+  const movs = movimientosRepFiltrados();
+  const el = document.getElementById('listaMovRepFiltrada');
+  if(movs.length===0){ el.innerHTML = '<p style="color:var(--chalk-dim);font-size:14px">Sin movimientos con este filtro.</p>'; return; }
+  el.innerHTML = movs.map(m=>`
     <div class="field-line">
       <div><div class="fl-value">${esc(m.tipoMovimiento)} ${m.jugador ? '— '+esc(m.jugador) : ''}</div><div class="fl-label">${fechaCorta(m.fecha)} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div></div>
-      <div class="fl-value" style="color:${m.tipo==='ingreso' ? 'var(--green-ok)' : 'var(--red)'}">${m.tipo==='ingreso'?'+':'-'}$${m.monto}</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="fl-value" style="color:${m.tipo==='ingreso' ? 'var(--green-ok)' : 'var(--red)'}">${m.tipo==='ingreso'?'+':'-'}$${m.monto}</div>
+        ${m.tieneComprobante ? `<button class="sm" onclick="verComprobanteMovimientoRep(${m.id})">📷</button>` : ''}
+      </div>
     </div>
   `).join('');
+}
+
+async function verComprobanteMovimientoRep(movimientoId){
+  const res = await api('ver_comprobante_movimiento_representante', {movimientoId});
+  if(res===null) return;
+  if(!res.comprobante_base64){ toast('No hay foto para este movimiento', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>Comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.comprobante_base64}" style="width:100%;border-radius:12px">
+  `;
+  abrirSheet(html);
+}
+
+function descargarCsvMovimientosRep(){
+  const movs = movimientosRepFiltrados();
+  if(movs.length===0){ toast('No hay movimientos para descargar con este filtro', true); return; }
+  const filas = [['fecha','tipo de rubro','nombre del rubro','valor','descripcion']];
+  movs.forEach(m => filas.push([m.fecha, m.tipo, m.tipoMovimiento, m.monto, m.descripcion||'']));
+  const csv = filas.map(f => f.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'movimientos_' + (eventoRepActualData.evento.nombre||'evento').replace(/[^a-z0-9]+/gi,'_') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function abrirPagarCuotaEventoRep(){
