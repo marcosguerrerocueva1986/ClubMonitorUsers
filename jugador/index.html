@@ -133,8 +133,8 @@
   <div class="login-card">
     <div class="mark">⚽</div>
     <h1>Mi Club</h1>
-    <p id="loginSubtitle">Ingresa tu número de celular (el mismo con el que escribes al grupo)</p>
-    <input type="tel" id="loginTelefono" placeholder="0991234567" autocomplete="tel" inputmode="tel">
+    <p id="loginSubtitle">Ingresa tu número de celular o tu cédula (con la que ya estés registrado)</p>
+    <input type="tel" id="loginTelefono" placeholder="0991234567 o tu cédula" autocomplete="tel" inputmode="numeric">
     <button class="primary block" style="margin-top:14px" onclick="intentarLogin()">Continuar</button>
 
     <div id="registroFields" style="display:none;text-align:left;margin-top:18px">
@@ -352,29 +352,44 @@ async function api(accion, extra){
   }
 }
 
-let telefonoPendiente = '';
+function pareceTelefonoLocal(valor){
+  const soloDigitos = valor.replace(/\D/g, '');
+  return (soloDigitos.length === 10 && soloDigitos.startsWith('0')) || (soloDigitos.length === 12 && soloDigitos.startsWith('593'));
+}
 
 async function intentarLogin(){
   const tel = document.getElementById('loginTelefono').value.trim();
-  if(!tel){ toast('Ingresa tu número', true); return; }
-  telefonoPendiente = tel;
+  if(!tel){ toast('Ingresa tu número o cédula', true); return; }
   const res = await api('login_jugador', { telefono: tel });
   if(res===null) return;
   if(res.registrado){
     TOKEN = res.token;
     safeSet('jugador_token', TOKEN);
     entrarApp();
-  } else {
+  } else if(pareceTelefonoLocal(tel)){
+    // Lo escrito tiene forma de telefono -- se mantiene tal cual, deshabilitado,
+    // y se usa directo como telefono del registro nuevo.
     document.getElementById('loginSubtitle').textContent = 'No te encontramos. Completa tus datos para registrarte:';
     document.getElementById('registroFields').style.display = 'block';
     document.querySelector('#loginScreen button.primary').style.display = 'none';
     document.getElementById('loginTelefono').disabled = true;
+  } else {
+    // Lo escrito NO tiene forma de telefono (probablemente una cedula que no
+    // esta registrada). Para no registrar esa cedula por error como si fuera
+    // el telefono, se prellena el campo de cedula del registro y se deja el
+    // campo de arriba vacio y habilitado para que ingresen su telefono real.
+    document.getElementById('loginSubtitle').textContent = 'No encontramos esa cédula. Si aún no tienes cuenta, ingresa tu número de teléfono abajo y completa tus datos para registrarte:';
+    document.getElementById('regCedula').value = tel;
+    document.getElementById('loginTelefono').value = '';
+    document.getElementById('loginTelefono').placeholder = 'Tu número de celular';
+    document.getElementById('registroFields').style.display = 'block';
+    document.querySelector('#loginScreen button.primary').style.display = 'none';
   }
 }
 
 async function completarRegistro(){
   const body = {
-    telefono: telefonoPendiente,
+    telefono: document.getElementById('loginTelefono').value.trim(),
     nombres: document.getElementById('regNombres').value.trim(),
     apellidos: document.getElementById('regApellidos').value.trim(),
     cedula: document.getElementById('regCedula').value.trim(),

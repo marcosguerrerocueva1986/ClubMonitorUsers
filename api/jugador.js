@@ -131,17 +131,45 @@ async function enviarPushAdmin(pool, titulo, mensaje) {
 // Handlers por accion
 // ============================================================
 
+async function crearSesion(pool, jugadorId) {
+  const r = await pool.query(
+    `INSERT INTO sport_control.sesiones_pwa (jugador_id, token) VALUES ($1, sport_control.generar_token_alfanumerico() || sport_control.generar_token_alfanumerico()) RETURNING token`,
+    [jugadorId]
+  );
+  return r.rows[0].token;
+}
+
 async function loginJugador(pool, body) {
-  const norm = normalizarTelefono(body.telefono);
+  const inputRaw = String(body.telefono || '').trim();
+
+  // 1. Intento por cedula: coincidencia EXACTA, sin transformar nada.
+  // Se prueba primero porque cedula y telefono local pueden tener el
+  // mismo largo (10 digitos) en Ecuador -- no hay forma segura de
+  // "adivinar" cual es cual por longitud/prefijo, asi que se revisa
+  // en un orden fijo y sin ambiguedad.
+  if (inputRaw) {
+    const porCedula = await pool.query(
+      `SELECT id FROM sport_control.jugadores WHERE cedula = $1 AND estado = 'activo' LIMIT 1`,
+      [inputRaw]
+    );
+    if (porCedula.rows[0]) {
+      const token = await crearSesion(pool, porCedula.rows[0].id);
+      return { success: true, data: { registrado: true, token } };
+    }
+  }
+
+  // 2. Si no hubo coincidencia por cedula, se intenta como telefono
+  // (con la misma normalizacion de siempre).
+  const norm = normalizarTelefono(inputRaw);
   if (!norm.valido) return { success: false, error: norm.error };
   const r = await pool.query(
-    `WITH j AS (SELECT id FROM sport_control.jugadores WHERE telefono = $1 AND estado = 'activo' LIMIT 1),
-     nueva_sesion AS (INSERT INTO sport_control.sesiones_pwa (jugador_id, token) SELECT id, sport_control.generar_token_alfanumerico() || sport_control.generar_token_alfanumerico() FROM j RETURNING jugador_id, token)
-     SELECT ns.jugador_id, ns.token FROM (SELECT 1 AS ancla) d LEFT JOIN nueva_sesion ns ON true`,
+    `SELECT id FROM sport_control.jugadores WHERE telefono = $1 AND estado = 'activo' LIMIT 1`,
     [norm.telefono]
   );
-  const row = r.rows[0];
-  if (row && row.jugador_id) return { success: true, data: { registrado: true, token: row.token } };
+  if (r.rows[0]) {
+    const token = await crearSesion(pool, r.rows[0].id);
+    return { success: true, data: { registrado: true, token } };
+  }
   return { success: true, data: { registrado: false } };
 }
 
