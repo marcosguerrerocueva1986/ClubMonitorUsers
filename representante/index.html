@@ -369,8 +369,14 @@ async function confirmarCambioClaveObligatorio(){
 }
 
 if(TOKEN){
-  api('listar_mis_jugadores_representante').then(res=>{
-    if(res!==null && res.length>0){ entrarAppRepresentante(null, res); }
+  api('listar_mis_jugadores_representante').then(async res=>{
+    if(res!==null && res.length>0){
+      if(!safeGetRep('representante_id')){
+        const miPerfil = await api('obtener_perfil_representante');
+        if(miPerfil && miPerfil.id) safeSetRep('representante_id', String(miPerfil.id));
+      }
+      entrarAppRepresentante(null, res);
+    }
     else if(res!==null){ safeSetRep('representante_token',''); TOKEN=''; }
   });
 }
@@ -1240,28 +1246,33 @@ async function actualizarEstadoPushRep(){
 
 async function activarNotificacionesRep(){
   if(typeof Notification === 'undefined'){ toast('Tu navegador no soporta notificaciones', true); return; }
+  const permisoAntes = Notification.permission;
   const permiso = await Notification.requestPermission();
-  if(permiso === 'granted'){
-    if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
-    const representanteId = safeGetRep('representante_id');
-    OneSignalDeferred.push(async function(OneSignal){
-      if(!OneSignal.User){
-        toast('No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club.', true);
-        return;
-      }
-      try{
-        if(representanteId) await OneSignal.login('representante_' + representanteId);
-        await OneSignal.User.PushSubscription.optIn();
-        toast('¡Notificaciones activadas correctamente!');
-        actualizarEstadoPushRep();
-      }catch(e){
-        toast('No se pudo completar. Avísale al administrador del club.', true);
-        actualizarEstadoPushRep();
-      }
-    });
-  } else {
-    toast('No se activaron las notificaciones', true);
+  if(permiso !== 'granted'){
+    toast('Permiso del navegador: antes="'+permisoAntes+'" después="'+permiso+'". No quedó concedido.', true);
+    return;
   }
+  if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
+  const representanteId = safeGetRep('representante_id');
+  OneSignalDeferred.push(async function(OneSignal){
+    if(!OneSignal.User){
+      toast('No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club.', true);
+      return;
+    }
+    try{
+      if(representanteId) await OneSignal.login('representante_' + representanteId);
+      await OneSignal.User.PushSubscription.optIn();
+      const idSuscripcion = OneSignal.User.PushSubscription.id;
+      const optedInReal = OneSignal.User.PushSubscription.optedIn;
+      console.log('Suscripcion OneSignal:', idSuscripcion, 'optedIn:', optedInReal);
+      toast('Permiso OK. Suscripción: ' + (idSuscripcion ? 'creada' : 'SIN ID todavía') + ' · optedIn=' + optedInReal);
+      actualizarEstadoPushRep();
+    }catch(e){
+      console.error('Detalle completo del error:', e);
+      toast('Error: ' + (e && e.message ? e.message : JSON.stringify(e)), true);
+      actualizarEstadoPushRep();
+    }
+  });
 }
 
 async function guardarPerfilJugadorRep(){
