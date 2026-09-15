@@ -715,11 +715,43 @@ async function verEventoPublico(pool, jugadorId, body) {
     [eventoId]
   );
 
+  // Partidos vinculados a este evento, agrupados por fecha (o generales
+  // del evento si no tienen evento_fecha_id).
+  const partidos = await pool.query(
+    `SELECT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado, p.evento_fecha_id AS "eventoFechaId",
+       (p.marcador_propio IS NOT NULL OR EXISTS(SELECT 1 FROM sport_control.partido_estadisticas pe WHERE pe.partido_id = p.id)) AS "tieneEstadisticas"
+     FROM sport_control.partidos p WHERE p.evento_id = $1 ORDER BY p.fecha ASC`,
+    [eventoId]
+  );
+
+  // Estadisticas agregadas del jugador para este evento: total y
+  // promedio por partido del evento donde el jugador estuvo confirmado.
+  const estadisticasEvento = await pool.query(
+    `WITH partidos_evento AS (SELECT id FROM sport_control.partidos WHERE evento_id = $1),
+     confirmados AS (
+       SELECT COUNT(*) AS total FROM sport_control.confirmaciones_partido cp
+       JOIN partidos_evento pe ON pe.id = cp.partido_id
+       WHERE cp.jugador_id = $2 AND cp.estado = 'confirmado'
+     )
+     SELECT te.nombre, COALESCE(SUM(pes.valor), 0) AS total,
+       CASE WHEN (SELECT total FROM confirmados) > 0 THEN COALESCE(SUM(pes.valor), 0)::numeric / (SELECT total FROM confirmados) ELSE 0 END AS promedio,
+       (SELECT total FROM confirmados) AS "partidosConfirmados"
+     FROM sport_control.tipos_estadistica te
+     LEFT JOIN sport_control.partido_estadisticas pes ON pes.tipo_estadistica_id = te.id AND pes.jugador_id = $2
+       AND pes.partido_id IN (SELECT id FROM partidos_evento)
+     WHERE te.nivel = 'jugador' AND te.disciplina_id = (SELECT disciplina_id FROM sport_control.partidos WHERE evento_id = $1 LIMIT 1)
+     GROUP BY te.nombre, te.orden
+     ORDER BY te.orden`,
+    [eventoId, jugadorId]
+  );
+
   return {
     success: true,
     data: {
       evento: evento.rows[0],
       fechas: fechas.rows,
+      partidos: partidos.rows,
+      estadisticasEvento: estadisticasEvento.rows,
       miCuota: miCuota.rows[0] ? Number(miCuota.rows[0].montoCuota) : null,
       miPagado: Number(miPagado.rows[0].total),
       totalRecaudado: Number(totalRecaudado.rows[0].total),

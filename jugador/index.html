@@ -1173,6 +1173,7 @@ function mostrarDetalleEventoJugador(){
   const subtabs = [
     {key:'resumen', label:'📊 Resumen'},
     {key:'fechas', label:'📅 Fechas'},
+    {key:'estadisticas', label:'🏆 Estadísticas'},
     {key:'movimientos', label:'🧾 Movimientos'},
   ];
 
@@ -1195,7 +1196,7 @@ function mostrarDetalleEventoJugador(){
 
 function cambiarSubtabEventoJugador(sub){
   eventoJugSubtabActual = sub;
-  const keys = ['resumen','fechas','movimientos'];
+  const keys = ['resumen','fechas','estadisticas','movimientos'];
   document.querySelectorAll('#eventoJugSubtabBar button').forEach((btn,i)=>btn.classList.toggle('primary', keys[i]===sub));
   renderSubtabEventoJugadorActual();
 }
@@ -1203,6 +1204,7 @@ function cambiarSubtabEventoJugador(sub){
 function renderSubtabEventoJugadorActual(){
   if(eventoJugSubtabActual==='resumen') document.getElementById('eventoJugSubtabContent').innerHTML = renderResumenEventoJugador();
   if(eventoJugSubtabActual==='fechas') document.getElementById('eventoJugSubtabContent').innerHTML = renderFechasEventoJugador();
+  if(eventoJugSubtabActual==='estadisticas') document.getElementById('eventoJugSubtabContent').innerHTML = renderEstadisticasEventoJugador();
   if(eventoJugSubtabActual==='movimientos') cargarMovimientosEventoJugador();
 }
 
@@ -1233,17 +1235,62 @@ function renderResumenEventoJugador(){
   `;
 }
 
+function renderPartidoEventoLinea(p){
+  return `
+    <div class="field-line" style="cursor:pointer" onclick="verEstadisticasPartidoJugador(${p.id})">
+      <div>
+        <div class="fl-value">${esc(p.alias || 'Partido')} ${p.estado==='finalizado' ? '<span class="badge finalizado">Finalizado</span>' : ''}</div>
+        <div class="fl-label">${fechaCorta(p.fecha)} ${p.hora ? '· '+p.hora.slice(0,5) : ''} · 📍 ${esc(p.lugar||'—')}</div>
+      </div>
+      ${p.tieneEstadisticas ? '<span style="font-size:18px">📊</span>' : ''}
+    </div>
+  `;
+}
+
 function renderFechasEventoJugador(){
   const fechas = eventoJugActualData.fechas;
-  if(fechas.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
-  return `<div class="card">${fechas.map(f=>`
-    <div class="field-line">
-      <div>
-        <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
-        <div class="fl-label">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
-      </div>
+  const partidos = eventoJugActualData.partidos || [];
+  const generales = partidos.filter(p=>!p.eventoFechaId);
+  let html = '';
+  if(fechas.length===0){
+    html += '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
+  } else {
+    html += fechas.map(f=>{
+      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id);
+      return `
+        <div class="card">
+          <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
+          <div class="fl-label" style="margin-bottom:8px">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
+          ${partidosDeFecha.length===0 ? '<p style="color:var(--chalk-dim);font-size:12px">Sin partidos vinculados.</p>' : partidosDeFecha.map(renderPartidoEventoLinea).join('')}
+        </div>
+      `;
+    }).join('');
+  }
+  if(generales.length>0){
+    html += `<div class="card"><div class="fl-value" style="margin-bottom:8px">Partidos generales del evento</div>${generales.map(renderPartidoEventoLinea).join('')}</div>`;
+  }
+  return html || '<p style="color:var(--chalk-dim);font-size:13px">Sin partidos vinculados a este evento todavía.</p>';
+}
+
+function renderEstadisticasEventoJugador(){
+  const d = eventoJugActualData;
+  const stats = d.estadisticasEvento || [];
+  const partidosConfirmados = stats.length>0 ? stats[0].partidosConfirmados : 0;
+  if(stats.length===0){
+    return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas disponibles para este evento.</p>';
+  }
+  return `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Basado en ${partidosConfirmados} partido(s) confirmado(s) por ti dentro de este evento.</p>
+    <div class="card">
+      <div class="card-title"><h3>Tus totales en el evento</h3></div>
+      ${stats.map(s=>`
+        <div class="field-line">
+          <div class="fl-label">${esc(s.nombre)}</div>
+          <div class="fl-value">${s.total} <span style="color:var(--chalk-dim);font-size:12px">(prom. ${Number(s.promedio).toFixed(2)}/partido)</span></div>
+        </div>
+      `).join('')}
     </div>
-  `).join('')}</div>`;
+  `;
 }
 
 async function cargarMovimientosEventoJugador(){

@@ -836,7 +836,7 @@ function mostrarDetalleEventoRep(){
   const d = eventoRepActualData;
   const e = d.evento;
   const cont = document.getElementById('eventosRepContent');
-  const subtabs = [{key:'resumen',label:'📊 Resumen'},{key:'movimientos',label:'🧾 Movimientos'}];
+  const subtabs = [{key:'resumen',label:'📊 Resumen'},{key:'fechas',label:'📅 Fechas'},{key:'estadisticas',label:'🏆 Estadísticas'},{key:'movimientos',label:'🧾 Movimientos'}];
   cont.innerHTML = `
     <button class="sm" style="margin-bottom:10px" onclick="cargarEventosRep()">← Volver</button>
     <div class="card">
@@ -853,14 +853,74 @@ function mostrarDetalleEventoRep(){
 
 function cambiarSubtabEventoRep(sub){
   eventoRepSubtabActual = sub;
-  const keys = ['resumen','movimientos'];
+  const keys = ['resumen','fechas','estadisticas','movimientos'];
   document.querySelectorAll('#eventoRepSubtabBar button').forEach((b,i)=>b.classList.toggle('primary', keys[i]===sub));
   renderSubtabEventoRepActual();
 }
 
 function renderSubtabEventoRepActual(){
   if(eventoRepSubtabActual==='resumen') document.getElementById('eventoRepSubtabContent').innerHTML = renderResumenEventoRep();
+  if(eventoRepSubtabActual==='fechas') document.getElementById('eventoRepSubtabContent').innerHTML = renderFechasEventoRep();
+  if(eventoRepSubtabActual==='estadisticas') document.getElementById('eventoRepSubtabContent').innerHTML = renderEstadisticasEventoRep();
   if(eventoRepSubtabActual==='movimientos') cargarMovimientosEventoRep();
+}
+
+function renderPartidoEventoLineaRep(p){
+  return `
+    <div class="field-line" style="cursor:pointer" onclick="verEstadisticasPartidoRep(${p.id})">
+      <div>
+        <div class="fl-value">${esc(p.alias || 'Partido')} ${p.estado==='finalizado' ? '<span class="badge finalizado">Finalizado</span>' : ''}</div>
+        <div class="fl-label">${fechaCorta(p.fecha)} ${p.hora ? '· '+p.hora.slice(0,5) : ''} · 📍 ${esc(p.lugar||'—')}</div>
+      </div>
+      ${p.tieneEstadisticas ? '<span style="font-size:18px">📊</span>' : ''}
+    </div>
+  `;
+}
+
+function renderFechasEventoRep(){
+  const fechas = eventoRepActualData.fechas;
+  const partidos = eventoRepActualData.partidos || [];
+  const generales = partidos.filter(p=>!p.eventoFechaId);
+  let html = '';
+  if(fechas.length===0){
+    html += '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
+  } else {
+    html += fechas.map(f=>{
+      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id);
+      return `
+        <div class="card">
+          <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
+          <div class="fl-label" style="margin-bottom:8px">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
+          ${partidosDeFecha.length===0 ? '<p style="color:var(--chalk-dim);font-size:12px">Sin partidos vinculados.</p>' : partidosDeFecha.map(renderPartidoEventoLineaRep).join('')}
+        </div>
+      `;
+    }).join('');
+  }
+  if(generales.length>0){
+    html += `<div class="card"><div class="fl-value" style="margin-bottom:8px">Partidos generales del evento</div>${generales.map(renderPartidoEventoLineaRep).join('')}</div>`;
+  }
+  return html || '<p style="color:var(--chalk-dim);font-size:13px">Sin partidos vinculados a este evento todavía.</p>';
+}
+
+function renderEstadisticasEventoRep(){
+  const d = eventoRepActualData;
+  const stats = d.estadisticasEvento || [];
+  const partidosConfirmados = stats.length>0 ? stats[0].partidosConfirmados : 0;
+  if(stats.length===0){
+    return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas disponibles para este evento.</p>';
+  }
+  return `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Basado en ${partidosConfirmados} partido(s) confirmado(s) por ${esc(JUGADOR_ACTUAL.nombres)} dentro de este evento.</p>
+    <div class="card">
+      <div class="card-title"><h3>Totales en el evento</h3></div>
+      ${stats.map(s=>`
+        <div class="field-line">
+          <div class="fl-label">${esc(s.nombre)}</div>
+          <div class="fl-value">${s.total} <span style="color:var(--chalk-dim);font-size:12px">(prom. ${Number(s.promedio).toFixed(2)}/partido)</span></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function renderResumenEventoRep(){
