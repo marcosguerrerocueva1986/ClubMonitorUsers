@@ -311,6 +311,9 @@ if ('serviceWorker' in navigator) {
     <div class="screen" id="screen-eventos">
       <div id="eventosList"><div class="spinner"></div></div>
     </div>
+    <div class="screen" id="screen-grupos">
+      <div id="gruposList"><div class="spinner"></div></div>
+    </div>
   </main>
 
   <button class="fab" id="fabCrear" onclick="abrirCrearPartido()" title="Crear partido">＋</button>
@@ -321,6 +324,7 @@ if ('serviceWorker' in navigator) {
     <button data-tab="jugadores" onclick="cambiarTab('jugadores')"><span class="ic">👥</span>Jugadores</button>
     <button data-tab="parametros" onclick="cambiarTab('parametros')"><span class="ic">⚙️</span>Parámetros</button>
     <button data-tab="eventos" onclick="cambiarTab('eventos')"><span class="ic">🎒</span>Eventos</button>
+    <button data-tab="grupos" onclick="cambiarTab('grupos')"><span class="ic">🏋️</span>Grupos</button>
   </nav>
 </div>
 
@@ -490,13 +494,14 @@ function cambiarTab(tab){
   document.getElementById('fabCrear').style.display = (tab==='partidos' || tab==='jugadores' || tab==='eventos') ? 'flex' : 'none';
   document.getElementById('fabCrear').onclick = tab==='jugadores' ? abrirCrearJugadorManual : (tab==='eventos' ? abrirCrearEvento : abrirCrearPartido);
   document.getElementById('fabCrear').title = tab==='jugadores' ? 'Agregar jugador' : (tab==='eventos' ? 'Crear evento' : 'Crear partido');
-  const subs = {dashboard:'PANEL DE PAGOS', partidos:'PARTIDOS ACTIVOS', jugadores:'JUGADORES', parametros:'PARÁMETROS DEL CLUB', eventos:'EVENTOS'};
+  const subs = {dashboard:'PANEL DE PAGOS', partidos:'PARTIDOS ACTIVOS', jugadores:'JUGADORES', parametros:'PARÁMETROS DEL CLUB', eventos:'EVENTOS', grupos:'GRUPOS Y ENTRENADORES'};
   document.getElementById('screenSub').textContent = subs[tab];
   if(tab==='dashboard') cargarDashboard();
   if(tab==='partidos') cargarPartidos();
   if(tab==='jugadores') cargarJugadores();
   if(tab==='parametros') cambiarSubtabParametros('generales');
   if(tab==='eventos') cargarEventos();
+  if(tab==='grupos') cargarGrupos();
 }
 
 function fechaCorta(f){
@@ -3067,6 +3072,280 @@ async function renderUsoAppsContenido(){
       </div>
     `).join('');
   }
+}
+
+/* ============================================================
+   GRUPOS Y ENTRENADORES (piloto Fase 1)
+   ============================================================ */
+let grupoSubtabActual = 'grupos';
+
+async function cargarGrupos(){
+  const cont = document.getElementById('gruposList');
+  cont.innerHTML = `
+    <div class="row-actions tabbar-scroll" id="grupoSubtabBar" style="margin-bottom:14px">
+      <button class="sm ${grupoSubtabActual==='grupos'?'primary':''}" onclick="cambiarSubtabGrupos('grupos')">🏋️ Grupos</button>
+      <button class="sm ${grupoSubtabActual==='entrenadores'?'primary':''}" onclick="cambiarSubtabGrupos('entrenadores')">🧑‍🏫 Entrenadores</button>
+    </div>
+    <div id="grupoSubtabContent"><div class="spinner"></div></div>
+  `;
+  renderSubtabGrupoActual();
+}
+
+function cambiarSubtabGrupos(sub){
+  grupoSubtabActual = sub;
+  document.querySelectorAll('#grupoSubtabBar button').forEach((b,i)=>b.classList.toggle('primary', (i===0?'grupos':'entrenadores')===sub));
+  renderSubtabGrupoActual();
+}
+
+function renderSubtabGrupoActual(){
+  if(grupoSubtabActual==='grupos') cargarListaGrupos();
+  if(grupoSubtabActual==='entrenadores') cargarListaEntrenadores();
+}
+
+/* ---------- Grupos ---------- */
+async function cargarListaGrupos(){
+  const cont = document.getElementById('grupoSubtabContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_grupos_admin');
+  if(data===null) return;
+  cont.innerHTML = `
+    ${data.length===0 ? '<div class="empty"><span class="ic">🏋️</span>Sin grupos todavía.</div>' : data.map(g=>`
+      <div class="card" style="cursor:pointer" onclick="abrirDetalleGrupo(${g.id}, '${esc(g.nombre)}')">
+        <div class="card-title">
+          <h3>${g.disciplinaIcono ? esc(g.disciplinaIcono)+' ' : ''}${esc(g.nombre)}</h3>
+          <span class="badge ${g.activo?'confirmando':'cancelado'}">${g.activo?'Activo':'Inactivo'}</span>
+        </div>
+        <div class="meta">${esc(g.descripcion||'')}<br>👤 ${g.totalJugadores} jugador(es) · 🧑‍🏫 ${esc(g.entrenadoresNombres||'Sin entrenador asignado')}</div>
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:10px" onclick="abrirCrearGrupo()">+ Crear grupo</button>
+  `;
+}
+
+function abrirCrearGrupo(){
+  const html = `
+    <div class="sheet-head"><h2>Crear grupo</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombre</label>
+    <input id="grupoNombre" placeholder="Ej: Sub-12 Nivel Intermedio">
+    <label>Descripción (opcional)</label>
+    <input id="grupoDescripcion" placeholder="Ej: Entrena martes y jueves">
+    <button class="primary block" style="margin-top:16px" onclick="guardarCrearGrupo()">Crear</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCrearGrupo(){
+  const nombre = document.getElementById('grupoNombre').value.trim();
+  const descripcion = document.getElementById('grupoDescripcion').value.trim();
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('crear_grupo_admin', {nombre, descripcion});
+  if(res===null) return;
+  toast('Grupo creado');
+  cerrarSheet();
+  cargarListaGrupos();
+}
+
+let grupoDetalleActual = null;
+
+async function abrirDetalleGrupo(grupoId, nombre){
+  grupoDetalleActual = {id: grupoId, nombre};
+  const data = await api('ver_detalle_grupo_admin', {grupoId});
+  if(data===null) return;
+  mostrarDetalleGrupo(data);
+}
+
+function mostrarDetalleGrupo(data){
+  const html = `
+    <div class="sheet-head"><h2>${esc(grupoDetalleActual.nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card">
+      <div class="card-title"><h3>Entrenadores a cargo</h3></div>
+      ${data.entrenadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno asignado.</p>' : data.entrenadores.map(e=>`
+        <div class="field-line">
+          <div class="fl-value">${esc(e.nombres)} ${esc(e.apellidos)} <span style="color:var(--chalk-dim);font-size:12px">(${e.rol})</span></div>
+          <button class="sm danger" onclick="quitarEntrenadorDeGrupo(${e.id})">Quitar</button>
+        </div>
+      `).join('')}
+      <button class="sm" style="margin-top:8px" onclick="abrirAsignarEntrenadorGrupo()">+ Asignar entrenador</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Jugadores del grupo (${data.jugadores.length})</h3></div>
+      ${data.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin jugadores todavía.</p>' : data.jugadores.map(j=>`
+        <div class="field-line">
+          <div class="fl-value">${esc(j.nombres)} ${esc(j.apellidos)}</div>
+          <button class="sm danger" onclick="quitarJugadorDeGrupo(${j.id})">Quitar</button>
+        </div>
+      `).join('')}
+      <label style="margin-top:10px">Agregar jugador</label>
+      <select id="grupoAgregarJugadorId">
+        <option value="">— Elige un jugador —</option>
+        ${data.disponibles.map(j=>`<option value="${j.id}">${esc(j.nombres)} ${esc(j.apellidos)}</option>`).join('')}
+      </select>
+      <button class="sm primary" style="margin-top:8px" onclick="agregarJugadorAGrupo()">Agregar al grupo</button>
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function agregarJugadorAGrupo(){
+  const jugadorId = document.getElementById('grupoAgregarJugadorId').value;
+  if(!jugadorId){ toast('Elige un jugador', true); return; }
+  const res = await api('asignar_jugador_grupo_admin', {jugadorId: parseInt(jugadorId), grupoId: grupoDetalleActual.id});
+  if(res===null) return;
+  toast('Jugador agregado al grupo');
+  abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
+}
+
+async function quitarJugadorDeGrupo(jugadorId){
+  const res = await api('asignar_jugador_grupo_admin', {jugadorId, grupoId: null});
+  if(res===null) return;
+  toast('Jugador quitado del grupo');
+  abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
+}
+
+async function abrirAsignarEntrenadorGrupo(){
+  const entrenadores = await api('listar_entrenadores_admin');
+  if(entrenadores===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Asignar entrenador</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <select id="grupoAsignarEntrenadorId">
+      ${entrenadores.map(e=>`<option value="${e.id}">${esc(e.nombres)} ${esc(e.apellidos)} (${e.rol})</option>`).join('')}
+    </select>
+    <button class="primary block" style="margin-top:16px" onclick="guardarAsignarEntrenadorGrupo()">Asignar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarAsignarEntrenadorGrupo(){
+  const entrenadorId = parseInt(document.getElementById('grupoAsignarEntrenadorId').value);
+  const res = await api('asignar_entrenador_grupo_admin', {entrenadorId, grupoId: grupoDetalleActual.id});
+  if(res===null) return;
+  toast('Entrenador asignado');
+  abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
+}
+
+async function quitarEntrenadorDeGrupo(entrenadorId){
+  const res = await api('quitar_entrenador_grupo_admin', {entrenadorId, grupoId: grupoDetalleActual.id});
+  if(res===null) return;
+  toast('Entrenador quitado del grupo');
+  abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
+}
+
+/* ---------- Entrenadores ---------- */
+async function cargarListaEntrenadores(){
+  const cont = document.getElementById('grupoSubtabContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await api('listar_entrenadores_admin');
+  if(data===null) return;
+  cont.innerHTML = `
+    ${data.length===0 ? '<div class="empty"><span class="ic">🧑‍🏫</span>Sin entrenadores todavía.</div>' : data.map(e=>`
+      <div class="card">
+        <div class="card-title">
+          <h3>${esc(e.nombres)} ${esc(e.apellidos)}</h3>
+          <span class="badge ${e.activo?'confirmando':'cancelado'}">${e.rol}</span>
+        </div>
+        <div class="meta">${esc(e.cedula)} · ${esc(e.telefono||'Sin teléfono')}<br>Grupos: ${esc(e.gruposNombres||'Ninguno')} ${!e.tieneClave ? '<span class="badge cancelado">Sin activar</span>' : ''}</div>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="sm" onclick='abrirEditarEntrenador(${JSON.stringify(e).replace(/"/g,"&quot;")})'>Editar</button>
+          <button class="sm" onclick="resetearClaveEntrenadorAccion(${e.id}, ${JSON.stringify(e.nombres).replace(/"/g,'&quot;')})">🔒 Resetear clave</button>
+          <button class="sm ${e.activo?'danger':'primary'}" onclick="toggleEntrenadorAccion(${e.id}, ${!e.activo})">${e.activo?'Desactivar':'Activar'}</button>
+        </div>
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:10px" onclick="abrirCrearEntrenador()">+ Agregar entrenador</button>
+  `;
+}
+
+function abrirCrearEntrenador(){
+  const html = `
+    <div class="sheet-head"><h2>Agregar entrenador</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="entNombres" placeholder="Nombres">
+    <label>Apellidos</label>
+    <input id="entApellidos" placeholder="Apellidos">
+    <label>Cédula</label>
+    <input id="entCedula" placeholder="Obligatoria" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="entTelefono" placeholder="Opcional" type="tel">
+    <label>Rol</label>
+    <select id="entRol">
+      <option value="entrenador">Entrenador (ve solo sus grupos)</option>
+      <option value="director">Director (ve todos los grupos)</option>
+    </select>
+    <button class="primary block" style="margin-top:16px" onclick="guardarCrearEntrenador()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCrearEntrenador(){
+  const nombres = document.getElementById('entNombres').value.trim();
+  const apellidos = document.getElementById('entApellidos').value.trim();
+  const cedula = document.getElementById('entCedula').value.trim();
+  const telefono = document.getElementById('entTelefono').value.trim();
+  const rol = document.getElementById('entRol').value;
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  if(!cedula){ toast('La cédula es obligatoria', true); return; }
+  const res = await api('crear_entrenador_admin', {nombres, apellidos, cedula, telefono, rol});
+  if(res===null) return;
+  toast('Entrenador agregado');
+  cerrarSheet();
+  cargarListaEntrenadores();
+}
+
+function abrirEditarEntrenador(e){
+  const html = `
+    <div class="sheet-head"><h2>Editar entrenador</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="entEditNombres" value="${esc(e.nombres)}">
+    <label>Apellidos</label>
+    <input id="entEditApellidos" value="${esc(e.apellidos)}">
+    <label>Cédula</label>
+    <input id="entEditCedula" value="${esc(e.cedula)}" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="entEditTelefono" value="${esc(e.telefono||'')}" type="tel">
+    <label>Rol</label>
+    <select id="entEditRol">
+      <option value="entrenador" ${e.rol==='entrenador'?'selected':''}>Entrenador (ve solo sus grupos)</option>
+      <option value="director" ${e.rol==='director'?'selected':''}>Director (ve todos los grupos)</option>
+    </select>
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarEntrenador(${e.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarEntrenador(entrenadorId){
+  const nombres = document.getElementById('entEditNombres').value.trim();
+  const apellidos = document.getElementById('entEditApellidos').value.trim();
+  const cedula = document.getElementById('entEditCedula').value.trim();
+  const telefono = document.getElementById('entEditTelefono').value.trim();
+  const rol = document.getElementById('entEditRol').value;
+  const res = await api('editar_entrenador_admin', {entrenadorId, nombres, apellidos, cedula, telefono, rol});
+  if(res===null) return;
+  toast('Entrenador actualizado');
+  cerrarSheet();
+  cargarListaEntrenadores();
+}
+
+async function toggleEntrenadorAccion(entrenadorId, activo){
+  const res = await api('toggle_entrenador_admin', {entrenadorId, activo});
+  if(res===null) return;
+  cargarListaEntrenadores();
+}
+
+async function resetearClaveEntrenadorAccion(entrenadorId, nombres){
+  if(!confirm('¿Generar una clave temporal nueva para '+nombres+'?')) return;
+  const res = await api('resetear_clave_entrenador_admin', {entrenadorId});
+  if(res===null) return;
+  const telefonoLimpio = (res.telefono || '').replace(/\D/g,'');
+  const linkWhatsapp = telefonoLimpio ? `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(res.mensajeWhatsapp)}` : null;
+  const html = `
+    <div class="sheet-head"><h2>Clave temporal generada</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">CLAVE TEMPORAL (válida 24 horas, un solo uso)</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:36px;color:var(--gold);font-weight:700;letter-spacing:4px;margin:8px 0">${res.claveTemporal}</div>
+    </div>
+    ${linkWhatsapp ? `<button class="primary block" onclick="window.open('${linkWhatsapp}','_blank')">📤 Enviar por WhatsApp</button>` : '<p class="meta">No tiene teléfono registrado — comparte la clave manualmente.</p>'}
+  `;
+  abrirSheet(html);
 }
 
 async function descargarInformePagos(){
