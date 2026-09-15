@@ -155,6 +155,9 @@ if ('serviceWorker' in navigator) {
     <div class="screen" id="screen-eventosRep">
       <div id="eventosRepContent"><div class="spinner"></div></div>
     </div>
+    <div class="screen" id="screen-novedadesRep">
+      <div id="novedadesRepContent"><div class="spinner"></div></div>
+    </div>
     <div class="screen" id="screen-perfilRep">
       <div id="perfilRepContent"><div class="spinner"></div></div>
     </div>
@@ -164,6 +167,7 @@ if ('serviceWorker' in navigator) {
     <button class="active" data-tab="partidosRep" id="tabPartidosRep" onclick="cambiarTabRep('partidosRep')"><span class="ic ic-deporte">⚽</span>Partidos</button>
     <button data-tab="cuentaRep" id="tabCuentaRep" onclick="cambiarTabRep('cuentaRep')"><span class="ic">💳</span>Cuenta</button>
     <button data-tab="eventosRep" id="tabEventosRep" onclick="cambiarTabRep('eventosRep')" style="display:none"><span class="ic">🎒</span>Eventos</button>
+    <button data-tab="novedadesRep" onclick="cambiarTabRep('novedadesRep')"><span class="ic">🔔</span>Novedades</button>
     <button data-tab="perfilRep" onclick="cambiarTabRep('perfilRep')"><span class="ic">👤</span>Perfil</button>
   </nav>
 </div>
@@ -460,6 +464,7 @@ function cambiarTabRep(tab, forzar){
   if(tab==='partidosRep') cargarPartidosRep();
   if(tab==='cuentaRep') cargarCuentaRep();
   if(tab==='eventosRep') cargarEventosRep();
+  if(tab==='novedadesRep') cargarNovedadesRep();
   if(tab==='perfilRep') cargarPerfilRep();
 }
 </script>
@@ -1156,8 +1161,7 @@ async function cargarPerfilRep(){
   const miPerfil = await api('obtener_perfil_representante');
   if(miPerfil===null) return;
   cont.innerHTML = `
-    <button class="block primary" onclick="verNovedadesRep()">📋 Novedades de ${esc(JUGADOR_ACTUAL.nombres.split(' ')[0])}</button>
-    <div class="card" style="margin-top:12px">
+    <div class="card">
       <div class="card-title"><h3>Datos de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
       <label>Nombres</label>
       <input id="jugRepNombres" value="${esc(perfilJugador.nombres||'')}">
@@ -1215,6 +1219,11 @@ async function actualizarEstadoPushRep(){
   }
   if(window.OneSignalDeferred){
     OneSignalDeferred.push(async function(OneSignal){
+      if(!OneSignal.User){
+        textoEl.textContent = '⚠️ No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club (puede ser un tema de configuración).';
+        btnEl.style.display = 'none';
+        return;
+      }
       let optedIn = false;
       try{ optedIn = OneSignal.User.PushSubscription.optedIn === true; }catch(e){}
       if(optedIn){
@@ -1236,13 +1245,17 @@ async function activarNotificacionesRep(){
     if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
     const representanteId = safeGetRep('representante_id');
     OneSignalDeferred.push(async function(OneSignal){
+      if(!OneSignal.User){
+        toast('No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club.', true);
+        return;
+      }
       try{
         if(representanteId) await OneSignal.login('representante_' + representanteId);
         await OneSignal.User.PushSubscription.optIn();
         toast('¡Notificaciones activadas correctamente!');
         actualizarEstadoPushRep();
       }catch(e){
-        toast('Error: ' + (e.message || 'Fallo interno'), true);
+        toast('No se pudo completar. Avísale al administrador del club.', true);
         actualizarEstadoPushRep();
       }
     });
@@ -1274,25 +1287,38 @@ async function guardarMiPerfilRep(){
   toast('Tus datos fueron actualizados');
 }
 
-async function verNovedadesRep(){
+async function cargarNovedadesRep(){
+  const cont = document.getElementById('novedadesRepContent');
+  cont.innerHTML = '<div class="spinner"></div>';
   const data = await api('listar_novedades_visibles_jugador_representante');
   if(data===null) return;
   const ICONOS_TIPO = {lesion:'🩹', comportamiento:'⚠️', progreso:'⭐', otro:'📋'};
-  const html = `
-    <div class="sheet-head"><h2>Novedades de ${esc(JUGADOR_ACTUAL.nombres)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin novedades compartidas por el momento.</p>' : data.map(n=>`
-      <div class="card">
-        <div class="card-title"><h3>${ICONOS_TIPO[n.tipo]||'📋'} ${esc(n.tipo.charAt(0).toUpperCase()+n.tipo.slice(1))}</h3></div>
-        <div class="meta">
-          🗓️ ${fechaHoraRep(n.creadoEn)}<br>
-          🧑‍🏫 Reportado por: ${esc(n.entrenadorNombre||'—')}<br>
-          ${n.grupoNombre ? '🏋️ Grupo: '+esc(n.grupoNombre)+'<br>' : ''}
-        </div>
-        <p style="font-size:14px;color:var(--chalk);margin:10px 0 0;white-space:pre-wrap">${esc(n.descripcion)}</p>
+  if(data.length===0){
+    cont.innerHTML = '<div class="empty"><span class="ic">🔔</span>Sin novedades nuevas de '+esc(JUGADOR_ACTUAL.nombres)+'.</div>';
+    return;
+  }
+  cont.innerHTML = data.map(n=>`
+    <div class="card" id="novedad-${n.id}">
+      <div class="card-title"><h3>${ICONOS_TIPO[n.tipo]||'📋'} ${esc(n.tipo.charAt(0).toUpperCase()+n.tipo.slice(1))}</h3></div>
+      <div class="meta">
+        🗓️ ${fechaHoraRep(n.creadoEn)}<br>
+        🧑‍🏫 Reportado por: ${esc(n.entrenadorNombre||'—')}<br>
+        ${n.grupoNombre ? '🏋️ Grupo: '+esc(n.grupoNombre)+'<br>' : ''}
       </div>
-    `).join('')}
-  `;
-  abrirSheet(html);
+      <p style="font-size:14px;color:var(--chalk);margin:10px 0">${esc(n.descripcion)}</p>
+      <button class="sm primary" onclick="marcarNovedadLeidaRep(${n.id})">✓ Marcar como leída</button>
+    </div>
+  `).join('');
+}
+
+async function marcarNovedadLeidaRep(novedadId){
+  const res = await api('marcar_novedad_leida_representante', {novedadId});
+  if(res===null) return;
+  const el = document.getElementById('novedad-'+novedadId);
+  if(el) el.remove();
+  if(document.getElementById('novedadesRepContent').children.length===0){
+    cargarNovedadesRep();
+  }
 }
 
 function fechaHoraRep(f){

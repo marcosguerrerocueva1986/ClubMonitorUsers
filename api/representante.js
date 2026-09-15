@@ -29,7 +29,7 @@ async function actualizarPerfilRepresentante(pool, representanteId, body) {
   return { success: true, data: true };
 }
 
-async function listarNovedadesVisiblesJugador(pool, body) {
+async function listarNovedadesVisiblesJugador(pool, representanteId, body) {
   const r = await pool.query(
     `SELECT n.id, n.creado_en AS "creadoEn", n.tipo, n.descripcion,
        e.nombres || ' ' || e.apellidos AS "entrenadorNombre",
@@ -39,10 +39,19 @@ async function listarNovedadesVisiblesJugador(pool, body) {
      LEFT JOIN sport_control.jugadores j ON j.id = n.jugador_id
      LEFT JOIN sport_control.grupos g ON g.id = j.grupo_id
      WHERE n.jugador_id = $1 AND n.visible_representante = true
+       AND NOT EXISTS (SELECT 1 FROM sport_control.novedades_leidas nl WHERE nl.novedad_id = n.id AND nl.representante_id = $2)
      ORDER BY n.creado_en DESC`,
-    [body.jugadorId]
+    [body.jugadorId, representanteId]
   );
   return { success: true, data: r.rows };
+}
+
+async function marcarNovedadLeidaRepresentante(pool, representanteId, body) {
+  await pool.query(
+    `INSERT INTO sport_control.novedades_leidas (novedad_id, representante_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [body.novedadId, representanteId]
+  );
+  return { success: true };
 }
 
 async function obtenerPerfilRepresentante(pool, representanteId) {
@@ -230,7 +239,8 @@ module.exports = async (req, res) => {
       // financiera abierta, igual que ya funciona para cualquier jugador
       // logeado) -- no necesitan jugadorId ni la verificacion de vinculo.
       case 'ver_movimientos_evento_representante': return res.status(200).json(await verMovimientosEventoJugador(pool, body));
-      case 'listar_novedades_visibles_jugador_representante': return res.status(200).json(await listarNovedadesVisiblesJugador(pool, body));
+      case 'listar_novedades_visibles_jugador_representante': return res.status(200).json(await listarNovedadesVisiblesJugador(pool, representanteId, body));
+      case 'marcar_novedad_leida_representante': return res.status(200).json(await marcarNovedadLeidaRepresentante(pool, representanteId, body));
       case 'ver_comprobante_movimiento_representante': return res.status(200).json(await verComprobanteMovimientoJugador(pool, body));
       case 'actualizar_datos_jugador_representante': return res.status(200).json(await actualizarMisDatos(pool, jugadorId, body));
       case 'registrar_pago_comprobante_representante': return res.status(200).json(await registrarPagoComprobante(pool, jugadorId, body));

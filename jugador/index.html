@@ -1473,6 +1473,11 @@ async function actualizarEstadoPush(){
 
   if(window.OneSignalDeferred){
     OneSignalDeferred.push(async function(OneSignal){
+      if(!OneSignal.User){
+        textoEl.textContent = '⚠️ No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club (puede ser un tema de configuración).';
+        btnEl.style.display = 'none';
+        return;
+      }
       let optedIn = false;
       try{ optedIn = OneSignal.User.PushSubscription.optedIn === true; }catch(e){}
       if(optedIn){
@@ -1496,6 +1501,10 @@ async function activarNotificaciones(){
   if(permiso === 'granted'){
     if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
     OneSignalDeferred.push(async function(OneSignal){
+      if(!OneSignal.User){
+        toast('No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club.', true);
+        return;
+      }
       try{
         if(PERFIL && PERFIL.jugadorId){ 
           await OneSignal.login('jugador_' + PERFIL.jugadorId); 
@@ -1506,7 +1515,7 @@ async function activarNotificaciones(){
         actualizarEstadoPush();
       }catch(e) {
         console.error("Detalle completo del error:", e);
-        toast('Error: ' + (e.message || "Fallo interno, revisa F12"), true);
+        toast('No se pudo completar. Avísale al administrador del club.', true);
         actualizarEstadoPush();
       }
     });
