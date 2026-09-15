@@ -29,19 +29,27 @@ module.exports = async (req, res) => {
 
     let buffer = Buffer.from(base64, 'base64');
 
+    // El logo tal como lo sube el Admin suele quedar con bastante
+    // margen blanco alrededor -- se acerca (zoom + recorte centrado)
+    // para que rellene mas el marco del icono, sin distorsionar la
+    // proporcion.
+    const logoImg = await Jimp.read(buffer);
+    const w0 = logoImg.getWidth(), h0 = logoImg.getHeight();
+    const zoom = 1.18;
+    logoImg.resize(Math.round(w0 * zoom), Math.round(h0 * zoom));
+    logoImg.crop(Math.round((logoImg.getWidth() - w0) / 2), Math.round((logoImg.getHeight() - h0) / 2), w0, h0);
+    buffer = await logoImg.getBufferAsync(Jimp.MIME_PNG);
+
     const badgeBase64 = req.query && BADGES_BASE64[req.query.badge];
     if (badgeBase64) {
-      const logoImg = await Jimp.read(buffer);
+      const logoConBadge = await Jimp.read(buffer);
       const badgeImg = await Jimp.read(Buffer.from(badgeBase64, 'base64'));
-      const w = logoImg.getWidth();
-      // Insignia grande y visible, con un margen moderado (no pegada a
-      // la esquina, para que no se corte en launchers mas agresivos,
-      // pero sin exagerar el margen para que no se vea "vacia").
+      const w = logoConBadge.getWidth();
       const badgeSize = Math.round(w * 0.40);
       badgeImg.resize(badgeSize, badgeSize);
       const margin = Math.round(w * 0.09);
-      logoImg.composite(badgeImg, w - badgeSize - margin, logoImg.getHeight() - badgeSize - margin);
-      buffer = await logoImg.getBufferAsync(Jimp.MIME_PNG);
+      logoConBadge.composite(badgeImg, w - badgeSize - margin, logoConBadge.getHeight() - badgeSize - margin);
+      buffer = await logoConBadge.getBufferAsync(Jimp.MIME_PNG);
     }
 
     res.setHeader('Content-Type', 'image/png');

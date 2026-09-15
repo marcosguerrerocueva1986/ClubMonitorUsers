@@ -130,6 +130,9 @@ if ('serviceWorker' in navigator) {
     <div class="screen active" id="screen-grupoEnt">
       <div id="grupoEntContent"><div class="spinner"></div></div>
     </div>
+    <div class="screen" id="screen-indicadoresEnt">
+      <div id="indicadoresEntContent"><div class="spinner"></div></div>
+    </div>
     <div class="screen" id="screen-perfilEnt">
       <div id="perfilEntContent"><div class="spinner"></div></div>
     </div>
@@ -137,6 +140,7 @@ if ('serviceWorker' in navigator) {
 
   <nav class="tabs">
     <button class="active" data-tab="grupoEnt" onclick="cambiarTabEnt('grupoEnt')"><span class="ic">🏋️</span>Mi Grupo</button>
+    <button data-tab="indicadoresEnt" id="tabIndicadoresEnt" onclick="cambiarTabEnt('indicadoresEnt')" style="display:none"><span class="ic">📊</span>Indicadores</button>
     <button data-tab="perfilEnt" onclick="cambiarTabEnt('perfilEnt')"><span class="ic">👤</span>Perfil</button>
   </nav>
 </div>
@@ -317,6 +321,7 @@ async function entrarAppEntrenador(nombresLogin, gruposPrecargados){
   if(data===null) return;
   MIS_GRUPOS = data.grupos;
   ES_DIRECTOR = data.esDirector;
+  document.getElementById('tabIndicadoresEnt').style.display = ES_DIRECTOR ? 'flex' : 'none';
 
   if(MIS_GRUPOS.length===0){
     document.getElementById('verGrupoHeader').textContent = 'SIN GRUPOS ASIGNADOS';
@@ -366,6 +371,7 @@ function cambiarTabEnt(tab){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+tab).classList.add('active');
   if(tab==='grupoEnt') cargarMiGrupo();
+  if(tab==='indicadoresEnt') cargarIndicadoresGenerales();
   if(tab==='perfilEnt') cargarPerfilEnt();
 }
 </script>
@@ -689,6 +695,32 @@ async function verFotoPartidoEnt(partidoId, tipo){
     <img src="data:image/jpeg;base64,${res.foto}" style="width:100%;border-radius:12px">
   `;
   abrirSheet(html);
+}
+
+async function cargarIndicadoresGenerales(){
+  const cont = document.getElementById('indicadoresEntContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await api('obtener_indicadores_generales_entrenador');
+  if(data===null) return;
+  const pctMorosos = data.totalJugadoresClub>0 ? Math.round(data.totalMorososClub/data.totalJugadoresClub*100) : 0;
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>Club completo</h3></div>
+      <div class="field-line"><div class="fl-label">Jugadores activos</div><div class="fl-value">${data.totalJugadoresClub}</div></div>
+      <div class="field-line"><div class="fl-label">Morosos</div><div class="fl-value" style="color:${data.totalMorososClub>0?'var(--red)':'var(--green-ok)'}">${data.totalMorososClub} (${pctMorosos}%)</div></div>
+    </div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin:14px 0 6px">Por grupo</p>
+    ${data.grupos.map(g=>{
+      const pctG = g.totalJugadores>0 ? Math.round(g.morosos/g.totalJugadores*100) : 0;
+      return `
+      <div class="card">
+        <div class="card-title"><h3>${esc(g.nombre)}</h3></div>
+        <div class="field-line"><div class="fl-label">Jugadores</div><div class="fl-value">${g.totalJugadores}</div></div>
+        <div class="field-line"><div class="fl-label">Morosos</div><div class="fl-value" style="color:${g.morosos>0?'var(--red)':'var(--green-ok)'}">${g.morosos} (${pctG}%)</div></div>
+        <div class="field-line"><div class="fl-label">Asistencia este mes</div><div class="fl-value">${g.asistenciaPromedioMes!==null ? g.asistenciaPromedioMes+'%' : '—'}</div></div>
+      </div>
+    `;}).join('')}
+  `;
 }
 
 async function cargarPerfilEnt(){

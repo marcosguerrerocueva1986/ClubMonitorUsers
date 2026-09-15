@@ -286,6 +286,31 @@ async function listarPartidosGrupo(pool, body) {
   return { success: true, data: r.rows };
 }
 
+/* ---------- Indicadores generales (solo Director) ---------- */
+async function obtenerIndicadoresGenerales(pool) {
+  const r = await pool.query(
+    `SELECT g.id, g.nombre,
+       (SELECT COUNT(*) FROM sport_control.jugadores j WHERE j.grupo_id = g.id AND j.estado = 'activo') AS "totalJugadores",
+       (SELECT COUNT(*) FROM sport_control.jugadores j WHERE j.grupo_id = g.id AND j.estado = 'activo' AND sport_control.meses_atraso(j.id) > 0) AS "morosos",
+       (SELECT ROUND(AVG(CASE WHEN a.asistio THEN 100.0 ELSE 0 END))
+        FROM sport_control.asistencia_entrenamiento a
+        JOIN sport_control.sesiones_entrenamiento se ON se.id = a.sesion_id
+        WHERE se.grupo_id = g.id AND date_trunc('month', se.fecha) = date_trunc('month', CURRENT_DATE)
+       ) AS "asistenciaPromedioMes"
+     FROM sport_control.grupos g WHERE g.activo = true ORDER BY g.nombre`
+  );
+  const totalJugadoresClub = await pool.query(`SELECT COUNT(*) AS total FROM sport_control.jugadores WHERE estado = 'activo'`);
+  const totalMorososClub = await pool.query(`SELECT COUNT(*) AS total FROM sport_control.jugadores WHERE estado = 'activo' AND sport_control.meses_atraso(id) > 0`);
+  return {
+    success: true,
+    data: {
+      grupos: r.rows,
+      totalJugadoresClub: Number(totalJugadoresClub.rows[0].total),
+      totalMorososClub: Number(totalMorososClub.rows[0].total),
+    },
+  };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
   const body = req.body || {};
@@ -329,6 +354,11 @@ module.exports = async (req, res) => {
     if (accion === 'listar_partidos_grupo_entrenador') return res.status(200).json(await listarPartidosGrupo(pool, body));
     if (accion === 'ver_detalle_partido_stats_entrenador') return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
     if (accion === 'ver_foto_partido_entrenador') return res.status(200).json(await verFotoPartidoAdmin(pool, body));
+    if (accion === 'obtener_indicadores_generales_entrenador') {
+      const rolR = await pool.query(`SELECT rol FROM sport_control.entrenadores WHERE id = $1`, [entrenadorId]);
+      if (!rolR.rows[0] || rolR.rows[0].rol !== 'director') return res.status(200).json({ success: false, error: 'Solo el rol Director puede ver esto.' });
+      return res.status(200).json(await obtenerIndicadoresGenerales(pool));
+    }
 
     return res.status(200).json({ success: false, error: 'Accion no reconocida' });
   } catch (err) {
