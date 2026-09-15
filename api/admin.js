@@ -17,6 +17,7 @@ const {
   listarGrupos, crearGrupo, editarGrupo, toggleGrupo, verDetalleGrupo,
   asignarJugadorGrupo, asignarEntrenadorGrupo, quitarEntrenadorGrupo,
   listarEntrenadores, crearEntrenador, editarEntrenador, toggleEntrenador, resetearClaveEntrenadorAdmin,
+  crearHorarioGrupo, eliminarHorarioGrupo,
 } = require('./_admin_entrenadores');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin, resetearClaveRepresentanteAdmin } = require('./_admin_jugadores');
 const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios, listarPermisosPantallas, togglePermisoPantalla } = require('./_admin_operaciones');
@@ -93,6 +94,8 @@ module.exports = async (req, res) => {
       case 'editar_entrenador_admin': return res.status(200).json(await editarEntrenador(pool, body));
       case 'toggle_entrenador_admin': return res.status(200).json(await toggleEntrenador(pool, body));
       case 'resetear_clave_entrenador_admin': return res.status(200).json(await resetearClaveEntrenadorAdmin(pool, body));
+      case 'crear_horario_grupo_admin': return res.status(200).json(await crearHorarioGrupo(pool, body));
+      case 'eliminar_horario_grupo_admin': return res.status(200).json(await eliminarHorarioGrupo(pool, body));
       case 'listar_representantes_jugador_admin': return res.status(200).json(await listarRepresentantesJugadorAdmin(pool, body));
       case 'agregar_representante_admin': return res.status(200).json(await agregarRepresentanteAdmin(pool, body));
       case 'editar_representante_admin': return res.status(200).json(await editarRepresentanteAdmin(pool, body));

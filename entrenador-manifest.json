@@ -1,0 +1,14 @@
+{
+  "id": "/entrenador/",
+  "name": "Mi Club - Entrenadores",
+  "short_name": "Mi Club Coach",
+  "start_url": "/entrenador/",
+  "scope": "/entrenador/",
+  "display": "standalone",
+  "background_color": "#14231A",
+  "theme_color": "#14231A",
+  "icons": [
+    { "src": "/api/logo?badge=entrenador", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/api/logo?badge=entrenador", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

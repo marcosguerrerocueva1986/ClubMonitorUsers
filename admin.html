@@ -3155,8 +3155,20 @@ async function abrirDetalleGrupo(grupoId, nombre){
 }
 
 function mostrarDetalleGrupo(data){
+  const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const html = `
     <div class="sheet-head"><h2>${esc(grupoDetalleActual.nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card">
+      <div class="card-title"><h3>Horario semanal</h3></div>
+      ${data.horarios.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin horario definido.</p>' : data.horarios.map(h=>`
+        <div class="field-line">
+          <div class="fl-value">${DIAS[h.diaSemana]} ${h.horaInicio.slice(0,5)}${h.horaFin ? ' - '+h.horaFin.slice(0,5) : ''}</div>
+          <button class="sm danger" onclick="eliminarHorarioGrupoAccion(${h.id})">✕</button>
+        </div>
+        ${h.lugar ? `<div class="fl-label" style="margin-top:-4px;margin-bottom:6px">📍 ${esc(h.lugar)}</div>` : ''}
+      `).join('')}
+      <button class="sm" style="margin-top:8px" onclick="abrirAgregarHorario()">+ Agregar horario</button>
+    </div>
     <div class="card">
       <div class="card-title"><h3>Entrenadores a cargo</h3></div>
       ${data.entrenadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno asignado.</p>' : data.entrenadores.map(e=>`
@@ -3184,6 +3196,44 @@ function mostrarDetalleGrupo(data){
     </div>
   `;
   abrirSheet(html);
+}
+
+function abrirAgregarHorario(){
+  const html = `
+    <div class="sheet-head"><h2>Agregar horario</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Día de la semana</label>
+    <select id="horarioDia">
+      <option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option>
+      <option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option>
+    </select>
+    <label>Hora inicio</label>
+    <input id="horarioInicio" type="time">
+    <label>Hora fin (opcional)</label>
+    <input id="horarioFin" type="time">
+    <label>Lugar (opcional)</label>
+    <input id="horarioLugar" placeholder="Ej: Cancha principal">
+    <button class="primary block" style="margin-top:16px" onclick="guardarAgregarHorario()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarAgregarHorario(){
+  const diaSemana = parseInt(document.getElementById('horarioDia').value);
+  const horaInicio = document.getElementById('horarioInicio').value;
+  const horaFin = document.getElementById('horarioFin').value;
+  const lugar = document.getElementById('horarioLugar').value.trim();
+  if(!horaInicio){ toast('Escoge la hora de inicio', true); return; }
+  const res = await api('crear_horario_grupo_admin', {grupoId: grupoDetalleActual.id, diaSemana, horaInicio, horaFin, lugar});
+  if(res===null) return;
+  toast('Horario agregado');
+  abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
+}
+
+async function eliminarHorarioGrupoAccion(horarioId){
+  const res = await api('eliminar_horario_grupo_admin', {horarioId});
+  if(res===null) return;
+  toast('Horario eliminado');
+  abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
 }
 
 async function agregarJugadorAGrupo(){

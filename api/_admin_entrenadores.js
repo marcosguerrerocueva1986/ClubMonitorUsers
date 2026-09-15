@@ -53,7 +53,25 @@ async function verDetalleGrupo(pool, body) {
     `SELECT id, nombres, apellidos FROM sport_control.jugadores WHERE estado = 'activo' AND (grupo_id IS NULL OR grupo_id != $1) ORDER BY nombres`,
     [grupoId]
   );
-  return { success: true, data: { jugadores: jugadores.rows, entrenadores: entrenadores.rows, disponibles: disponibles.rows } };
+  const horarios = await pool.query(
+    `SELECT id, dia_semana AS "diaSemana", hora_inicio AS "horaInicio", hora_fin AS "horaFin", lugar FROM sport_control.horarios_grupo WHERE grupo_id = $1 AND activo = true ORDER BY dia_semana, hora_inicio`,
+    [grupoId]
+  );
+  return { success: true, data: { jugadores: jugadores.rows, entrenadores: entrenadores.rows, disponibles: disponibles.rows, horarios: horarios.rows } };
+}
+
+async function crearHorarioGrupo(pool, body) {
+  const { grupoId, diaSemana, horaInicio, horaFin, lugar } = body;
+  const r = await pool.query(
+    `INSERT INTO sport_control.horarios_grupo (grupo_id, dia_semana, hora_inicio, hora_fin, lugar) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [grupoId, diaSemana, horaInicio, horaFin || null, lugar || null]
+  );
+  return { success: true, data: { id: r.rows[0].id } };
+}
+
+async function eliminarHorarioGrupo(pool, body) {
+  await pool.query(`DELETE FROM sport_control.horarios_grupo WHERE id = $1`, [body.horarioId]);
+  return { success: true };
 }
 
 async function asignarJugadorGrupo(pool, body) {
@@ -149,4 +167,5 @@ module.exports = {
   listarGrupos, crearGrupo, editarGrupo, toggleGrupo, verDetalleGrupo,
   asignarJugadorGrupo, asignarEntrenadorGrupo, quitarEntrenadorGrupo,
   listarEntrenadores, crearEntrenador, editarEntrenador, toggleEntrenador, resetearClaveEntrenadorAdmin,
+  crearHorarioGrupo, eliminarHorarioGrupo,
 };
