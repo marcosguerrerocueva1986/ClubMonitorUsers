@@ -159,6 +159,74 @@ async function verDetalleGrupoEntrenador(pool, body) {
   return { success: true, data: { grupo: grupo.rows[0], jugadores: jugadores.rows, horarios: horarios.rows } };
 }
 
+/* ---------- Sesiones de entrenamiento y asistencia ---------- */
+async function obtenerOCrearSesionDia(pool, entrenadorId, body) {
+  const { grupoId, fecha } = body;
+  let sesion = await pool.query(
+    `SELECT id, rutina, notas FROM sport_control.sesiones_entrenamiento WHERE grupo_id = $1 AND fecha = $2`,
+    [grupoId, fecha]
+  );
+  if (!sesion.rows[0]) {
+    const ins = await pool.query(
+      `INSERT INTO sport_control.sesiones_entrenamiento (grupo_id, fecha, creado_por) VALUES ($1, $2, $3) RETURNING id, rutina, notas`,
+      [grupoId, fecha, entrenadorId]
+    );
+    sesion = ins;
+  }
+  const sesionId = sesion.rows[0].id;
+
+  const jugadores = await pool.query(
+    `SELECT j.id, j.nombres, j.apellidos, a.asistio, a.justificacion
+     FROM sport_control.jugadores j
+     LEFT JOIN sport_control.asistencia_entrenamiento a ON a.jugador_id = j.id AND a.sesion_id = $1
+     WHERE j.grupo_id = $2 AND j.estado = 'activo' ORDER BY j.nombres`,
+    [sesionId, grupoId]
+  );
+
+  return { success: true, data: { sesion: sesion.rows[0], jugadores: jugadores.rows } };
+}
+
+async function guardarSesionEntrenamiento(pool, body) {
+  const { sesionId, rutina, notas, asistencias } = body;
+  await pool.query(`UPDATE sport_control.sesiones_entrenamiento SET rutina = $1, notas = $2 WHERE id = $3`, [rutina || null, notas || null, sesionId]);
+
+  for (const a of (asistencias || [])) {
+    await pool.query(
+      `INSERT INTO sport_control.asistencia_entrenamiento (sesion_id, jugador_id, asistio, justificacion)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (sesion_id, jugador_id) DO UPDATE SET asistio = EXCLUDED.asistio, justificacion = EXCLUDED.justificacion`,
+      [sesionId, a.jugadorId, !!a.asistio, a.justificacion || null]
+    );
+  }
+  return { success: true };
+}
+
+async function listarHistorialSesiones(pool, body) {
+  const { grupoId } = body;
+  const r = await pool.query(
+    `SELECT se.id, se.fecha, se.rutina,
+       (SELECT COUNT(*) FROM sport_control.asistencia_entrenamiento a WHERE a.sesion_id = se.id AND a.asistio = true) AS "totalAsistieron",
+       (SELECT COUNT(*) FROM sport_control.jugadores j WHERE j.grupo_id = se.grupo_id AND j.estado = 'activo') AS "totalJugadores"
+     FROM sport_control.sesiones_entrenamiento se WHERE se.grupo_id = $1 ORDER BY se.fecha DESC LIMIT 20`,
+    [grupoId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function verHistorialAsistenciaJugador(pool, body) {
+  const { jugadorId, grupoId } = body;
+  const r = await pool.query(
+    `SELECT se.fecha, a.asistio, a.justificacion
+     FROM sport_control.asistencia_entrenamiento a
+     JOIN sport_control.sesiones_entrenamiento se ON se.id = a.sesion_id
+     WHERE a.jugador_id = $1 AND se.grupo_id = $2 ORDER BY se.fecha DESC LIMIT 20`,
+    [jugadorId, grupoId]
+  );
+  const total = r.rows.length;
+  const asistio = r.rows.filter(x => x.asistio).length;
+  return { success: true, data: { historial: r.rows, total, asistio, porcentaje: total > 0 ? Math.round((asistio / total) * 100) : null } };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
   const body = req.body || {};
@@ -183,6 +251,18 @@ module.exports = async (req, res) => {
       if (!tieneAcceso) return res.status(200).json({ success: false, error: 'No tienes acceso a ese grupo.' });
       return res.status(200).json(await verDetalleGrupoEntrenador(pool, body));
     }
+    if (accion === 'obtener_o_crear_sesion_dia_entrenador') {
+      const tieneAcceso = await verificarAccesoGrupo(pool, entrenadorId, body.grupoId);
+      if (!tieneAcceso) return res.status(200).json({ success: false, error: 'No tienes acceso a ese grupo.' });
+      return res.status(200).json(await obtenerOCrearSesionDia(pool, entrenadorId, body));
+    }
+    if (accion === 'guardar_sesion_entrenamiento_entrenador') return res.status(200).json(await guardarSesionEntrenamiento(pool, body));
+    if (accion === 'listar_historial_sesiones_entrenador') {
+      const tieneAcceso = await verificarAccesoGrupo(pool, entrenadorId, body.grupoId);
+      if (!tieneAcceso) return res.status(200).json({ success: false, error: 'No tienes acceso a ese grupo.' });
+      return res.status(200).json(await listarHistorialSesiones(pool, body));
+    }
+    if (accion === 'ver_historial_asistencia_jugador_entrenador') return res.status(200).json(await verHistorialAsistenciaJugador(pool, body));
 
     return res.status(200).json({ success: false, error: 'Accion no reconocida' });
   } catch (err) {

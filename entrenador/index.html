@@ -395,12 +395,133 @@ async function cargarMiGrupo(){
     <div class="card">
       <div class="card-title"><h3>👤 Jugadores (${data.jugadores.length})</h3></div>
       ${data.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin jugadores en este grupo todavía.</p>' : data.jugadores.map(j=>`
-        <div class="field-line">
+        <div class="field-line" style="cursor:pointer" onclick="verHistorialJugador(${j.id}, ${JSON.stringify(j.nombres+' '+j.apellidos).replace(/"/g,'&quot;')})">
           <div class="fl-value">${esc(j.nombres)} ${esc(j.apellidos)}</div>
         </div>
       `).join('')}
     </div>
+    <div class="row-actions">
+      <button class="sm primary" onclick="abrirTomarAsistencia()">📋 Tomar asistencia de hoy</button>
+      <button class="sm" onclick="abrirHistorialSesiones()">📊 Ver historial</button>
+    </div>
   `;
+}
+
+/* ---------- Asistencia y rutina ---------- */
+let sesionActual = null;
+let fechaSesionActual = '';
+
+function hoyIso(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+async function abrirTomarAsistencia(fecha){
+  fechaSesionActual = fecha || hoyIso();
+  const data = await api('obtener_o_crear_sesion_dia_entrenador', {grupoId: GRUPO_ACTUAL.id, fecha: fechaSesionActual});
+  if(data===null) return;
+  sesionActual = data.sesion;
+  mostrarTomarAsistencia(data.jugadores);
+}
+
+function mostrarTomarAsistencia(jugadores){
+  const html = `
+    <div class="sheet-head"><h2>Asistencia</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Fecha</label>
+    <input type="date" id="asistenciaFecha" value="${fechaSesionActual}" onchange="cambiarFechaAsistencia()">
+    <div class="card">
+      <div class="card-title"><h3>Jugadores</h3></div>
+      ${jugadores.map(j=>`
+        <div class="field-line">
+          <div class="fl-value">${esc(j.nombres)} ${esc(j.apellidos)}</div>
+          <div style="display:flex;gap:6px">
+            <button class="sm ${j.asistio===true?'primary':''}" data-jugador="${j.id}" data-valor="true" onclick="marcarAsistencia(${j.id}, true, this)">✓ Vino</button>
+            <button class="sm ${j.asistio===false?'danger':''}" data-jugador="${j.id}" data-valor="false" onclick="marcarAsistencia(${j.id}, false, this)">✕ Faltó</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <label>Rutina de hoy</label>
+    <textarea id="sesionRutina" rows="3" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-family:inherit;font-size:14px">${esc(sesionActual.rutina||'')}</textarea>
+    <label style="margin-top:10px">Notas (opcional)</label>
+    <textarea id="sesionNotas" rows="2" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-family:inherit;font-size:14px">${esc(sesionActual.notas||'')}</textarea>
+    <button class="primary block" id="btnGuardarSesion" style="margin-top:14px" onclick="guardarAsistenciaYRutina()">Guardar</button>
+  `;
+  abrirSheet(html);
+  window._asistenciaTemp = {};
+  jugadores.forEach(j => { window._asistenciaTemp[j.id] = { asistio: j.asistio, justificacion: j.justificacion }; });
+}
+
+function marcarAsistencia(jugadorId, valor, btnEl){
+  window._asistenciaTemp[jugadorId] = window._asistenciaTemp[jugadorId] || {};
+  window._asistenciaTemp[jugadorId].asistio = valor;
+  const fila = btnEl.parentElement;
+  fila.querySelectorAll('button').forEach(b=>{
+    b.classList.remove('primary','danger');
+    if(b.dataset.valor==='true' && valor===true) b.classList.add('primary');
+    if(b.dataset.valor==='false' && valor===false) b.classList.add('danger');
+  });
+}
+
+async function cambiarFechaAsistencia(){
+  const nuevaFecha = document.getElementById('asistenciaFecha').value;
+  if(!nuevaFecha) return;
+  await abrirTomarAsistencia(nuevaFecha);
+}
+
+async function guardarAsistenciaYRutina(){
+  const btn = document.getElementById('btnGuardarSesion');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  const rutina = document.getElementById('sesionRutina').value.trim();
+  const notas = document.getElementById('sesionNotas').value.trim();
+  const asistencias = Object.entries(window._asistenciaTemp).map(([jugadorId, v])=>({
+    jugadorId: parseInt(jugadorId), asistio: !!v.asistio, justificacion: v.justificacion || null,
+  }));
+  const res = await api('guardar_sesion_entrenamiento_entrenador', {sesionId: sesionActual.id, rutina, notas, asistencias});
+  if(res===null){ btn.disabled = false; btn.textContent = 'Guardar'; return; }
+  toast('Asistencia guardada');
+  cerrarSheet();
+}
+
+async function abrirHistorialSesiones(){
+  const data = await api('listar_historial_sesiones_entrenador', {grupoId: GRUPO_ACTUAL.id});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Historial de sesiones</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin sesiones registradas todavía.</p>' : data.map(s=>`
+      <div class="field-line" style="cursor:pointer" onclick="cerrarSheet(); abrirTomarAsistencia('${s.fecha.slice(0,10)}')">
+        <div>
+          <div class="fl-value">${fechaCortaEnt(s.fecha)}</div>
+          <div class="fl-label">${esc(s.rutina || 'Sin rutina registrada')}</div>
+        </div>
+        <div class="fl-value">${s.totalAsistieron}/${s.totalJugadores}</div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+function fechaCortaEnt(f){
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d = new Date(f);
+  return dias[d.getUTCDay()]+' '+String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();
+}
+
+async function verHistorialJugador(jugadorId, nombre){
+  const data = await api('ver_historial_asistencia_jugador_entrenador', {jugadorId, grupoId: GRUPO_ACTUAL.id});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.porcentaje!==null ? `<div class="card" style="text-align:center"><div class="fl-label">ASISTENCIA</div><div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;color:var(--gold)">${data.porcentaje}%</div><div class="fl-label">${data.asistio} de ${data.total} sesiones</div></div>` : '<p style="color:var(--chalk-dim);font-size:13px">Sin historial de asistencia todavía.</p>'}
+    ${data.historial.map(h=>`
+      <div class="field-line">
+        <div class="fl-value">${fechaCortaEnt(h.fecha)}</div>
+        <span class="badge ${h.asistio?'confirmando':'cancelado'}">${h.asistio?'Asistió':'Faltó'}</span>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
 }
 
 async function cargarPerfilEnt(){
