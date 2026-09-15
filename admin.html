@@ -322,9 +322,7 @@ if ('serviceWorker' in navigator) {
     <button class="active" data-tab="dashboard" onclick="cambiarTab('dashboard')"><span class="ic">📊</span>Dashboard</button>
     <button data-tab="partidos" onclick="cambiarTab('partidos')"><span class="ic ic-deporte">⚽</span>Partidos</button>
     <button data-tab="jugadores" onclick="cambiarTab('jugadores')"><span class="ic">👥</span>Jugadores</button>
-    <button data-tab="parametros" onclick="cambiarTab('parametros')"><span class="ic">⚙️</span>Parámetros</button>
-    <button data-tab="eventos" onclick="cambiarTab('eventos')"><span class="ic">🎒</span>Eventos</button>
-    <button data-tab="grupos" onclick="cambiarTab('grupos')"><span class="ic">🏋️</span>Grupos</button>
+    <button id="btnTabMas" onclick="abrirMenuMas()"><span class="ic">⋯</span>Más</button>
   </nav>
 </div>
 
@@ -486,9 +484,26 @@ if(CLAVE){
   });
 }
 
+function abrirMenuMas(){
+  const opciones = [
+    {tab:'parametros', icono:'⚙️', nombre:'Parámetros'},
+    {tab:'eventos', icono:'🎒', nombre:'Eventos'},
+    {tab:'grupos', icono:'🏋️', nombre:'Grupos y Entrenadores'},
+  ];
+  const html = `
+    <div class="sheet-head"><h2>Más opciones</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${opciones.map(o=>`
+      <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); cambiarTab('${o.tab}')">${o.icono} ${o.nombre}</button>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
 function cambiarTab(tab){
   currentTab = tab;
-  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  const TABS_EN_MAS = ['parametros','eventos','grupos'];
+  document.querySelectorAll('nav.tabs button[data-tab]').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.getElementById('btnTabMas').classList.toggle('active', TABS_EN_MAS.includes(tab));
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+tab).classList.add('active');
   document.getElementById('fabCrear').style.display = (tab==='partidos' || tab==='jugadores' || tab==='eventos') ? 'flex' : 'none';
