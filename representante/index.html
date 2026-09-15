@@ -1260,7 +1260,10 @@ async function activarNotificacionesRep(){
       return;
     }
     try{
-      if(representanteId) await OneSignal.login('representante_' + representanteId);
+      // OJO: el login() ya se hizo una vez al entrar a la app
+      // (entrarAppRepresentante). Volver a llamarlo aqui, justo antes
+      // de optIn(), puede reiniciar el estado de la suscripcion en
+      // OneSignal y dejarla en "Unsubscribed" -- por eso NO se repite.
       await OneSignal.User.PushSubscription.optIn();
       const idSuscripcion = OneSignal.User.PushSubscription.id;
       const optedInReal = OneSignal.User.PushSubscription.optedIn;
