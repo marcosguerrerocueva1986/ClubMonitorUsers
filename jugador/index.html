@@ -88,6 +88,9 @@ if ('serviceWorker' in navigator) {
   .meta{color:var(--chalk-dim);font-size:14px;margin-top:6px;line-height:1.6;}
   .meta b{color:var(--chalk);font-weight:600;}
   .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .tabbar-scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
+  .tabbar-scroll::-webkit-scrollbar{display:none;}
+  .tabbar-scroll button{flex-shrink:0;}
 
   button{ font-family:'Inter',sans-serif;font-weight:600;font-size:14px; border:1px solid var(--line);background:var(--pitch-3);color:var(--chalk); padding:12px 14px;border-radius:10px;cursor:pointer;transition:.15s; }
   button:active{transform:scale(.97);}
@@ -1186,7 +1189,7 @@ function mostrarDetalleEventoJugador(){
       </div>
       <div class="meta">📍 ${esc(e.lugar||'—')} ${e.fecha_inicio ? '· 📅 '+fechaCorta(e.fecha_inicio) : ''} ${e.fecha_fin ? '→ '+fechaCorta(e.fecha_fin) : ''}</div>
     </div>
-    <div class="row-actions" id="eventoJugSubtabBar" style="margin:14px 0;flex-wrap:wrap">
+    <div class="row-actions tabbar-scroll" id="eventoJugSubtabBar" style="margin:14px 0">
       ${subtabs.map(s=>`<button class="sm ${eventoJugSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEventoJugador('${s.key}')">${s.label}</button>`).join('')}
     </div>
     <div id="eventoJugSubtabContent"></div>

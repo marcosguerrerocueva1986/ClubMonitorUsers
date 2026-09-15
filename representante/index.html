@@ -76,7 +76,10 @@ if ('serviceWorker' in navigator) {
   .badge.cancelado{background:rgba(232,93,76,.15);color:var(--red);border:1px solid rgba(232,93,76,.3);}
   .badge.en_juego{background:rgba(255,210,63,.15);color:var(--gold);border:1px solid rgba(255,210,63,.3);}
   .badge.finalizado{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
-  .row-actions{display:flex;gap:8px;}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .tabbar-scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
+  .tabbar-scroll::-webkit-scrollbar{display:none;}
+  .tabbar-scroll button{flex-shrink:0;}
   button{font-family:inherit;cursor:pointer;}
   button.block{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-weight:600;font-size:14px;}
   button.primary{background:var(--gold);border-color:var(--gold);color:#1A2A1D;}
@@ -843,7 +846,7 @@ function mostrarDetalleEventoRep(){
       <div class="card-title"><h3>${esc(e.nombre)}</h3><span class="badge ${e.estado==='activo'?'confirmando':(e.estado==='finalizado'?'finalizado':'cancelado')}">${esc(e.estado)}</span></div>
       <div class="meta">📍 ${esc(e.lugar||'—')}</div>
     </div>
-    <div class="row-actions" id="eventoRepSubtabBar" style="margin:14px 0">
+    <div class="row-actions tabbar-scroll" id="eventoRepSubtabBar" style="margin:14px 0">
       ${subtabs.map(s=>`<button class="sm ${eventoRepSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEventoRep('${s.key}')">${s.label}</button>`).join('')}
     </div>
     <div id="eventoRepSubtabContent"></div>

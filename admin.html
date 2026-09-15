@@ -135,6 +135,9 @@ if ('serviceWorker' in navigator) {
   .meta b{color:var(--chalk);font-weight:600;}
 
   .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .tabbar-scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
+  .tabbar-scroll::-webkit-scrollbar{display:none;}
+  .tabbar-scroll button{flex-shrink:0;}
   button{
     font-family:'Inter',sans-serif;font-weight:600;font-size:14px;
     border:1px solid var(--line);background:var(--pitch-3);color:var(--chalk);
@@ -293,7 +296,7 @@ if ('serviceWorker' in navigator) {
     </div>
 
     <div class="screen" id="screen-parametros">
-      <div class="row-actions" style="margin-bottom:14px">
+      <div class="row-actions tabbar-scroll" style="margin-bottom:14px">
         <button class="sm primary" id="btnSubtabGenerales" onclick="cambiarSubtabParametros('generales')">⚙️ Generales</button>
         <button class="sm" id="btnSubtabExentos" onclick="cambiarSubtabParametros('exentos')">👨‍👩‍👧 Exentos pendientes</button>
         <button class="sm" id="btnSubtabCatMultas" onclick="cambiarSubtabParametros('cat_multas')">📋 Tipos de multa</button>
@@ -2353,7 +2356,7 @@ function mostrarDetalleEvento(){
       <button class="sm" style="margin-top:8px" onclick='abrirEditarEvento(${e.id}, ${JSON.stringify(e).replace(/"/g,"&quot;")})'>Editar evento</button>
     </div>
 
-    <div class="row-actions" id="eventoSubtabBar" style="margin:14px 0;flex-wrap:wrap">
+    <div class="row-actions tabbar-scroll" id="eventoSubtabBar" style="margin:14px 0">
       ${subtabs.map(s=>`<button class="sm ${eventoSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEvento('${s.key}')">${s.label}</button>`).join('')}
     </div>
 
