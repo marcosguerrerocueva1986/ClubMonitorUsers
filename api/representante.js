@@ -29,6 +29,22 @@ async function actualizarPerfilRepresentante(pool, representanteId, body) {
   return { success: true, data: true };
 }
 
+async function listarNovedadesVisiblesJugador(pool, body) {
+  const r = await pool.query(
+    `SELECT n.id, n.creado_en AS "creadoEn", n.tipo, n.descripcion,
+       e.nombres || ' ' || e.apellidos AS "entrenadorNombre",
+       g.nombre AS "grupoNombre"
+     FROM sport_control.novedades_jugador n
+     LEFT JOIN sport_control.entrenadores e ON e.id = n.entrenador_id
+     LEFT JOIN sport_control.jugadores j ON j.id = n.jugador_id
+     LEFT JOIN sport_control.grupos g ON g.id = j.grupo_id
+     WHERE n.jugador_id = $1 AND n.visible_representante = true
+     ORDER BY n.creado_en DESC`,
+    [body.jugadorId]
+  );
+  return { success: true, data: r.rows };
+}
+
 async function obtenerPerfilRepresentante(pool, representanteId) {
   const r = await pool.query(`SELECT nombres, apellidos, telefono, cedula FROM sport_control.representantes WHERE id = $1`, [representanteId]);
   const permisos = await pool.query(`SELECT funcionalidad, habilitado FROM sport_control.permisos_pantallas WHERE rol = 'representante'`);
@@ -84,7 +100,7 @@ async function crearClaveRepresentante(pool, body) {
   const hash = await bcrypt.hash(clave, 10);
   await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, r.rows[0].id]);
   const token = await crearSesionRepresentante(pool, r.rows[0].id);
-  return { success: true, data: { token, nombres: r.rows[0].nombres } };
+  return { success: true, data: { token, nombres: r.rows[0].nombres, representanteId: r.rows[0].id } };
 }
 
 // Paso 2b: ya tenia clave -- la verifica.
@@ -122,7 +138,7 @@ async function verificarClaveRepresentante(pool, body) {
 
   await pool.query(`UPDATE sport_control.representantes SET intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1`, [rep.id]);
   const token = await crearSesionRepresentante(pool, rep.id);
-  return { success: true, data: { token, nombres: rep.nombres, debeCambiarClave: rep.debe_cambiar_clave } };
+  return { success: true, data: { token, nombres: rep.nombres, debeCambiarClave: rep.debe_cambiar_clave, representanteId: rep.id } };
 }
 
 // Cambiar clave estando logeado (uso normal, o para completar un reseteo).
@@ -214,6 +230,7 @@ module.exports = async (req, res) => {
       // financiera abierta, igual que ya funciona para cualquier jugador
       // logeado) -- no necesitan jugadorId ni la verificacion de vinculo.
       case 'ver_movimientos_evento_representante': return res.status(200).json(await verMovimientosEventoJugador(pool, body));
+      case 'listar_novedades_visibles_jugador_representante': return res.status(200).json(await listarNovedadesVisiblesJugador(pool, body));
       case 'ver_comprobante_movimiento_representante': return res.status(200).json(await verComprobanteMovimientoJugador(pool, body));
       case 'actualizar_datos_jugador_representante': return res.status(200).json(await actualizarMisDatos(pool, jugadorId, body));
       case 'registrar_pago_comprobante_representante': return res.status(200).json(await registrarPagoComprobante(pool, jugadorId, body));

@@ -86,18 +86,19 @@ async function revisarMultasPartido(pool, config, body) {
   return { success: true, data: { partido: pInfo.rows[0], jugadores } };
 }
 
-async function enviarPushPendiente(jugadorId, montoTotal) {
+async function enviarPushPendiente(config, jugadorId, montoTotal) {
   try {
+    if (!config.onesignal_app_id) return;
     await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}` },
       body: JSON.stringify({
-        app_id: '94fc2cb8-f935-4abc-b237-ea9d81c1eb81',
-        include_aliases: { external_id: [String(jugadorId)] },
+        app_id: config.onesignal_app_id,
+        include_aliases: { external_id: ['jugador_' + jugadorId] },
         target_channel: 'push',
         headings: { en: '⚠️ Pendientes del partido anterior' },
         contents: { en: `Tienes $${montoTotal.toFixed(2)} pendientes (multas o invitados). Revisa y paga desde la app.` },
-        url: 'https://club-monitor-users.vercel.app/',
+        url: config.sitio_url_jugador || '',
       }),
     });
   } catch (e) {
@@ -119,7 +120,7 @@ async function enviarMultasJugadoresApp(pool, config, body) {
     const lineas = j.items.map((it) => `• ${it.motivo}: $${it.monto}`);
     const texto = `⚠️ Hola ${j.nombre.split(' ')[0]}, tienes pendientes del partido *${titulo}* (${fechaCorta(p.fecha)}):\n\n${lineas.join('\n')}\n\nTotal: $${j.total.toFixed(2)}\n\nPor favor usa la app del club para registrar tu pago. ¡Gracias! ⚽`;
     await enviarWhatsAppPrivado(config, j.telefono, texto);
-    await enviarPushPendiente(jugadorId, j.total);
+    await enviarPushPendiente(config, jugadorId, j.total);
     enviados++;
   }
   return { success: true, data: { enviados } };

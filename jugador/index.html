@@ -439,7 +439,7 @@ async function entrarApp(){
     if(perfil.jugadorId && window.OneSignalDeferred){
       OneSignalDeferred.push(async function(OneSignal){
         try{
-          await OneSignal.login(String(perfil.jugadorId));
+          await OneSignal.login('jugador_' + perfil.jugadorId);
           if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
             await OneSignal.User.PushSubscription.optIn();
           }
@@ -1498,7 +1498,7 @@ async function activarNotificaciones(){
     OneSignalDeferred.push(async function(OneSignal){
       try{
         if(PERFIL && PERFIL.jugadorId){ 
-          await OneSignal.login(String(PERFIL.jugadorId)); 
+          await OneSignal.login('jugador_' + PERFIL.jugadorId); 
         }
         await OneSignal.User.PushSubscription.optIn();
         await api('marcar_push_habilitado_jugador');

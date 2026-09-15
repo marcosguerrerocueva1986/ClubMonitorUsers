@@ -53,7 +53,7 @@ async function crearClaveEntrenador(pool, body) {
   const hash = await bcrypt.hash(clave, 10);
   await pool.query(`UPDATE sport_control.entrenadores SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, r.rows[0].id]);
   const token = await crearSesionEntrenador(pool, r.rows[0].id);
-  return { success: true, data: { token, nombres: r.rows[0].nombres } };
+  return { success: true, data: { token, nombres: r.rows[0].nombres, entrenadorId: r.rows[0].id } };
 }
 
 async function verificarClaveEntrenador(pool, body) {
@@ -90,7 +90,7 @@ async function verificarClaveEntrenador(pool, body) {
 
   await pool.query(`UPDATE sport_control.entrenadores SET intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1`, [ent.id]);
   const token = await crearSesionEntrenador(pool, ent.id);
-  return { success: true, data: { token, nombres: ent.nombres, debeCambiarClave: ent.debe_cambiar_clave } };
+  return { success: true, data: { token, nombres: ent.nombres, debeCambiarClave: ent.debe_cambiar_clave, entrenadorId: ent.id } };
 }
 
 async function cambiarClaveEntrenador(pool, entrenadorId, body) {
@@ -241,6 +241,42 @@ async function listarNovedadesJugador(pool, body) {
   return { success: true, data: r.rows };
 }
 
+async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
+  try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
+
+    const jugador = await pool.query(`SELECT nombres FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
+    const nombreJugador = jugador.rows[0] ? jugador.rows[0].nombres : 'tu representado';
+
+    const representantes = await pool.query(
+      `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
+      [jugadorId]
+    );
+    if (representantes.rows.length === 0) return;
+
+    const aliases = representantes.rows.map(r => 'representante_' + r.representante_id);
+    await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify({
+        app_id: c.onesignal_app_id,
+        include_aliases: { external_id: aliases },
+        target_channel: 'push',
+        headings: { en: '📋 Nueva novedad de ' + nombreJugador },
+        contents: { en: `El entrenador registró una novedad (${tipo}). Toca para ver el detalle.` },
+        url: c.sitio_url_representante || '',
+      }),
+    });
+  } catch (e) {
+    console.error('Push de novedad fallo (no bloquea el guardado):', e);
+  }
+}
+
 async function crearNovedadJugador(pool, entrenadorId, body) {
   const { jugadorId, tipo, visibleRepresentante } = body;
   const descripcion = (body.descripcion || '').trim();
@@ -251,6 +287,9 @@ async function crearNovedadJugador(pool, entrenadorId, body) {
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [jugadorId, entrenadorId, tipo, descripcion, !!visibleRepresentante]
   );
+  if (visibleRepresentante) {
+    await enviarPushNovedadRepresentante(pool, jugadorId, tipo);
+  }
   return { success: true, data: { id: r.rows[0].id } };
 }
 

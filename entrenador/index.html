@@ -263,6 +263,7 @@ async function crearClaveLogin(){
   if(res===null) return;
   TOKEN = res.token;
   safeSetEnt('entrenador_token', TOKEN);
+  safeSetEnt('entrenador_id', String(res.entrenadorId));
   await entrarAppEntrenador(res.nombres);
 }
 
@@ -278,6 +279,7 @@ async function verificarClaveLogin(){
   }
   TOKEN = res.token;
   safeSetEnt('entrenador_token', TOKEN);
+  safeSetEnt('entrenador_id', String(res.entrenadorId));
   await entrarAppEntrenador(res.nombres);
 }
 
@@ -299,6 +301,7 @@ async function confirmarCambioClaveObligatorio(){
   if(login===null) return;
   TOKEN = login.token;
   safeSetEnt('entrenador_token', TOKEN);
+  safeSetEnt('entrenador_id', String(login.entrenadorId));
   const res = await api('cambiar_clave_entrenador', { claveActual: claveTemporalPendiente, claveNueva });
   if(res===null) return;
   toast('¡Clave actualizada!');
@@ -316,6 +319,18 @@ async function entrarAppEntrenador(nombresLogin, gruposPrecargados){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='flex';
   if(nombresLogin) document.getElementById('saludoHeaderEnt').textContent = 'Hola, ' + nombresLogin.split(' ')[0] + ' 👋';
+
+  const entrenadorId = safeGetEnt('entrenador_id');
+  if(entrenadorId && window.OneSignalDeferred){
+    OneSignalDeferred.push(async function(OneSignal){
+      try{
+        await OneSignal.login('entrenador_' + entrenadorId);
+        if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+          await OneSignal.User.PushSubscription.optIn();
+        }
+      }catch(e){}
+    });
+  }
 
   const data = gruposPrecargados || await api('listar_mis_grupos_entrenador');
   if(data===null) return;

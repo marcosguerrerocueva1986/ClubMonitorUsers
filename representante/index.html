@@ -317,6 +317,7 @@ async function crearClaveLogin(){
   if(res===null) return;
   TOKEN = res.token;
   safeSetRep('representante_token', TOKEN);
+  safeSetRep('representante_id', String(res.representanteId));
   await entrarAppRepresentante(res.nombres);
 }
 
@@ -332,6 +333,7 @@ async function verificarClaveLogin(){
   }
   TOKEN = res.token;
   safeSetRep('representante_token', TOKEN);
+  safeSetRep('representante_id', String(res.representanteId));
   await entrarAppRepresentante(res.nombres);
 }
 
@@ -355,6 +357,7 @@ async function confirmarCambioClaveObligatorio(){
   if(login===null) return;
   TOKEN = login.token;
   safeSetRep('representante_token', TOKEN);
+  safeSetRep('representante_id', String(login.representanteId));
   const res = await api('cambiar_clave_representante', { claveActual: claveTemporalPendiente, claveNueva });
   if(res===null) return;
   toast('¡Clave actualizada!');
@@ -372,6 +375,18 @@ async function entrarAppRepresentante(nombresLogin, jugadoresPrecargados){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='flex';
   if(nombresLogin) document.getElementById('saludoHeaderRep').textContent = 'Hola, ' + nombresLogin.split(' ')[0] + ' 👋';
+
+  const representanteId = safeGetRep('representante_id');
+  if(representanteId && window.OneSignalDeferred){
+    OneSignalDeferred.push(async function(OneSignal){
+      try{
+        await OneSignal.login('representante_' + representanteId);
+        if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+          await OneSignal.User.PushSubscription.optIn();
+        }
+      }catch(e){}
+    });
+  }
 
   const jugadores = jugadoresPrecargados || await api('listar_mis_jugadores_representante');
   if(jugadores===null) return;
@@ -1141,7 +1156,8 @@ async function cargarPerfilRep(){
   const miPerfil = await api('obtener_perfil_representante');
   if(miPerfil===null) return;
   cont.innerHTML = `
-    <div class="card">
+    <button class="block primary" onclick="verNovedadesRep()">📋 Novedades de ${esc(JUGADOR_ACTUAL.nombres.split(' ')[0])}</button>
+    <div class="card" style="margin-top:12px">
       <div class="card-title"><h3>Datos de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
       <label>Nombres</label>
       <input id="jugRepNombres" value="${esc(perfilJugador.nombres||'')}">
@@ -1166,9 +1182,73 @@ async function cargarPerfilRep(){
       <button class="primary block" style="margin-top:10px" onclick="guardarMiPerfilRep()">Guardar mis datos</button>
     </div>
     <button class="block" onclick="abrirSelectorTemaRep()">🎨 Estilo de la app</button>
+    <div class="card">
+      <p id="pushEstadoTextoRep" style="font-size:13px;color:var(--chalk-dim);margin:0 0 10px">Cargando...</p>
+      <button class="primary block" id="pushBtnRep" style="display:none" onclick="activarNotificacionesRep()">Activar notificaciones</button>
+    </div>
     <button class="block" onclick="abrirCambiarClaveRep()">🔒 Cambiar mi clave de seguridad</button>
     <button class="block danger" onclick="cerrarSesionRep()">Cerrar sesión en este dispositivo</button>
   `;
+  actualizarEstadoPushRep();
+}
+
+async function actualizarEstadoPushRep(){
+  const textoEl = document.getElementById('pushEstadoTextoRep');
+  const btnEl = document.getElementById('pushBtnRep');
+  if(!textoEl) return;
+
+  if(!('Notification' in window)){
+    textoEl.textContent = 'Tu navegador no soporta notificaciones push.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(Notification.permission === 'denied'){
+    textoEl.textContent = '🚫 Bloqueaste las notificaciones para esta app. Actívalas desde la configuración de tu navegador para este sitio.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(Notification.permission !== 'granted'){
+    textoEl.textContent = 'Activa las notificaciones para enterarte al instante de novedades sobre tus representados, sin tener que estar revisando la app.';
+    btnEl.style.display = 'block';
+    btnEl.textContent = 'Activar notificaciones';
+    return;
+  }
+  if(window.OneSignalDeferred){
+    OneSignalDeferred.push(async function(OneSignal){
+      let optedIn = false;
+      try{ optedIn = OneSignal.User.PushSubscription.optedIn === true; }catch(e){}
+      if(optedIn){
+        textoEl.textContent = '✓ Las notificaciones están activadas.';
+        btnEl.style.display = 'none';
+      } else {
+        textoEl.textContent = '⚠️ Falta completar la suscripción. Toca el botón.';
+        btnEl.style.display = 'block';
+        btnEl.textContent = 'Reactivar notificaciones';
+      }
+    });
+  }
+}
+
+async function activarNotificacionesRep(){
+  if(typeof Notification === 'undefined'){ toast('Tu navegador no soporta notificaciones', true); return; }
+  const permiso = await Notification.requestPermission();
+  if(permiso === 'granted'){
+    if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
+    const representanteId = safeGetRep('representante_id');
+    OneSignalDeferred.push(async function(OneSignal){
+      try{
+        if(representanteId) await OneSignal.login('representante_' + representanteId);
+        await OneSignal.User.PushSubscription.optIn();
+        toast('¡Notificaciones activadas correctamente!');
+        actualizarEstadoPushRep();
+      }catch(e){
+        toast('Error: ' + (e.message || 'Fallo interno'), true);
+        actualizarEstadoPushRep();
+      }
+    });
+  } else {
+    toast('No se activaron las notificaciones', true);
+  }
 }
 
 async function guardarPerfilJugadorRep(){
@@ -1192,6 +1272,34 @@ async function guardarMiPerfilRep(){
   const res = await api('actualizar_perfil_representante', { nombres, apellidos, telefono });
   if(res===null) return;
   toast('Tus datos fueron actualizados');
+}
+
+async function verNovedadesRep(){
+  const data = await api('listar_novedades_visibles_jugador_representante');
+  if(data===null) return;
+  const ICONOS_TIPO = {lesion:'🩹', comportamiento:'⚠️', progreso:'⭐', otro:'📋'};
+  const html = `
+    <div class="sheet-head"><h2>Novedades de ${esc(JUGADOR_ACTUAL.nombres)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin novedades compartidas por el momento.</p>' : data.map(n=>`
+      <div class="card">
+        <div class="card-title"><h3>${ICONOS_TIPO[n.tipo]||'📋'} ${esc(n.tipo.charAt(0).toUpperCase()+n.tipo.slice(1))}</h3></div>
+        <div class="meta">
+          🗓️ ${fechaHoraRep(n.creadoEn)}<br>
+          🧑‍🏫 Reportado por: ${esc(n.entrenadorNombre||'—')}<br>
+          ${n.grupoNombre ? '🏋️ Grupo: '+esc(n.grupoNombre)+'<br>' : ''}
+        </div>
+        <p style="font-size:14px;color:var(--chalk);margin:10px 0 0;white-space:pre-wrap">${esc(n.descripcion)}</p>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+function fechaHoraRep(f){
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const d = new Date(f);
+  const hora = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+' · '+hora;
 }
 
 function cerrarSesionRep(){
