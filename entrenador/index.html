@@ -403,6 +403,7 @@ async function cargarMiGrupo(){
     <div class="row-actions">
       <button class="sm primary" onclick="abrirTomarAsistencia()">📋 Tomar asistencia de hoy</button>
       <button class="sm" onclick="abrirHistorialSesiones()">📊 Ver historial</button>
+      <button class="sm" onclick="abrirPartidosGrupo()">🏆 Estadísticas de partidos</button>
     </div>
   `;
 }
@@ -511,15 +512,181 @@ function fechaCortaEnt(f){
 async function verHistorialJugador(jugadorId, nombre){
   const data = await api('ver_historial_asistencia_jugador_entrenador', {jugadorId, grupoId: GRUPO_ACTUAL.id});
   if(data===null) return;
+  const novedades = await api('listar_novedades_jugador_entrenador', {jugadorId});
+  if(novedades===null) return;
+  mostrarHistorialJugador(jugadorId, nombre, data, novedades);
+}
+
+function mostrarHistorialJugador(jugadorId, nombre, data, novedades){
   const html = `
     <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     ${data.porcentaje!==null ? `<div class="card" style="text-align:center"><div class="fl-label">ASISTENCIA</div><div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;color:var(--gold)">${data.porcentaje}%</div><div class="fl-label">${data.asistio} de ${data.total} sesiones</div></div>` : '<p style="color:var(--chalk-dim);font-size:13px">Sin historial de asistencia todavía.</p>'}
-    ${data.historial.map(h=>`
-      <div class="field-line">
-        <div class="fl-value">${fechaCortaEnt(h.fecha)}</div>
-        <span class="badge ${h.asistio?'confirmando':'cancelado'}">${h.asistio?'Asistió':'Faltó'}</span>
+    <button class="sm" onclick="abrirCambiarGrupo(${jugadorId}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">↔️ Cambiar de grupo</button>
+    <div class="card" style="margin-top:12px">
+      <div class="card-title"><h3>Novedades</h3></div>
+      ${novedades.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin novedades registradas.</p>' : novedades.map(n=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(n.tipo)} ${n.visibleRepresentante ? '<span class="badge confirmando">Visible al representante</span>' : '<span class="badge cancelado">Privada</span>'}</div>
+            <div class="fl-label">${fechaCortaEnt(n.fecha)} · ${esc(n.entrenadorNombre||'')}<br>${esc(n.descripcion)}</div>
+          </div>
+        </div>
+      `).join('')}
+      <button class="sm primary" style="margin-top:8px" onclick="abrirCrearNovedad(${jugadorId})">+ Agregar novedad</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Historial de asistencia</h3></div>
+      ${data.historial.map(h=>`
+        <div class="field-line">
+          <div class="fl-value">${fechaCortaEnt(h.fecha)}</div>
+          <span class="badge ${h.asistio?'confirmando':'cancelado'}">${h.asistio?'Asistió':'Faltó'}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+function abrirCrearNovedad(jugadorId){
+  const html = `
+    <div class="sheet-head"><h2>Nueva novedad</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Tipo</label>
+    <select id="novedadTipo">
+      <option value="lesion">Lesión</option>
+      <option value="comportamiento">Comportamiento</option>
+      <option value="progreso">Progreso</option>
+      <option value="otro">Otro</option>
+    </select>
+    <label>Descripción</label>
+    <textarea id="novedadDescripcion" rows="3" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-family:inherit;font-size:14px"></textarea>
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;font-size:13px;color:var(--chalk-dim);margin-top:12px;text-transform:none">
+      <input type="checkbox" id="novedadVisible" style="width:18px;height:18px">
+      Permitir que el representante la vea
+    </label>
+    <button class="primary block" style="margin-top:12px" onclick="guardarNovedad(${jugadorId})">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarNovedad(jugadorId){
+  const tipo = document.getElementById('novedadTipo').value;
+  const descripcion = document.getElementById('novedadDescripcion').value.trim();
+  const visibleRepresentante = document.getElementById('novedadVisible').checked;
+  if(!descripcion){ toast('Escribe una descripción', true); return; }
+  const res = await api('crear_novedad_jugador_entrenador', {jugadorId, tipo, descripcion, visibleRepresentante});
+  if(res===null) return;
+  toast('Novedad guardada');
+  cerrarSheet();
+}
+
+async function abrirCambiarGrupo(jugadorId, nombre){
+  const grupos = await api('listar_grupos_para_cambio_entrenador');
+  if(grupos===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Cambiar de grupo</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">${esc(nombre)}</p>
+    <select id="cambiarGrupoId">
+      <option value="">— Sin grupo —</option>
+      ${grupos.map(g=>`<option value="${g.id}" ${g.id===GRUPO_ACTUAL.id?'selected':''}>${esc(g.nombre)}</option>`).join('')}
+    </select>
+    <button class="primary block" style="margin-top:16px" onclick="guardarCambiarGrupo(${jugadorId})">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCambiarGrupo(jugadorId){
+  const nuevoGrupoIdVal = document.getElementById('cambiarGrupoId').value;
+  const res = await api('cambiar_jugador_de_grupo_entrenador', {jugadorId, nuevoGrupoId: nuevoGrupoIdVal ? parseInt(nuevoGrupoIdVal) : null});
+  if(res===null) return;
+  toast('Grupo actualizado');
+  cerrarSheet();
+  cargarMiGrupo();
+}
+
+/* ---------- Estadisticas de partidos del grupo ---------- */
+async function abrirPartidosGrupo(){
+  const data = await api('listar_partidos_grupo_entrenador', {grupoId: GRUPO_ACTUAL.id});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Partidos del grupo</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin partidos registrados para jugadores de este grupo todavía.</p>' : data.map(p=>`
+      <div class="field-line" style="cursor:pointer" onclick="verEstadisticasPartidoEnt(${p.id})">
+        <div>
+          <div class="fl-value">${esc(p.alias || 'Partido')} ${p.estado==='finalizado' ? '<span class="badge finalizado">Finalizado</span>' : ''}</div>
+          <div class="fl-label">${fechaCortaEnt(p.fecha)} · 📍 ${esc(p.lugar||'')}</div>
+        </div>
+        ${p.tieneEstadisticas ? '<span style="font-size:18px">📊</span>' : ''}
       </div>
     `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+async function verEstadisticasPartidoEnt(partidoId){
+  const data = await api('ver_detalle_partido_stats_entrenador', {partidoId});
+  if(data===null) return;
+  mostrarEstadisticasPartidoEnt(data);
+}
+
+function mostrarEstadisticasPartidoEnt(data){
+  const p = data.partido;
+  const grupos = {};
+  data.valores.forEach(v => {
+    const clave = v.jugador || '__equipo__';
+    if(!grupos[clave]) grupos[clave] = [];
+    grupos[clave].push(v);
+  });
+  const equipoStats = grupos['__equipo__'] || [];
+  const jugadorStats = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
+
+  const html = `
+    <div class="sheet-head"><h2>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${p.eventoNombre ? `<p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">🎒 Parte de: ${esc(p.eventoNombre)}</p>` : ''}
+    ${p.marcador_propio!==null && p.marcador_rival!==null ? `
+      <div class="card" style="text-align:center">
+        <div class="fl-label">${fechaCortaEnt(p.fecha)}</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;margin:8px 0">
+          Nosotros ${p.marcador_propio} — ${p.marcador_rival} ${esc(p.rival_nombre||'Rival')}
+        </div>
+      </div>
+    ` : ''}
+    ${p.jugadorDestacado ? `<div class="ok-card" style="background:rgba(111,207,151,.12);border:1px solid rgba(111,207,151,.35);border-radius:14px;padding:14px;margin-bottom:12px;color:var(--green-ok);font-size:14px">⭐ Jugador destacado: ${esc(p.jugadorDestacado)}</div>` : ''}
+    ${(p.tieneFotoEquipo || p.tieneFotoPlanilla) ? `
+      <div class="row-actions" style="margin-bottom:12px">
+        ${p.tieneFotoEquipo ? `<button class="sm" onclick="verFotoPartidoEnt(${p.id}, 'equipo')">📷 Foto del equipo</button>` : ''}
+        ${p.tieneFotoPlanilla ? `<button class="sm" onclick="verFotoPartidoEnt(${p.id}, 'planilla')">📋 Planilla de control</button>` : ''}
+      </div>
+    ` : ''}
+    ${equipoStats.length>0 ? `
+      <div class="card">
+        <div class="card-title"><h3>Estadísticas del equipo</h3></div>
+        ${equipoStats.map(v=>`<div class="field-line"><div class="fl-label">${esc(v.nombre)}</div><div class="fl-value">${v.valor}</div></div>`).join('')}
+      </div>
+    ` : ''}
+    ${jugadorStats.length>0 ? `
+      <div class="card">
+        <div class="card-title"><h3>Estadísticas por jugador</h3></div>
+        ${jugadorStats.map(([nombre, stats])=>`
+          <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+            <div class="fl-value" style="margin-bottom:4px">${esc(nombre)}</div>
+            <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    ${p.notas ? `<div class="card"><div class="card-title"><h3>Notas</h3></div><p style="font-size:14px;color:var(--chalk-dim);white-space:pre-wrap">${esc(p.notas)}</p></div>` : ''}
+    ${equipoStats.length===0 && jugadorStats.length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function verFotoPartidoEnt(partidoId, tipo){
+  const res = await api('ver_foto_partido_entrenador', {partidoId, tipo});
+  if(res===null) return;
+  if(!res.foto){ toast('No hay foto', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>${tipo==='planilla'?'Planilla de control':'Foto del equipo'}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.foto}" style="width:100%;border-radius:12px">
   `;
   abrirSheet(html);
 }

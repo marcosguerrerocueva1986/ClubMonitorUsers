@@ -10,6 +10,7 @@
 
 const bcrypt = require('bcryptjs');
 const { getPool } = require('./_db');
+const { verDetallePartidoStatsJugador, verFotoPartidoAdmin } = require('./jugador');
 
 const MAX_INTENTOS = 5;
 const MINUTOS_BLOQUEO = 15;
@@ -227,6 +228,64 @@ async function verHistorialAsistenciaJugador(pool, body) {
   return { success: true, data: { historial: r.rows, total, asistio, porcentaje: total > 0 ? Math.round((asistio / total) * 100) : null } };
 }
 
+/* ---------- Novedades del jugador ---------- */
+async function listarNovedadesJugador(pool, body) {
+  const r = await pool.query(
+    `SELECT n.id, n.fecha, n.tipo, n.descripcion, n.visible_representante AS "visibleRepresentante",
+       e.nombres || ' ' || e.apellidos AS "entrenadorNombre"
+     FROM sport_control.novedades_jugador n
+     LEFT JOIN sport_control.entrenadores e ON e.id = n.entrenador_id
+     WHERE n.jugador_id = $1 ORDER BY n.fecha DESC, n.id DESC`,
+    [body.jugadorId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function crearNovedadJugador(pool, entrenadorId, body) {
+  const { jugadorId, tipo, visibleRepresentante } = body;
+  const descripcion = (body.descripcion || '').trim();
+  if (!descripcion) return { success: false, error: 'Escribe una descripción.' };
+  if (!['lesion', 'comportamiento', 'progreso', 'otro'].includes(tipo)) return { success: false, error: 'Tipo inválido.' };
+  const r = await pool.query(
+    `INSERT INTO sport_control.novedades_jugador (jugador_id, entrenador_id, tipo, descripcion, visible_representante)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [jugadorId, entrenadorId, tipo, descripcion, !!visibleRepresentante]
+  );
+  return { success: true, data: { id: r.rows[0].id } };
+}
+
+/* ---------- Cambiar jugador de grupo ---------- */
+async function cambiarJugadorDeGrupoEntrenador(pool, entrenadorId, body) {
+  const { jugadorId, nuevoGrupoId } = body;
+  if (nuevoGrupoId) {
+    const tieneAcceso = await verificarAccesoGrupo(pool, entrenadorId, nuevoGrupoId);
+    if (!tieneAcceso) return { success: false, error: 'No tienes acceso a ese grupo.' };
+  }
+  await pool.query(`UPDATE sport_control.jugadores SET grupo_id = $1 WHERE id = $2`, [nuevoGrupoId || null, jugadorId]);
+  return { success: true };
+}
+
+async function listarGruposParaCambio(pool) {
+  const r = await pool.query(`SELECT id, nombre FROM sport_control.grupos WHERE activo = true ORDER BY nombre`);
+  return { success: true, data: r.rows };
+}
+
+/* ---------- Estadisticas de partidos del grupo ---------- */
+async function listarPartidosGrupo(pool, body) {
+  const { grupoId } = body;
+  const r = await pool.query(
+    `SELECT DISTINCT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado,
+       (p.marcador_propio IS NOT NULL OR EXISTS(SELECT 1 FROM sport_control.partido_estadisticas pe WHERE pe.partido_id = p.id)) AS "tieneEstadisticas"
+     FROM sport_control.partidos p
+     JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.estado = 'confirmado'
+     JOIN sport_control.jugadores j ON j.id = cp.jugador_id
+     WHERE j.grupo_id = $1
+     ORDER BY p.fecha DESC LIMIT 20`,
+    [grupoId]
+  );
+  return { success: true, data: r.rows };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
   const body = req.body || {};
@@ -263,6 +322,13 @@ module.exports = async (req, res) => {
       return res.status(200).json(await listarHistorialSesiones(pool, body));
     }
     if (accion === 'ver_historial_asistencia_jugador_entrenador') return res.status(200).json(await verHistorialAsistenciaJugador(pool, body));
+    if (accion === 'listar_novedades_jugador_entrenador') return res.status(200).json(await listarNovedadesJugador(pool, body));
+    if (accion === 'crear_novedad_jugador_entrenador') return res.status(200).json(await crearNovedadJugador(pool, entrenadorId, body));
+    if (accion === 'cambiar_jugador_de_grupo_entrenador') return res.status(200).json(await cambiarJugadorDeGrupoEntrenador(pool, entrenadorId, body));
+    if (accion === 'listar_grupos_para_cambio_entrenador') return res.status(200).json(await listarGruposParaCambio(pool));
+    if (accion === 'listar_partidos_grupo_entrenador') return res.status(200).json(await listarPartidosGrupo(pool, body));
+    if (accion === 'ver_detalle_partido_stats_entrenador') return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
+    if (accion === 'ver_foto_partido_entrenador') return res.status(200).json(await verFotoPartidoAdmin(pool, body));
 
     return res.status(200).json({ success: false, error: 'Accion no reconocida' });
   } catch (err) {

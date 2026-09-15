@@ -34,13 +34,12 @@ module.exports = async (req, res) => {
       const logoImg = await Jimp.read(buffer);
       const badgeImg = await Jimp.read(Buffer.from(badgeBase64, 'base64'));
       const w = logoImg.getWidth();
-      // Android recorta agresivamente las esquinas de los iconos
-      // adaptativos (mascara circular/squircle) -- la insignia se
-      // mantiene bien adentro del "circulo seguro" central para que no
-      // quede cortada en ningun lanzador/marca de telefono.
-      const badgeSize = Math.round(w * 0.30);
+      // Insignia grande y visible, con un margen moderado (no pegada a
+      // la esquina, para que no se corte en launchers mas agresivos,
+      // pero sin exagerar el margen para que no se vea "vacia").
+      const badgeSize = Math.round(w * 0.40);
       badgeImg.resize(badgeSize, badgeSize);
-      const margin = Math.round(w * 0.16);
+      const margin = Math.round(w * 0.09);
       logoImg.composite(badgeImg, w - badgeSize - margin, logoImg.getHeight() - badgeSize - margin);
       buffer = await logoImg.getBufferAsync(Jimp.MIME_PNG);
     }
