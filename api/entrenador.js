@@ -256,7 +256,15 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
     );
     if (representantes.rows.length === 0) return;
 
-    const aliases = representantes.rows.map(r => 'representante_' + r.representante_id);
+    // Filtro con "OR" entre todos los representantes vinculados -- un
+    // dispositivo puede quedar marcado con varios tags (incluso de
+    // distintos roles a la vez), asi que esto le llega a cada uno
+    // independientemente de que mas tenga marcado ese dispositivo.
+    const filters = [];
+    representantes.rows.forEach((r, i) => {
+      if (i > 0) filters.push({ operator: 'OR' });
+      filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
+    });
     await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
@@ -265,7 +273,7 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
       },
       body: JSON.stringify({
         app_id: c.onesignal_app_id,
-        include_aliases: { external_id: aliases },
+        filters,
         target_channel: 'push',
         headings: { en: '📋 Nueva novedad de ' + nombreJugador },
         contents: { en: `El entrenador registró una novedad (${tipo}). Toca para ver el detalle.` },

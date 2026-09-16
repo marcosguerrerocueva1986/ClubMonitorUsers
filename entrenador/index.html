@@ -324,7 +324,7 @@ async function entrarAppEntrenador(nombresLogin, gruposPrecargados){
   if(entrenadorId && window.OneSignalDeferred){
     OneSignalDeferred.push(async function(OneSignal){
       try{
-        await OneSignal.login('entrenador_' + entrenadorId);
+        await OneSignal.User.addTag('entrenador_id', String(entrenadorId));
         if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
           await OneSignal.User.PushSubscription.optIn();
         }

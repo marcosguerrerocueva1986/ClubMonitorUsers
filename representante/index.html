@@ -390,7 +390,7 @@ async function entrarAppRepresentante(nombresLogin, jugadoresPrecargados){
   if(representanteId && window.OneSignalDeferred){
     OneSignalDeferred.push(async function(OneSignal){
       try{
-        await OneSignal.login('representante_' + representanteId);
+        await OneSignal.User.addTag('representante_id', String(representanteId));
         if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
           await OneSignal.User.PushSubscription.optIn();
         }

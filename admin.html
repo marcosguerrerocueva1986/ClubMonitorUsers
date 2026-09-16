@@ -1815,7 +1815,7 @@ async function activarNotificacionesAdmin(){
     if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
     OneSignalDeferred.push(async function(OneSignal){
       try{
-        await OneSignal.login('admin_club');
+        await OneSignal.User.addTag('es_admin', 'true');
         await OneSignal.User.PushSubscription.optIn();
         toast('¡Notificaciones activadas!');
         actualizarEstadoPushAdmin();

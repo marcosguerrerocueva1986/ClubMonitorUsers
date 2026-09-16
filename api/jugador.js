@@ -91,7 +91,7 @@ async function enviarPushSaldoFavor(pool, jugadorId, monto) {
       },
       body: JSON.stringify({
         app_id: c.onesignal_app_id,
-        include_aliases: { external_id: ['jugador_' + jugadorId] },
+        filters: [{ field: 'tag', key: 'jugador_id', relation: '=', value: String(jugadorId) }],
         target_channel: 'push',
         headings: { en: '💰 Tienes saldo sin distribuir' },
         contents: { en: `Guardamos $${Number(monto).toFixed(2)} como saldo a favor. Toca para asignarlo a una deuda.` },
@@ -116,7 +116,7 @@ async function enviarPushAdmin(pool, titulo, mensaje) {
       },
       body: JSON.stringify({
         app_id: c.onesignal_app_id,
-        include_aliases: { external_id: ['admin_club'] },
+        filters: [{ field: 'tag', key: 'es_admin', relation: '=', value: 'true' }],
         target_channel: 'push',
         headings: { en: titulo },
         contents: { en: mensaje },

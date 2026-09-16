@@ -94,7 +94,7 @@ async function enviarPushPendiente(config, jugadorId, montoTotal) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}` },
       body: JSON.stringify({
         app_id: config.onesignal_app_id,
-        include_aliases: { external_id: ['jugador_' + jugadorId] },
+        filters: [{ field: 'tag', key: 'jugador_id', relation: '=', value: String(jugadorId) }],
         target_channel: 'push',
         headings: { en: '⚠️ Pendientes del partido anterior' },
         contents: { en: `Tienes $${montoTotal.toFixed(2)} pendientes (multas o invitados). Revisa y paga desde la app.` },
