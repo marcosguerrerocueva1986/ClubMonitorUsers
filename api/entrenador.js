@@ -245,7 +245,7 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
   try {
     const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
     const c = cfg.rows[0];
-    if (!c || !c.onesignal_app_id) return;
+    if (!c || !c.onesignal_app_id) return { enviado: false, motivo: 'Falta configurar onesignal_app_id en el club.' };
 
     const jugador = await pool.query(`SELECT nombres FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
     const nombreJugador = jugador.rows[0] ? jugador.rows[0].nombres : 'tu representado';
@@ -254,7 +254,7 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
       `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
       [jugadorId]
     );
-    if (representantes.rows.length === 0) return;
+    if (representantes.rows.length === 0) return { enviado: false, motivo: 'Este jugador no tiene ningún representante vinculado.' };
 
     // Filtro con "OR" entre todos los representantes vinculados -- un
     // dispositivo puede quedar marcado con varios tags (incluso de
@@ -265,7 +265,7 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
       if (i > 0) filters.push({ operator: 'OR' });
       filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
     });
-    await fetch('https://onesignal.com/api/v1/notifications', {
+    const resp = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -280,8 +280,10 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
         url: c.sitio_url_representante || '',
       }),
     });
+    const data = await resp.json();
+    return { enviado: true, statusHttp: resp.status, respuestaOneSignal: data, representantesTag: representantes.rows.map(r => r.representante_id) };
   } catch (e) {
-    console.error('Push de novedad fallo (no bloquea el guardado):', e);
+    return { enviado: false, motivo: 'Excepción: ' + e.message };
   }
 }
 
@@ -295,10 +297,11 @@ async function crearNovedadJugador(pool, entrenadorId, body) {
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [jugadorId, entrenadorId, tipo, descripcion, !!visibleRepresentante]
   );
+  let diagnosticoPush = null;
   if (visibleRepresentante) {
-    await enviarPushNovedadRepresentante(pool, jugadorId, tipo);
+    diagnosticoPush = await enviarPushNovedadRepresentante(pool, jugadorId, tipo);
   }
-  return { success: true, data: { id: r.rows[0].id } };
+  return { success: true, data: { id: r.rows[0].id, diagnosticoPush } };
 }
 
 /* ---------- Cambiar jugador de grupo ---------- */
