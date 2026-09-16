@@ -91,7 +91,7 @@ async function enviarPushPendiente(config, jugadorId, montoTotal) {
     if (!config.onesignal_app_id) return;
     await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}` },
       body: JSON.stringify({
         app_id: config.onesignal_app_id,
         filters: [{ field: 'tag', key: 'jugador_id', relation: '=', value: String(jugadorId) }],

@@ -269,7 +269,7 @@ async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic Key ${process.env.ONESIGNAL_REST_API_KEY}`,
+        'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify({
         app_id: c.onesignal_app_id,
