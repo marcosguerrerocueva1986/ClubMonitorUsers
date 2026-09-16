@@ -1195,6 +1195,7 @@ async function cargarPerfilRep(){
     <div class="card">
       <p id="pushEstadoTextoRep" style="font-size:13px;color:var(--chalk-dim);margin:0 0 10px">Cargando...</p>
       <button class="primary block" id="pushBtnRep" style="display:none" onclick="activarNotificacionesRep()">Activar notificaciones</button>
+      <button class="sm" style="margin-top:8px" onclick="diagnosticoOneSignalRep()">🔍 Diagnóstico avanzado</button>
     </div>
     <button class="block" onclick="abrirCambiarClaveRep()">🔒 Cambiar mi clave de seguridad</button>
     <button class="block danger" onclick="cerrarSesionRep()">Cerrar sesión en este dispositivo</button>
@@ -1242,6 +1243,56 @@ async function actualizarEstadoPushRep(){
       }
     });
   }
+}
+
+async function diagnosticoOneSignalRep(){
+  const lineas = [];
+  lineas.push('Notification.permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'API no disponible'));
+  lineas.push('representante_id guardado: ' + (safeGetRep('representante_id') || '(vacío)'));
+
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    lineas.push('Service Workers registrados: ' + regs.length);
+    regs.forEach((r,i) => {
+      lineas.push(`  [${i}] scope=${r.scope} script=${r.active ? r.active.scriptURL : '(sin worker activo)'}`);
+    });
+  } catch(e) {
+    lineas.push('Error leyendo Service Workers: ' + e.message);
+  }
+
+  if(!window.OneSignalDeferred){
+    lineas.push('window.OneSignalDeferred NO existe (el script de OneSignal no cargó).');
+    mostrarDiagnosticoRep(lineas);
+    return;
+  }
+
+  OneSignalDeferred.push(async function(OneSignal){
+    lineas.push('OneSignal.User existe: ' + (!!OneSignal.User));
+    if(OneSignal.User){
+      try{ lineas.push('OneSignal.User.onesignalId: ' + OneSignal.User.onesignalId); }catch(e){ lineas.push('onesignalId: error ' + e.message); }
+      try{ lineas.push('OneSignal.User.externalId: ' + (OneSignal.User.externalId || '(vacío)')); }catch(e){ lineas.push('externalId: error ' + e.message); }
+      try{ lineas.push('PushSubscription.id: ' + (OneSignal.User.PushSubscription.id || '(sin ID)')); }catch(e){ lineas.push('Subscription.id: error ' + e.message); }
+      try{ lineas.push('PushSubscription.token: ' + (OneSignal.User.PushSubscription.token ? 'presente (' + OneSignal.User.PushSubscription.token.slice(0,20) + '...)' : '(sin token)')); }catch(e){ lineas.push('Subscription.token: error ' + e.message); }
+      try{ lineas.push('PushSubscription.optedIn: ' + OneSignal.User.PushSubscription.optedIn); }catch(e){ lineas.push('optedIn: error ' + e.message); }
+    }
+    mostrarDiagnosticoRep(lineas);
+  });
+}
+
+function mostrarDiagnosticoRep(lineas){
+  const html = `
+    <div class="sheet-head"><h2>Diagnóstico OneSignal</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:pre-wrap;background:var(--pitch-2);border-radius:10px;padding:12px;line-height:1.6">${esc(lineas.join('\n'))}</div>
+    <button class="block" style="margin-top:12px" onclick="copiarDiagnosticoRep(this)">📋 Copiar todo</button>
+  `;
+  abrirSheet(html);
+  window._diagnosticoTexto = lineas.join('\n');
+}
+
+function copiarDiagnosticoRep(btn){
+  navigator.clipboard.writeText(window._diagnosticoTexto || '').then(()=>{
+    btn.textContent = '✓ Copiado';
+  }).catch(()=>{ toast('No se pudo copiar', true); });
 }
 
 async function activarNotificacionesRep(){
