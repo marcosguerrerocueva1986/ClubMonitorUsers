@@ -507,6 +507,7 @@ async function cargarPantallaMiGrupo(cont){
   const data = await apiEnt('ver_detalle_grupo_entrenador', {grupoId: GRUPO_ACTUAL.id});
   if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
   actualizarHeaderGrupo();
+  try{
   cont.innerHTML = `
     <div class="card">
       <div class="card-title"><h3>${esc(data.grupo.nombre)}</h3></div>
@@ -516,8 +517,8 @@ async function cargarPantallaMiGrupo(cont){
       <div class="card-title"><h3>📅 Horario semanal</h3></div>
       ${data.horarios.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin horario definido todavía.</p>' : data.horarios.map(h=>`
         <div class="field-line">
-          <div class="fl-value">${DIAS_SEMANA[h.diaSemana]}</div>
-          <div class="fl-label">${h.horaInicio.slice(0,5)}${h.horaFin ? ' - '+h.horaFin.slice(0,5) : ''} ${h.lugar ? '· 📍 '+esc(h.lugar) : ''}</div>
+          <div class="fl-value">${DIAS_SEMANA[h.diaSemana]||'—'}</div>
+          <div class="fl-label">${h.horaInicio ? h.horaInicio.slice(0,5) : '—'}${h.horaFin ? ' - '+h.horaFin.slice(0,5) : ''} ${h.lugar ? '· 📍 '+esc(h.lugar) : ''}</div>
         </div>
       `).join('')}
     </div>
@@ -536,6 +537,10 @@ async function cargarPantallaMiGrupo(cont){
       <button class="sm" onclick="abrirPartidosGrupo()">🏆 Estadísticas de partidos</button>
     </div>
   `;
+  }catch(e){
+    console.error('Error renderizando Mi Grupo:', e);
+    cont.innerHTML = '<div class="empty">❌ Error mostrando la pantalla: '+esc(e.message)+'</div>';
+  }
 }
 
 function abrirSelectorGrupo(primeraVez){
