@@ -183,6 +183,34 @@ async function obtenerSesionYMenu(pool, cedula) {
   const info = await detectarRoles(pool, cedula);
   const roles = info.roles;
   const menu = await listarPantallasParaRoles(pool, roles);
+
+  // Se generan tokens internos en las tablas de sesion de CADA app
+  // original -- asi las pantallas portadas pueden llamar directo a
+  // /api/jugador, /api/representante, /api/entrenador reutilizando
+  // el 100% de su logica existente, sin duplicar nada.
+  let jugadorToken = null, representanteToken = null, entrenadorToken = null;
+  if (info.jugador) {
+    const r = await pool.query(
+      `INSERT INTO sport_control.sesiones_pwa (jugador_id, token) VALUES ($1, sport_control.generar_token_alfanumerico() || sport_control.generar_token_alfanumerico()) RETURNING token`,
+      [info.jugador.id]
+    );
+    jugadorToken = r.rows[0].token;
+  }
+  if (info.representante) {
+    const r = await pool.query(
+      `INSERT INTO sport_control.sesiones_representante (representante_id, token) VALUES ($1, sport_control.generar_token_alfanumerico() || sport_control.generar_token_alfanumerico()) RETURNING token`,
+      [info.representante.id]
+    );
+    representanteToken = r.rows[0].token;
+  }
+  if (info.entrenador) {
+    const r = await pool.query(
+      `INSERT INTO sport_control.sesiones_entrenador (entrenador_id, token) VALUES ($1, sport_control.generar_token_alfanumerico() || sport_control.generar_token_alfanumerico()) RETURNING token`,
+      [info.entrenador.id]
+    );
+    entrenadorToken = r.rows[0].token;
+  }
+
   return {
     success: true,
     data: {
@@ -190,6 +218,7 @@ async function obtenerSesionYMenu(pool, cedula) {
       jugadorId: info.jugador ? info.jugador.id : null,
       representanteId: info.representante ? info.representante.id : null,
       entrenadorId: info.entrenador ? info.entrenador.id : null,
+      jugadorToken, representanteToken, entrenadorToken,
       nombres: info.nombres,
       menu: menu.data,
     },
