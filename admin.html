@@ -495,8 +495,59 @@ function abrirMenuMas(){
     ${opciones.map(o=>`
       <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); cambiarTab('${o.tab}')">${o.icono} ${o.nombre}</button>
     `).join('')}
+    <button class="block" style="text-align:left;margin-bottom:8px" onclick="abrirMenuPorRol()">🧩 Menú por Rol (app unificada)</button>
   `;
   abrirSheet(html);
+}
+
+const ROLES_DISPONIBLES = ['jugador', 'representante', 'entrenador', 'director'];
+const ETIQUETAS_ROL = {jugador:'Jugador', representante:'Representante', entrenador:'Entrenador', director:'Director'};
+
+async function abrirMenuPorRol(){
+  const data = await api('listar_pantallas_menu_admin');
+  if(data===null) return;
+  mostrarMenuPorRol(data);
+}
+
+function mostrarMenuPorRol(data){
+  const asigMap = {};
+  data.asignaciones.forEach(a => { asigMap[a.pantallaId+'_'+a.rol] = a.habilitado; });
+
+  const html = `
+    <div class="sheet-head"><h2>Menú por Rol</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Catálogo de pantallas para la futura app unificada — define qué rol ve cada botón del menú principal.</p>
+    ${data.pantallas.map(p=>`
+      <div class="card">
+        <div class="card-title">
+          <h3>${p.icono} ${esc(p.etiqueta)}</h3>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--chalk-dim);text-transform:none">
+            <input type="checkbox" ${p.activa?'checked':''} onchange="toggleActivaPantallaAccion(${p.id}, this.checked)"> Activa
+          </label>
+        </div>
+        <div class="meta" style="margin-bottom:8px">${esc(p.clave)} · ${esc(p.archivoPantalla)}</div>
+        <div class="row-actions tabbar-scroll">
+          ${ROLES_DISPONIBLES.map(rol=>`
+            <button class="sm ${asigMap[p.id+'_'+rol]?'primary':''}" onclick="togglePantallaRolAccion(${p.id}, '${rol}', ${!asigMap[p.id+'_'+rol]}, this)">${ETIQUETAS_ROL[rol]}</button>
+          `).join('')}
+        </div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+async function togglePantallaRolAccion(pantallaId, rol, habilitado, btnEl){
+  const res = await api('toggle_pantalla_rol_admin', {pantallaId, rol, habilitado});
+  if(res===null) return;
+  btnEl.classList.toggle('primary', habilitado);
+  btnEl.setAttribute('onclick', `togglePantallaRolAccion(${pantallaId}, '${rol}', ${!habilitado}, this)`);
+  toast(habilitado ? 'Habilitado' : 'Deshabilitado');
+}
+
+async function toggleActivaPantallaAccion(pantallaId, activa){
+  const res = await api('toggle_activa_pantalla_admin', {pantallaId, activa});
+  if(res===null) return;
+  toast(activa ? 'Pantalla activada' : 'Pantalla desactivada');
 }
 
 function cambiarTab(tab){
