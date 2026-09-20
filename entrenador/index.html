@@ -325,7 +325,8 @@ async function entrarAppEntrenador(nombresLogin, gruposPrecargados){
     OneSignalDeferred.push(async function(OneSignal){
       try{
         await OneSignal.User.addTag('entrenador_id', String(entrenadorId));
-        if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+        const yaSuscrito = OneSignal.User.PushSubscription.optedIn === true;
+        if(!yaSuscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted'){
           await OneSignal.User.PushSubscription.optIn();
         }
       }catch(e){}
@@ -598,19 +599,6 @@ async function guardarNovedad(jugadorId){
   if(res===null) return;
   toast('Novedad guardada');
   cerrarSheet();
-  if(res.diagnosticoPush){
-    console.log('Diagnóstico del push de novedad:', res.diagnosticoPush);
-    mostrarDiagnosticoPushNovedad(res.diagnosticoPush);
-  }
-}
-
-function mostrarDiagnosticoPushNovedad(d){
-  const texto = JSON.stringify(d, null, 2);
-  const html = `
-    <div class="sheet-head"><h2>Diagnóstico del push</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:pre-wrap;background:var(--pitch-2);border-radius:10px;padding:12px;line-height:1.5">${esc(texto)}</div>
-  `;
-  abrirSheet(html);
 }
 
 async function abrirCambiarGrupo(jugadorId, nombre){

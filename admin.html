@@ -1816,7 +1816,10 @@ async function activarNotificacionesAdmin(){
     OneSignalDeferred.push(async function(OneSignal){
       try{
         await OneSignal.User.addTag('es_admin', 'true');
-        await OneSignal.User.PushSubscription.optIn();
+        const yaSuscrito = OneSignal.User.PushSubscription.optedIn === true;
+        if(!yaSuscrito){
+          await OneSignal.User.PushSubscription.optIn();
+        }
         toast('¡Notificaciones activadas!');
         actualizarEstadoPushAdmin();
       }catch(e){

@@ -440,7 +440,8 @@ async function entrarApp(){
       OneSignalDeferred.push(async function(OneSignal){
         try{
           await OneSignal.User.addTag('jugador_id', String(perfil.jugadorId));
-          if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+          const yaSuscrito = OneSignal.User.PushSubscription.optedIn === true;
+          if(!yaSuscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted'){
             await OneSignal.User.PushSubscription.optIn();
           }
         }catch(e){}
@@ -1559,7 +1560,10 @@ async function activarNotificaciones(){
         if(PERFIL && PERFIL.jugadorId){ 
           await OneSignal.User.addTag('jugador_id', String(PERFIL.jugadorId)); 
         }
-        await OneSignal.User.PushSubscription.optIn();
+        const yaSuscrito = OneSignal.User.PushSubscription.optedIn === true;
+        if(!yaSuscrito){
+          await OneSignal.User.PushSubscription.optIn();
+        }
         await api('marcar_push_habilitado_jugador');
         toast('¡Notificaciones activadas correctamente!');
         actualizarEstadoPush();

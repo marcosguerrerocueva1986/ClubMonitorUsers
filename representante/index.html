@@ -391,7 +391,13 @@ async function entrarAppRepresentante(nombresLogin, jugadoresPrecargados){
     OneSignalDeferred.push(async function(OneSignal){
       try{
         await OneSignal.User.addTag('representante_id', String(representanteId));
-        if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+        // Solo llamamos optIn() si hace falta -- repetirlo en cada
+        // apertura de la app (sobre todo al pasar de pestana del
+        // navegador a app instalada) puede confundir el estado de la
+        // suscripcion en OneSignal y dejarla como "Unsubscribed" sin
+        // motivo aparente.
+        const yaSuscrito = OneSignal.User.PushSubscription.optedIn === true;
+        if(!yaSuscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted'){
           await OneSignal.User.PushSubscription.optIn();
         }
       }catch(e){}
@@ -1250,6 +1256,28 @@ async function diagnosticoOneSignalRep(){
   lineas.push('Notification.permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'API no disponible'));
   lineas.push('representante_id guardado: ' + (safeGetRep('representante_id') || '(vacío)'));
 
+  // Chequeo del navegador puro, SIN pasar por el SDK de OneSignal --
+  // esto nos dice si Android/Chrome logra crear una suscripcion de
+  // verdad a nivel de sistema, independientemente de que OneSignal la
+  // procese bien o mal despues.
+  lineas.push('--- Navegador (sin OneSignal) ---');
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    lineas.push('Service Worker listo: ' + reg.scope);
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      lineas.push('PushManager.getSubscription(): SI hay suscripcion nativa');
+      lineas.push('  endpoint: ' + sub.endpoint.slice(0, 60) + '...');
+      const esFcm = sub.endpoint.includes('fcm.googleapis.com') || sub.endpoint.includes('android.googleapis.com');
+      lineas.push('  usa Firebase/FCM: ' + esFcm);
+    } else {
+      lineas.push('PushManager.getSubscription(): NO hay ninguna suscripcion nativa (esto explicaría el token vacío en OneSignal).');
+    }
+  } catch(e) {
+    lineas.push('Error consultando PushManager directamente: ' + e.message);
+  }
+  lineas.push('--- OneSignal SDK ---');
+
   try {
     const regs = await navigator.serviceWorker.getRegistrations();
     lineas.push('Service Workers registrados: ' + regs.length);
@@ -1315,11 +1343,14 @@ async function activarNotificacionesRep(){
       // (entrarAppRepresentante). Volver a llamarlo aqui, justo antes
       // de optIn(), puede reiniciar el estado de la suscripcion en
       // OneSignal y dejarla en "Unsubscribed" -- por eso NO se repite.
-      await OneSignal.User.PushSubscription.optIn();
+      const yaSuscrito = OneSignal.User.PushSubscription.optedIn === true;
+      if(!yaSuscrito){
+        await OneSignal.User.PushSubscription.optIn();
+      }
       const idSuscripcion = OneSignal.User.PushSubscription.id;
       const optedInReal = OneSignal.User.PushSubscription.optedIn;
-      console.log('Suscripcion OneSignal:', idSuscripcion, 'optedIn:', optedInReal);
-      toast('Permiso OK. Suscripción: ' + (idSuscripcion ? 'creada' : 'SIN ID todavía') + ' · optedIn=' + optedInReal);
+      console.log('Suscripcion OneSignal:', idSuscripcion, 'optedIn:', optedInReal, 'ya estaba suscrito:', yaSuscrito);
+      toast((yaSuscrito ? 'Ya estabas suscrito. ' : 'Permiso OK. ') + 'Suscripción: ' + (idSuscripcion ? 'creada' : 'SIN ID todavía') + ' · optedIn=' + optedInReal);
       actualizarEstadoPushRep();
     }catch(e){
       console.error('Detalle completo del error:', e);
