@@ -393,7 +393,7 @@ function cambiarPantalla(clave){
 /* ---------- Perfil (unica pantalla compartida entre roles) ---------- */
 async function cargarPantallaPerfil(cont){
   const perfil = await api('obtener_perfil_unificado');
-  if(perfil===null) return;
+  if(perfil===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
   cont.innerHTML = `
     <div class="card">
       <div class="card-title"><h3>Mis datos</h3></div>
@@ -498,6 +498,44 @@ async function cargarGruposEntApp(){
     const ultimoId = parseInt(safeGet('entrenador_grupo_actual') || '0');
     GRUPO_ACTUAL = MIS_GRUPOS.find(g=>g.id===ultimoId) || MIS_GRUPOS[0];
   }
+}
+
+async function cargarPantallaMiGrupo(cont){
+  if(!MIS_GRUPOS_CARGADOS){ await cargarGruposEntApp(); }
+  if(!GRUPO_ACTUAL){ cont.innerHTML = '<div class="empty"><span class="ic">🏋️</span>Todavía no tienes ningún grupo asignado.</div>'; return; }
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await apiEnt('ver_detalle_grupo_entrenador', {grupoId: GRUPO_ACTUAL.id});
+  if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  actualizarHeaderGrupo();
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>${esc(data.grupo.nombre)}</h3></div>
+      <div class="meta">${esc(data.grupo.descripcion||'')}</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>📅 Horario semanal</h3></div>
+      ${data.horarios.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin horario definido todavía.</p>' : data.horarios.map(h=>`
+        <div class="field-line">
+          <div class="fl-value">${DIAS_SEMANA[h.diaSemana]}</div>
+          <div class="fl-label">${h.horaInicio.slice(0,5)}${h.horaFin ? ' - '+h.horaFin.slice(0,5) : ''} ${h.lugar ? '· 📍 '+esc(h.lugar) : ''}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>👤 Jugadores (${data.jugadores.length})</h3></div>
+      ${data.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin jugadores en este grupo todavía.</p>' : data.jugadores.map(j=>`
+        <div class="field-line" style="cursor:pointer" onclick="verHistorialJugador(${j.id}, ${JSON.stringify(j.nombres+' '+j.apellidos).replace(/"/g,'&quot;')})">
+          <div class="fl-value">${esc(j.nombres)} ${esc(j.apellidos)}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="row-actions">
+      <button class="sm" onclick="abrirSelectorGrupo(false)">↔️ Cambiar de grupo</button>
+      <button class="sm primary" onclick="abrirTomarAsistencia()">📋 Tomar asistencia de hoy</button>
+      <button class="sm" onclick="abrirHistorialSesiones()">📊 Ver historial</button>
+      <button class="sm" onclick="abrirPartidosGrupo()">🏆 Estadísticas de partidos</button>
+    </div>
+  `;
 }
 
 function abrirSelectorGrupo(primeraVez){
@@ -807,7 +845,7 @@ async function verFotoPartidoEnt(partidoId, tipo){
 async function cargarPantallaIndicadores(cont){
   cont.innerHTML = '<div class="spinner"></div>';
   const data = await apiEnt('obtener_indicadores_generales_entrenador');
-  if(data===null) return;
+  if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
   const pctMorosos = data.totalJugadoresClub>0 ? Math.round(data.totalMorososClub/data.totalJugadoresClub*100) : 0;
   cont.innerHTML = `
     <div class="card">
