@@ -379,6 +379,61 @@ async function registrarEventoPartido(pool, planilleroId, body) {
   return { success: true, data: { id: ins.rows[0].id, creadoEn: ins.rows[0].creadoEn } };
 }
 
+// Corrige un registro sin borrarlo: revierte lo que ese registro habia
+// aplicado (marcador + estadistica) y aplica de nuevo con los datos
+// corregidos. Solo aplica a eventos que NO son puntos del rival (esos
+// se corrigen borrando y volviendo a tocar el boton correcto, ya que
+// no dependen de una jugadora ni de un tipo).
+async function editarEventoPartido(pool, body) {
+  const { logId, jugadorId, tipoEstadisticaId } = body;
+  const log = await pool.query(`SELECT * FROM sport_control.partido_stats_log WHERE id = $1`, [logId]);
+  if (!log.rows[0]) return { success: false, error: 'Ese registro ya no existe.' };
+  const l = log.rows[0];
+  if (l.es_rival) return { success: false, error: 'Los puntos del rival se corrigen borrando el registro.' };
+
+  // Revertir lo viejo
+  if (l.puntos > 0) {
+    await pool.query(`UPDATE sport_control.partidos SET marcador_propio = GREATEST(0, COALESCE(marcador_propio, 0) - $1) WHERE id = $2`, [l.puntos, l.partido_id]);
+  }
+  if (l.jugador_id && l.tipo_estadistica_id) {
+    await pool.query(
+      `UPDATE sport_control.partido_estadisticas SET valor = GREATEST(0, valor - 1) WHERE partido_id = $1 AND jugador_id = $2 AND tipo_estadistica_id = $3`,
+      [l.partido_id, l.jugador_id, l.tipo_estadistica_id]
+    );
+  }
+
+  // Aplicar lo nuevo
+  const tipo = await pool.query(`SELECT nombre, puntos FROM sport_control.tipos_estadistica WHERE id = $1`, [tipoEstadisticaId]);
+  if (!tipo.rows[0]) return { success: false, error: 'Tipo de estadística no válido.' };
+  const nuevosPuntos = tipo.rows[0].puntos;
+
+  await pool.query(`UPDATE sport_control.partido_stats_log SET jugador_id = $1, tipo_estadistica_id = $2, puntos = $3 WHERE id = $4`, [jugadorId, tipoEstadisticaId, nuevosPuntos, logId]);
+
+  if (nuevosPuntos > 0) {
+    await pool.query(`UPDATE sport_control.partidos SET marcador_propio = COALESCE(marcador_propio, 0) + $1 WHERE id = $2`, [nuevosPuntos, l.partido_id]);
+  }
+  await pool.query(
+    `INSERT INTO sport_control.partido_estadisticas (partido_id, tipo_estadistica_id, jugador_id, valor, actualizado_en)
+     VALUES ($1, $2, $3, 1, NOW())
+     ON CONFLICT (partido_id, tipo_estadistica_id, jugador_id) DO UPDATE SET valor = sport_control.partido_estadisticas.valor + 1, actualizado_en = NOW()`,
+    [l.partido_id, tipoEstadisticaId, jugadorId]
+  );
+
+  // Devuelve el partido actualizado para refrescar el marcador en pantalla
+  const partido = await pool.query(`SELECT marcador_propio, marcador_rival FROM sport_control.partidos WHERE id = $1`, [l.partido_id]);
+  const jugador = await pool.query(`SELECT nombres || ' ' || apellidos AS nombre FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
+  return {
+    success: true,
+    data: {
+      marcadorPropio: partido.rows[0].marcador_propio,
+      marcadorRival: partido.rows[0].marcador_rival,
+      puntos: nuevosPuntos,
+      jugadorNombre: jugador.rows[0] ? jugador.rows[0].nombre : '',
+      tipoNombre: tipo.rows[0].nombre,
+    },
+  };
+}
+
 async function eliminarEventoPartido(pool, body) {
   const { logId } = body;
   const log = await pool.query(`SELECT * FROM sport_control.partido_stats_log WHERE id = $1`, [logId]);
@@ -429,6 +484,7 @@ module.exports = async (req, res) => {
       return res.status(200).json(await registrarEventoPartido(pool, info.planillero ? info.planillero.id : null, body));
     }
     if (accion === 'eliminar_evento_partido_planillero') return res.status(200).json(await eliminarEventoPartido(pool, body));
+    if (accion === 'editar_evento_partido_planillero') return res.status(200).json(await editarEventoPartido(pool, body));
 
     // Endpoint de prueba de la Fase 1 -- se mantiene por compatibilidad
     if (accion === 'listar_pantallas_para_roles_prueba') {

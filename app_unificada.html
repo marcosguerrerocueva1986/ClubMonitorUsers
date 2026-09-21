@@ -127,6 +127,8 @@ if ('serviceWorker' in navigator) {
 
   .cap-acciones{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
   .cap-btn-accion{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;color:var(--chalk);font-weight:700;font-size:14px;padding:12px 4px;text-align:center;}
+  .cap-btn-accion.puntos{border-color:var(--green-ok);}
+  .cap-btn-accion.falta{border-color:var(--red);color:var(--red);}
   .cap-btn-accion.activa{border-color:var(--gold);background:rgba(255,210,63,.12);color:var(--gold);}
   .cap-btn-rival{grid-column:span 2;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:2px;}
   .cap-btn-rival button{background:rgba(232,93,76,.12);border:2px solid rgba(232,93,76,.35);color:var(--red);border-radius:8px;font-weight:700;font-size:13px;padding:10px 2px;}
@@ -2613,9 +2615,11 @@ function renderCapturaPartido(cont){
       <div class="cap-panel">
         <div class="cap-panel-title">1. Toca la acción</div>
         <div class="cap-acciones" id="capAccionesGrid">
-          ${d.tipos.map(t=>`
-            <button class="cap-btn-accion" data-tipo="${t.id}" onclick="seleccionarAccionCaptura(${t.id}, ${t.puntos}, '${esc(t.nombre)}', this)">${esc(t.nombre)}${t.puntos>0 ? ' +'+t.puntos : ''}</button>
-          `).join('')}
+          ${d.tipos.map(t=>{
+            const esFalta = /falta/i.test(t.nombre);
+            const clase = esFalta ? 'falta' : (t.puntos>0 ? 'puntos' : '');
+            return `<button class="cap-btn-accion ${clase}" data-tipo="${t.id}" onclick="seleccionarAccionCaptura(${t.id}, ${t.puntos}, '${esc(t.nombre)}', this)">${esc(t.nombre)}${t.puntos>0 ? ' +'+t.puntos : ''}</button>`;
+          }).join('')}
           <div class="cap-btn-rival">
             <button onclick="registrarPuntosRival(1)">+1 Rival</button>
             <button onclick="registrarPuntosRival(2)">+2 Rival</button>
@@ -2649,12 +2653,50 @@ function renderCapturaPartido(cont){
 function renderLogCapturaHtml(log){
   if(log.length===0) return '<div class="cap-log-item"><span style="color:var(--chalk-dim)">Sistema listo. Selecciona una acción.</span></div>';
   return log.map(item=>`
-    <div class="cap-log-item">
+    <div class="cap-log-item" ${item.esRival ? '' : `style="cursor:pointer" onclick="abrirEditarEventoCaptura(${item.id})"`}>
       <span style="color:var(--chalk-dim)">${new Date(item.creadoEn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
       <span style="flex:1;margin:0 8px">${item.esRival ? 'Rival (+'+item.puntos+')' : esc(item.jugadorNombre)+' → '+esc(item.tipoNombre)+(item.puntos>0?' (+'+item.puntos+')':'')}</span>
-      <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" onclick="borrarEventoCaptura(${item.id})">🗑️</button>
+      <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" onclick="event.stopPropagation(); borrarEventoCaptura(${item.id})">🗑️</button>
     </div>
   `).join('');
+}
+
+function abrirEditarEventoCaptura(logId){
+  const item = CAPTURA_DATA.log.find(l=>l.id===logId);
+  if(!item) return;
+  const d = CAPTURA_DATA;
+  const html = `
+    <div class="sheet-head"><h2>Corregir registro</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Jugadora</label>
+    <select id="editLogJugador">
+      ${d.jugadores.map(j=>`<option value="${j.id}" ${j.id===item.jugadorId?'selected':''}>#${esc(j.numeroCamiseta||'—')} ${esc(j.nombres)}</option>`).join('')}
+    </select>
+    <label>Acción</label>
+    <select id="editLogTipo">
+      ${d.tipos.map(t=>`<option value="${t.id}" ${t.id===item.tipoEstadisticaId?'selected':''}>${esc(t.nombre)}${t.puntos>0?' +'+t.puntos:''}</option>`).join('')}
+    </select>
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarEventoCaptura(${logId})">Guardar corrección</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarEventoCaptura(logId){
+  const jugadorId = parseInt(document.getElementById('editLogJugador').value);
+  const tipoEstadisticaId = parseInt(document.getElementById('editLogTipo').value);
+  const res = await apiPlan('editar_evento_partido_planillero', {logId, jugadorId, tipoEstadisticaId});
+  if(res===null) return;
+
+  const item = CAPTURA_DATA.log.find(l=>l.id===logId);
+  item.jugadorId = jugadorId;
+  item.tipoEstadisticaId = tipoEstadisticaId;
+  item.puntos = res.puntos;
+  item.jugadorNombre = res.jugadorNombre;
+  item.tipoNombre = res.tipoNombre;
+  CAPTURA_DATA.partido.marcador_propio = res.marcadorPropio;
+  document.getElementById('capMarcadorPropio').textContent = res.marcadorPropio;
+  document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  cerrarSheet();
+  toast('Registro corregido');
 }
 
 function seleccionarAccionCaptura(tipoId, puntos, nombre, btnEl){
