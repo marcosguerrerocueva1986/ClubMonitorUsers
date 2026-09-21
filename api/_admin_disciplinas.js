@@ -44,7 +44,7 @@ async function toggleDisciplina(pool, body) {
 
 async function listarTiposEstadistica(pool, body) {
   const r = await pool.query(
-    `SELECT id, nombre, clave, nivel, activo, orden FROM sport_control.tipos_estadistica WHERE disciplina_id = $1 ORDER BY orden, nombre`,
+    `SELECT id, nombre, clave, nivel, activo, orden, puntos FROM sport_control.tipos_estadistica WHERE disciplina_id = $1 ORDER BY orden, nombre`,
     [body.disciplinaId]
   );
   return { success: true, data: r.rows };
@@ -61,21 +61,27 @@ function generarClave(nombre) {
 async function crearTipoEstadistica(pool, body) {
   const { disciplinaId, nivel } = body;
   const nombre = (body.nombre || '').trim();
+  const puntos = Number(body.puntos) || 0;
   if (!nombre) return { success: false, error: 'El nombre no puede estar vacío.' };
   if (!['jugador', 'equipo'].includes(nivel)) return { success: false, error: 'Nivel inválido.' };
   const clave = generarClave(nombre);
   try {
     const r = await pool.query(
-      `INSERT INTO sport_control.tipos_estadistica (disciplina_id, nombre, clave, nivel, orden)
-       VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(orden),0)+1 FROM sport_control.tipos_estadistica WHERE disciplina_id = $1))
-       RETURNING id, nombre, clave, nivel, activo, orden`,
-      [disciplinaId, nombre, clave, nivel]
+      `INSERT INTO sport_control.tipos_estadistica (disciplina_id, nombre, clave, nivel, puntos, orden)
+       VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(orden),0)+1 FROM sport_control.tipos_estadistica WHERE disciplina_id = $1))
+       RETURNING id, nombre, clave, nivel, activo, orden, puntos`,
+      [disciplinaId, nombre, clave, nivel, puntos]
     );
     return { success: true, data: r.rows[0] };
   } catch (err) {
     if (err.code === '23505') return { success: false, error: 'Ya existe una estadística muy similar en esta disciplina.' };
     throw err;
   }
+}
+
+async function editarPuntosTipoEstadistica(pool, body) {
+  await pool.query(`UPDATE sport_control.tipos_estadistica SET puntos = $1 WHERE id = $2`, [Number(body.puntos) || 0, body.tipoEstadisticaId]);
+  return { success: true };
 }
 
 async function toggleTipoEstadistica(pool, body) {
@@ -85,5 +91,5 @@ async function toggleTipoEstadistica(pool, body) {
 
 module.exports = {
   listarDisciplinas, listarDisciplinasActivas, crearDisciplina, editarDisciplina, toggleDisciplina,
-  listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica,
+  listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica, editarPuntosTipoEstadistica,
 };

@@ -484,7 +484,117 @@ if(CLAVE){
   });
 }
 
-function abrirMenuMas(){
+async function abrirGestionPlanilleros(){
+  const data = await api('listar_planilleros_admin');
+  if(data===null) return;
+  mostrarGestionPlanilleros(data);
+}
+
+function mostrarGestionPlanilleros(data){
+  const html = `
+    <div class="sheet-head"><h2>🔴 Planilleros</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Personas autorizadas para tomar estadísticas en vivo durante un partido. No hace falta que sean jugadores, representantes ni entrenadores.</p>
+    ${data.length===0 ? '<div class="empty"><span class="ic">🔴</span>Sin planilleros todavía.</div>' : data.map(p=>`
+      <div class="card">
+        <div class="card-title">
+          <h3>${esc(p.nombres)} ${esc(p.apellidos)}</h3>
+          <span class="badge ${p.activo?'confirmando':'cancelado'}">${p.activo?'Activo':'Inactivo'}</span>
+        </div>
+        <div class="meta">${esc(p.cedula)} · ${esc(p.telefono||'Sin teléfono')} ${!p.tieneClave ? '<span class="badge cancelado">Sin activar</span>' : ''}</div>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="sm" onclick='abrirEditarPlanillero(${JSON.stringify(p).replace(/"/g,"&quot;")})'>Editar</button>
+          <button class="sm" onclick="resetearClavePlanilleroAccion(${p.id}, ${JSON.stringify(p.nombres).replace(/"/g,'&quot;')})">🔒 Resetear clave</button>
+          <button class="sm ${p.activo?'danger':'primary'}" onclick="togglePlanilleroAccion(${p.id}, ${!p.activo})">${p.activo?'Desactivar':'Activar'}</button>
+        </div>
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:10px" onclick="abrirCrearPlanillero()">+ Agregar planillero</button>
+  `;
+  abrirSheet(html);
+}
+
+function abrirCrearPlanillero(){
+  const html = `
+    <div class="sheet-head"><h2>Agregar planillero</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="planNombres" placeholder="Nombres">
+    <label>Apellidos</label>
+    <input id="planApellidos" placeholder="Apellidos">
+    <label>Cédula</label>
+    <input id="planCedula" placeholder="Obligatoria" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="planTelefono" placeholder="Opcional" type="tel">
+    <button class="primary block" style="margin-top:16px" onclick="guardarCrearPlanillero()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCrearPlanillero(){
+  const nombres = document.getElementById('planNombres').value.trim();
+  const apellidos = document.getElementById('planApellidos').value.trim();
+  const cedula = document.getElementById('planCedula').value.trim();
+  const telefono = document.getElementById('planTelefono').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  if(!cedula){ toast('La cédula es obligatoria', true); return; }
+  const res = await api('crear_planillero_admin', {nombres, apellidos, cedula, telefono});
+  if(res===null) return;
+  toast('Planillero agregado');
+  cerrarSheet();
+  abrirGestionPlanilleros();
+}
+
+function abrirEditarPlanillero(p){
+  const html = `
+    <div class="sheet-head"><h2>Editar planillero</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="planEditNombres" value="${esc(p.nombres)}">
+    <label>Apellidos</label>
+    <input id="planEditApellidos" value="${esc(p.apellidos)}">
+    <label>Cédula</label>
+    <input id="planEditCedula" value="${esc(p.cedula)}" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="planEditTelefono" value="${esc(p.telefono||'')}" type="tel">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarPlanillero(${p.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarPlanillero(planilleroId){
+  const nombres = document.getElementById('planEditNombres').value.trim();
+  const apellidos = document.getElementById('planEditApellidos').value.trim();
+  const cedula = document.getElementById('planEditCedula').value.trim();
+  const telefono = document.getElementById('planEditTelefono').value.trim();
+  const res = await api('editar_planillero_admin', {planilleroId, nombres, apellidos, cedula, telefono});
+  if(res===null) return;
+  toast('Planillero actualizado');
+  cerrarSheet();
+  abrirGestionPlanilleros();
+}
+
+async function togglePlanilleroAccion(planilleroId, activo){
+  const res = await api('toggle_planillero_admin', {planilleroId, activo});
+  if(res===null) return;
+  abrirGestionPlanilleros();
+}
+
+async function resetearClavePlanilleroAccion(planilleroId, nombres){
+  if(!confirm('¿Generar una clave temporal nueva para '+nombres+'?')) return;
+  const res = await api('resetear_clave_planillero_admin', {planilleroId});
+  if(res===null) return;
+  const telefonoLimpio = (res.telefono || '').replace(/\D/g,'');
+  const linkWhatsapp = telefonoLimpio ? `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(res.mensajeWhatsapp)}` : null;
+  const html = `
+    <div class="sheet-head"><h2>Clave temporal generada</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">CLAVE TEMPORAL (válida 24 horas, un solo uso)</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:36px;color:var(--gold);font-weight:700;letter-spacing:4px;margin:8px 0">${res.claveTemporal}</div>
+    </div>
+    ${linkWhatsapp ? `<button class="primary block" onclick="window.open('${linkWhatsapp}','_blank')">📤 Enviar por WhatsApp</button>` : '<p class="meta">No tiene teléfono registrado — comparte la clave manualmente.</p>'}
+  `;
+  abrirSheet(html);
+}
+
+async function abrirMenuMas(){
   const opciones = [
     {tab:'parametros', icono:'⚙️', nombre:'Parámetros'},
     {tab:'eventos', icono:'🎒', nombre:'Eventos'},
@@ -496,6 +606,7 @@ function abrirMenuMas(){
       <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); cambiarTab('${o.tab}')">${o.icono} ${o.nombre}</button>
     `).join('')}
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="abrirMenuPorRol()">🧩 Menú por Rol (app unificada)</button>
+    <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionPlanilleros()">🔴 Planilleros</button>
   `;
   abrirSheet(html);
 }
@@ -1496,10 +1607,14 @@ function mostrarCatalogoEstadisticas(data){
     <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">El marcador (a favor / en contra) siempre se lleva aparte, no hace falta agregarlo aquí.</p>
     <div class="card">
       <div class="card-title"><h3>Por jugador</h3></div>
+      <p style="color:var(--chalk-dim);font-size:12px;margin:-4px 0 8px">Los "puntos" son los que suma al marcador cada vez que el planillero la registra (0 para las que no suman, como rebotes o asistencias).</p>
       ${porJugador.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguna todavía.</p>' : porJugador.map(t=>`
         <div class="field-line">
           <div class="fl-value">${esc(t.nombre)} ${!t.activo ? '<span class="badge cancelado">Inactiva</span>' : ''}</div>
-          <button class="sm ${t.activo?'danger':'primary'}" onclick="toggleTipoEstadisticaAccion(${t.id}, ${!t.activo})">${t.activo?'Desactivar':'Activar'}</button>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="number" min="0" value="${t.puntos||0}" style="width:56px;margin:0;padding:6px 8px" onchange="editarPuntosTipoEstadisticaAccion(${t.id}, this.value)">
+            <button class="sm ${t.activo?'danger':'primary'}" onclick="toggleTipoEstadisticaAccion(${t.id}, ${!t.activo})">${t.activo?'Desactivar':'Activar'}</button>
+          </div>
         </div>
       `).join('')}
     </div>
@@ -1514,10 +1629,14 @@ function mostrarCatalogoEstadisticas(data){
     </div>
     <label style="margin-top:10px">Nueva estadística</label>
     <input id="nuevaEstadisticaNombre" placeholder="Ej: Saques de banda">
-    <select id="nuevaEstadisticaNivel" style="margin-top:8px">
+    <select id="nuevaEstadisticaNivel" style="margin-top:8px" onchange="document.getElementById('nuevaEstadisticaPuntosWrap').style.display = this.value==='jugador' ? 'block' : 'none'">
       <option value="jugador">Por jugador (ej: goles, puntos)</option>
       <option value="equipo">Por equipo (ej: tiros de esquina)</option>
     </select>
+    <div id="nuevaEstadisticaPuntosWrap" style="margin-top:8px">
+      <label>¿Cuántos puntos suma al marcador? (0 si no suma, como rebotes)</label>
+      <input id="nuevaEstadisticaPuntos" type="number" min="0" value="0">
+    </div>
     <button class="primary block" style="margin-top:10px" onclick="crearTipoEstadisticaAccion()">Agregar</button>
   `;
   abrirSheet(html);
@@ -1526,13 +1645,20 @@ function mostrarCatalogoEstadisticas(data){
 async function crearTipoEstadisticaAccion(){
   const nombre = document.getElementById('nuevaEstadisticaNombre').value.trim();
   const nivel = document.getElementById('nuevaEstadisticaNivel').value;
+  const puntos = document.getElementById('nuevaEstadisticaPuntos').value;
   if(!nombre){ toast('Escribe un nombre', true); return; }
-  const res = await api('crear_tipo_estadistica_admin', {disciplinaId: disciplinaEstadisticasActual.id, nombre, nivel});
+  const res = await api('crear_tipo_estadistica_admin', {disciplinaId: disciplinaEstadisticasActual.id, nombre, nivel, puntos});
   if(res===null) return;
   toast('Estadística agregada');
   const data = await api('listar_tipos_estadistica_admin', {disciplinaId: disciplinaEstadisticasActual.id});
   if(data===null) return;
   mostrarCatalogoEstadisticas(data);
+}
+
+async function editarPuntosTipoEstadisticaAccion(tipoEstadisticaId, puntos){
+  const res = await api('editar_puntos_tipo_estadistica_admin', {tipoEstadisticaId, puntos});
+  if(res===null) return;
+  toast('Puntos actualizados');
 }
 
 async function toggleTipoEstadisticaAccion(tipoEstadisticaId, activo){
@@ -1935,6 +2061,7 @@ function abrirDetallesPartido(id, alias, estado){
       <button class="block" onclick="confirmarMarcarEnJuego(${id})">🏃 Marcar en juego</button>
       <button class="block" onclick="abrirRevisionMultas(${id})">🧾 Revisar multas y pendientes</button>
       <button class="block" onclick="abrirVincularEvento(${id})">🎒 Vincular a evento</button>
+      <button class="block" onclick="window.open('/app_unificada.html?partido=${id}', '_blank')">🔴 Captura en vivo (planillero)</button>
       <button class="primary block" onclick="confirmarFinalizar(${id})">🏁 Finalizar partido</button>
     </div>
   `;
@@ -2579,7 +2706,7 @@ function renderListaCuotasFiltrada(){
   el.innerHTML = cuotas.map(c=>`
     <div class="field-line">
       <div>
-        <div class="fl-value">${esc(c.jugador)} <span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
+        <div class="fl-value">${esc(c.jugador)} ${c.numeroCamiseta ? '<span style="color:var(--gold)">#'+esc(c.numeroCamiseta)+'</span> ' : ''}<span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
         <div class="fl-label">Cuota: $${c.montoCuota} · Pagado: $${c.montoPagado} ${Number(c.montoPagado)>=Number(c.montoCuota) ? '✓' : '· Pendiente: $'+(Number(c.montoCuota)-Number(c.montoPagado)).toFixed(2)}</div>
       </div>
       <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
@@ -2776,6 +2903,8 @@ async function abrirAsignarCuota(){
     ${selectorFechas('cuotaFechaId', false)}
     <label>Monto de la cuota</label>
     <input id="cuotaMonto" type="number" step="0.01" placeholder="0.00" value="0">
+    <label>Número de camiseta para este evento (opcional)</label>
+    <input id="cuotaNumeroCamiseta" placeholder="Ej: 10">
     <button class="primary block" style="margin-top:16px" onclick="guardarCuotaJugador()">Guardar</button>
   `;
   abrirSheet(html);
@@ -2786,8 +2915,9 @@ async function guardarCuotaJugador(){
   const eventoFechaIdVal = document.getElementById('cuotaFechaId').value;
   const eventoFechaId = eventoFechaIdVal ? parseInt(eventoFechaIdVal) : null;
   const montoCuota = parseFloat(document.getElementById('cuotaMonto').value);
+  const numeroCamiseta = document.getElementById('cuotaNumeroCamiseta').value.trim();
   if(isNaN(montoCuota) || montoCuota < 0){ toast('Escribe un monto válido (puede ser 0 para jugadores de refuerzo)', true); return; }
-  const res = await api('asignar_cuota_jugador_app', {eventoId: eventoActualId, eventoFechaId, jugadorId, montoCuota});
+  const res = await api('asignar_cuota_jugador_app', {eventoId: eventoActualId, eventoFechaId, jugadorId, montoCuota, numeroCamiseta});
   if(res===null) return;
   toast('Cuota asignada');
   cerrarSheet();

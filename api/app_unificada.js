@@ -50,6 +50,11 @@ async function detectarRoles(pool, cedula) {
      FROM sport_control.entrenadores WHERE cedula = $1 AND activo = true`,
     [cedula]
   );
+  const planillero = await pool.query(
+    `SELECT id, nombres, apellidos, clave_hash, debe_cambiar_clave, clave_reset_expira, intentos_fallidos, bloqueado_hasta
+     FROM sport_control.planilleros WHERE cedula = $1 AND activo = true`,
+    [cedula]
+  );
 
   const roles = [];
   if (jugador.rows[0]) roles.push('jugador');
@@ -58,6 +63,7 @@ async function detectarRoles(pool, cedula) {
     roles.push('entrenador');
     if (entrenador.rows[0].rol === 'director') roles.push('director');
   }
+  if (planillero.rows[0]) roles.push('planillero');
 
   return {
     encontrado: roles.length > 0,
@@ -65,15 +71,16 @@ async function detectarRoles(pool, cedula) {
     jugador: jugador.rows[0] || null,
     representante: representante.rows[0] || null,
     entrenador: entrenador.rows[0] || null,
+    planillero: planillero.rows[0] || null,
     // nombre para el saludo: el primero que se encuentre disponible
-    nombres: (jugador.rows[0] || representante.rows[0] || entrenador.rows[0] || {}).nombres,
+    nombres: (jugador.rows[0] || representante.rows[0] || entrenador.rows[0] || planillero.rows[0] || {}).nombres,
   };
 }
 
 // La clave es UNA sola por persona, aunque tenga varios roles. Si ya
-// existe un hash en cualquiera de las 3 tablas, ese es "el oficial".
+// existe un hash en cualquiera de las tablas, ese es "el oficial".
 function encontrarClaveExistente(info) {
-  for (const registro of [info.representante, info.entrenador, info.jugador]) {
+  for (const registro of [info.representante, info.entrenador, info.jugador, info.planillero]) {
     if (registro && registro.clave_hash) return registro;
   }
   return null;
@@ -109,6 +116,7 @@ async function crearClaveUnificada(pool, body) {
   if (info.jugador) await pool.query(`UPDATE sport_control.jugadores SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.jugador.id]);
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.representante.id]);
   if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.entrenador.id]);
+  if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.planillero.id]);
 
   const token = await crearSesion(pool, cedula);
   return { success: true, data: { token, nombres: info.nombres, roles: info.roles } };
@@ -140,6 +148,7 @@ async function verificarClaveUnificada(pool, body) {
     if (info.jugador) await pool.query(`UPDATE sport_control.jugadores SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.jugador.id]);
     if (info.representante) await pool.query(`UPDATE sport_control.representantes SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.representante.id]);
     if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.entrenador.id]);
+    if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.planillero.id]);
   };
 
   if (!coincide) {
@@ -173,6 +182,7 @@ async function cambiarClaveUnificada(pool, cedula, body) {
   if (info.jugador) await pool.query(`UPDATE sport_control.jugadores SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.jugador.id]);
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.representante.id]);
   if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.entrenador.id]);
+  if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.planillero.id]);
 
   return { success: true };
 }
@@ -232,6 +242,7 @@ async function obtenerPerfilUnificado(pool, cedula) {
     `SELECT telefono FROM sport_control.representantes WHERE cedula = $1
      UNION ALL SELECT telefono FROM sport_control.entrenadores WHERE cedula = $1
      UNION ALL SELECT telefono FROM sport_control.jugadores WHERE cedula = $1
+     UNION ALL SELECT telefono FROM sport_control.planilleros WHERE cedula = $1
      LIMIT 1`,
     [cedula]
   );
@@ -253,6 +264,7 @@ async function actualizarPerfilUnificado(pool, cedula, body) {
   if (info.jugador) await pool.query(`UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2 WHERE id = $3`, [nombres, apellidos, info.jugador.id]);
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.representante.id]);
   if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.entrenador.id]);
+  if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.planillero.id]);
   return { success: true };
 }
 
@@ -267,6 +279,129 @@ async function listarPantallasParaRoles(pool, roles) {
     [roles]
   );
   return { success: true, data: r.rows };
+}
+
+/* ---------- Planillero: captura de estadisticas en vivo ---------- */
+async function listarPartidosActivosPlanillero(pool) {
+  const r = await pool.query(
+    `SELECT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado, p.marcador_propio, p.marcador_rival, p.rival_nombre,
+       d.nombre AS "disciplinaNombre", d.icono AS "disciplinaIcono"
+     FROM sport_control.partidos p
+     LEFT JOIN sport_control.disciplinas d ON d.id = p.disciplina_id
+     WHERE p.estado IN ('confirmando', 'en_juego', 'cerrado')
+     ORDER BY p.fecha DESC, p.hora DESC LIMIT 20`
+  );
+  return { success: true, data: r.rows };
+}
+
+async function abrirCapturaPartido(pool, body) {
+  const { partidoId } = body;
+  const partido = await pool.query(
+    `SELECT p.id, p.alias, p.rival_nombre, p.marcador_propio, p.marcador_rival, p.disciplina_id AS "disciplinaId", p.evento_id AS "eventoId"
+     FROM sport_control.partidos p WHERE p.id = $1`,
+    [partidoId]
+  );
+  if (!partido.rows[0]) return { success: false, error: 'Partido no encontrado.' };
+  const p = partido.rows[0];
+
+  // Roster: jugadores confirmados, con su numero de camiseta -- el del
+  // evento (si el partido pertenece a uno) tiene prioridad sobre el
+  // numero de base del jugador.
+  const jugadores = await pool.query(
+    `SELECT j.id, j.nombres, j.apellidos,
+       COALESCE(ecj.numero_camiseta, j.numero_camiseta) AS "numeroCamiseta"
+     FROM sport_control.confirmaciones_partido cp
+     JOIN sport_control.jugadores j ON j.id = cp.jugador_id
+     LEFT JOIN sport_control.evento_cuota_jugador ecj ON ecj.jugador_id = j.id AND ecj.evento_id = $2
+     WHERE cp.partido_id = $1 AND cp.estado = 'confirmado'
+     ORDER BY COALESCE(ecj.numero_camiseta, j.numero_camiseta, '999') ::text, j.nombres`,
+    [partidoId, p.eventoId]
+  );
+
+  // Tipos de estadistica activos para la disciplina de este partido
+  // (nivel jugador -- las de nivel equipo no aplican a este flujo de
+  // "toco jugador").
+  const tipos = await pool.query(
+    `SELECT id, nombre, clave, puntos FROM sport_control.tipos_estadistica
+     WHERE disciplina_id = $1 AND nivel = 'jugador' AND activo = true ORDER BY orden, nombre`,
+    [p.disciplinaId]
+  );
+
+  // Bitacora reciente -- para reconstruir el estado si el planillero
+  // sale de la app o se queda sin bateria y vuelve a entrar.
+  const log = await pool.query(
+    `SELECT l.id, l.jugador_id AS "jugadorId", l.tipo_estadistica_id AS "tipoEstadisticaId", l.es_rival AS "esRival", l.puntos, l.creado_en AS "creadoEn",
+       (j.nombres || ' ' || j.apellidos) AS "jugadorNombre", t.nombre AS "tipoNombre"
+     FROM sport_control.partido_stats_log l
+     LEFT JOIN sport_control.jugadores j ON j.id = l.jugador_id
+     LEFT JOIN sport_control.tipos_estadistica t ON t.id = l.tipo_estadistica_id
+     WHERE l.partido_id = $1 ORDER BY l.creado_en DESC LIMIT 50`,
+    [partidoId]
+  );
+
+  return {
+    success: true,
+    data: {
+      partido: p,
+      jugadores: jugadores.rows,
+      tipos: tipos.rows,
+      log: log.rows,
+    },
+  };
+}
+
+async function registrarEventoPartido(pool, planilleroId, body) {
+  const { partidoId, jugadorId, tipoEstadisticaId, esRival, puntos } = body;
+  const puntosNum = Number(puntos) || 0;
+
+  const ins = await pool.query(
+    `INSERT INTO sport_control.partido_stats_log (partido_id, jugador_id, tipo_estadistica_id, es_rival, puntos, planillero_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, creado_en AS "creadoEn"`,
+    [partidoId, esRival ? null : (jugadorId || null), esRival ? null : (tipoEstadisticaId || null), !!esRival, puntosNum, planilleroId]
+  );
+
+  if (esRival) {
+    await pool.query(`UPDATE sport_control.partidos SET marcador_rival = COALESCE(marcador_rival, 0) + $1 WHERE id = $2`, [puntosNum, partidoId]);
+  } else {
+    if (puntosNum > 0) {
+      await pool.query(`UPDATE sport_control.partidos SET marcador_propio = COALESCE(marcador_propio, 0) + $1 WHERE id = $2`, [puntosNum, partidoId]);
+    }
+    if (jugadorId && tipoEstadisticaId) {
+      await pool.query(
+        `INSERT INTO sport_control.partido_estadisticas (partido_id, tipo_estadistica_id, jugador_id, valor, actualizado_en)
+         VALUES ($1, $2, $3, 1, NOW())
+         ON CONFLICT (partido_id, tipo_estadistica_id, jugador_id) DO UPDATE SET valor = sport_control.partido_estadisticas.valor + 1, actualizado_en = NOW()`,
+        [partidoId, tipoEstadisticaId, jugadorId]
+      );
+    }
+  }
+
+  return { success: true, data: { id: ins.rows[0].id, creadoEn: ins.rows[0].creadoEn } };
+}
+
+async function eliminarEventoPartido(pool, body) {
+  const { logId } = body;
+  const log = await pool.query(`SELECT * FROM sport_control.partido_stats_log WHERE id = $1`, [logId]);
+  if (!log.rows[0]) return { success: false, error: 'Ese registro ya no existe.' };
+  const l = log.rows[0];
+
+  if (l.es_rival) {
+    await pool.query(`UPDATE sport_control.partidos SET marcador_rival = GREATEST(0, COALESCE(marcador_rival, 0) - $1) WHERE id = $2`, [l.puntos, l.partido_id]);
+  } else {
+    if (l.puntos > 0) {
+      await pool.query(`UPDATE sport_control.partidos SET marcador_propio = GREATEST(0, COALESCE(marcador_propio, 0) - $1) WHERE id = $2`, [l.puntos, l.partido_id]);
+    }
+    if (l.jugador_id && l.tipo_estadistica_id) {
+      await pool.query(
+        `UPDATE sport_control.partido_estadisticas SET valor = GREATEST(0, valor - 1)
+         WHERE partido_id = $1 AND jugador_id = $2 AND tipo_estadistica_id = $3`,
+        [l.partido_id, l.jugador_id, l.tipo_estadistica_id]
+      );
+    }
+  }
+
+  await pool.query(`DELETE FROM sport_control.partido_stats_log WHERE id = $1`, [logId]);
+  return { success: true };
 }
 
 module.exports = async (req, res) => {
@@ -287,6 +422,13 @@ module.exports = async (req, res) => {
     if (accion === 'obtener_sesion_y_menu') return res.status(200).json(await obtenerSesionYMenu(pool, cedula));
     if (accion === 'obtener_perfil_unificado') return res.status(200).json(await obtenerPerfilUnificado(pool, cedula));
     if (accion === 'actualizar_perfil_unificado') return res.status(200).json(await actualizarPerfilUnificado(pool, cedula, body));
+    if (accion === 'listar_partidos_activos_planillero') return res.status(200).json(await listarPartidosActivosPlanillero(pool));
+    if (accion === 'abrir_captura_partido_planillero') return res.status(200).json(await abrirCapturaPartido(pool, body));
+    if (accion === 'registrar_evento_partido_planillero') {
+      const info = await detectarRoles(pool, cedula);
+      return res.status(200).json(await registrarEventoPartido(pool, info.planillero ? info.planillero.id : null, body));
+    }
+    if (accion === 'eliminar_evento_partido_planillero') return res.status(200).json(await eliminarEventoPartido(pool, body));
 
     // Endpoint de prueba de la Fase 1 -- se mantiene por compatibilidad
     if (accion === 'listar_pantallas_para_roles_prueba') {

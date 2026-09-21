@@ -351,6 +351,18 @@ async function entrarApp(nombresLogin, sesionPrecargada){
   }
 
   construirMenu(data.menu);
+
+  // Si se llego con un enlace directo desde el Admin (?partido=123)
+  // para tomar estadisticas, y la persona tiene el rol adecuado, se
+  // salta directo a la captura de ese partido.
+  const params = new URLSearchParams(location.search);
+  const partidoLink = params.get('partido');
+  if(partidoLink && data.roles.some(r=>r==='planillero' || r==='director')){
+    safeSet('planillero_partido_actual', partidoLink);
+    cambiarPantalla('captura_estadisticas_planillero');
+    return;
+  }
+
   if(data.menu.length>0) cambiarPantalla(data.menu[0].clave);
 }
 
@@ -426,6 +438,7 @@ function cambiarPantalla(clave){
     'mis_partidos_jugador': cargarPantallaPartidosJug,
     'mi_cuenta_jugador': cargarPantallaCuentaJug,
     'eventos_jugador': cargarPantallaEventosJug,
+    'captura_estadisticas_planillero': cargarPantallaCapturaPlanillero,
   };
   const fn = renderizadores[clave];
   if(fn) fn(cont);
@@ -2493,6 +2506,192 @@ async function agregarExentoJugador(){
   const data = await apiJug('listar_mis_exentos_jugador');
   if(data===null) return;
   mostrarMisExentos(data);
+}
+
+
+/* ---------- Planillero: captura de estadisticas en vivo ---------- */
+let PARTIDO_CAPTURA_ACTUAL = null;
+let ACCION_SELECCIONADA = null;
+let CAPTURA_DATA = null;
+
+const apiPlan = (accion, extra) => api(accion, extra);
+
+async function cargarPantallaCapturaPlanillero(cont){
+  const ultimoId = parseInt(safeGet('planillero_partido_actual') || '0');
+  if(ultimoId){
+    PARTIDO_CAPTURA_ACTUAL = ultimoId;
+    await mostrarCapturaPartido(cont);
+    return;
+  }
+  await mostrarSelectorPartidoCaptura(cont);
+}
+
+async function mostrarSelectorPartidoCaptura(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const partidos = await apiPlan('listar_partidos_activos_planillero');
+  if(partidos===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  if(partidos.length===0){
+    cont.innerHTML = '<div class="empty"><span class="ic">🔴</span>No hay partidos activos en este momento.</div>';
+    return;
+  }
+  cont.innerHTML = `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Elige el partido para el que vas a tomar estadísticas.</p>
+    ${partidos.map(p=>`
+      <button class="jugador-card" onclick="seleccionarPartidoCaptura(${p.id})">
+        <div style="font-weight:700;font-size:16px">${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</div>
+        <div style="color:var(--chalk-dim);font-size:13px;margin-top:2px">${fechaCorta(p.fecha)} ${p.hora ? '· '+p.hora.slice(0,5) : ''} · 📍 ${esc(p.lugar||'—')}</div>
+        ${p.marcador_propio!==null ? `<div style="color:var(--gold);font-size:13px;margin-top:4px">Marcador actual: ${p.marcador_propio} - ${p.marcador_rival} ${esc(p.rival_nombre||'')}</div>` : ''}
+      </button>
+    `).join('')}
+  `;
+}
+
+async function seleccionarPartidoCaptura(partidoId){
+  PARTIDO_CAPTURA_ACTUAL = partidoId;
+  safeSet('planillero_partido_actual', String(partidoId));
+  await cambiarPantalla('captura_estadisticas_planillero');
+}
+
+async function mostrarCapturaPartido(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await apiPlan('abrir_captura_partido_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
+  if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  CAPTURA_DATA = data;
+  ACCION_SELECCIONADA = null;
+  renderCapturaPartido(cont);
+}
+
+function renderCapturaPartido(cont){
+  const d = CAPTURA_DATA;
+  const p = d.partido;
+  cont.innerHTML = `
+    <button class="sm" style="margin-bottom:10px" onclick="cambiarPartidoCaptura()">↔️ Cambiar de partido</button>
+
+    <div class="card" style="display:flex;justify-content:space-around;align-items:center;text-align:center">
+      <div>
+        <div class="fl-label">NOSOTROS</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;color:var(--gold)" id="capMarcadorPropio">${p.marcador_propio||0}</div>
+      </div>
+      <div style="color:var(--chalk-dim);font-size:14px">VS</div>
+      <div>
+        <div class="fl-label">${esc(p.rival_nombre||'RIVAL')}</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700" id="capMarcadorRival">${p.marcador_rival||0}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fl-label" style="margin-bottom:8px">1. TOCA LA ACCIÓN</div>
+      <div class="row-actions tabbar-scroll" id="capAccionesGrid">
+        ${d.tipos.map(t=>`
+          <button class="sm" data-tipo="${t.id}" onclick="seleccionarAccionCaptura(${t.id}, ${t.puntos}, '${esc(t.nombre)}', this)">${esc(t.nombre)}${t.puntos>0 ? ' +'+t.puntos : ''}</button>
+        `).join('')}
+      </div>
+      <div class="fl-label" style="margin:12px 0 8px">PUNTOS DEL RIVAL (directo, sin elegir jugadora)</div>
+      <div class="row-actions">
+        <button class="sm danger" onclick="registrarPuntosRival(1)">+1 Rival</button>
+        <button class="sm danger" onclick="registrarPuntosRival(2)">+2 Rival</button>
+        <button class="sm danger" onclick="registrarPuntosRival(3)">+3 Rival</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fl-label" style="margin-bottom:8px">2. TOCA LA JUGADORA</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="capJugadorasGrid">
+        ${d.jugadores.map(j=>`
+          <button class="jugador-card" style="padding:10px 4px;text-align:center" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'>
+            <div style="font-size:20px;font-weight:700;color:var(--gold)">#${esc(j.numeroCamiseta||'—')}</div>
+            <div style="font-size:11px;color:var(--chalk-dim)">${esc(j.nombres)}</div>
+          </button>
+        `).join('')}
+      </div>
+      ${d.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Nadie ha confirmado asistencia a este partido todavía.</p>' : ''}
+    </div>
+
+    <div class="card">
+      <div class="fl-label" style="margin-bottom:8px">ÚLTIMOS EVENTOS</div>
+      <div id="capLog" style="max-height:220px;overflow-y:auto">
+        ${renderLogCapturaHtml(d.log)}
+      </div>
+    </div>
+  `;
+}
+
+function renderLogCapturaHtml(log){
+  if(log.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay eventos registrados.</p>';
+  return log.map(item=>`
+    <div class="field-line">
+      <div>
+        <span class="fl-label">${new Date(item.creadoEn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+        <span class="fl-value" style="margin-left:6px">${item.esRival ? 'Punto del rival (+'+item.puntos+')' : esc(item.jugadorNombre)+' → '+esc(item.tipoNombre)+(item.puntos>0?' (+'+item.puntos+')':'')}</span>
+      </div>
+      <button class="sm danger" onclick="borrarEventoCaptura(${item.id})">🗑️</button>
+    </div>
+  `).join('');
+}
+
+function seleccionarAccionCaptura(tipoId, puntos, nombre, btnEl){
+  ACCION_SELECCIONADA = { tipoId, puntos, nombre };
+  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('primary'));
+  btnEl.classList.add('primary');
+}
+
+async function registrarAccionJugadora(jugadorId, nombreJugadora){
+  if(!ACCION_SELECCIONADA){
+    toast('Primero toca una acción (arriba) y luego a la jugadora', true);
+    return;
+  }
+  const res = await apiPlan('registrar_evento_partido_planillero', {
+    partidoId: PARTIDO_CAPTURA_ACTUAL, jugadorId,
+    tipoEstadisticaId: ACCION_SELECCIONADA.tipoId, esRival: false, puntos: ACCION_SELECCIONADA.puntos,
+  });
+  if(res===null) return;
+  CAPTURA_DATA.log.unshift({
+    id: res.id, jugadorId, tipoEstadisticaId: ACCION_SELECCIONADA.tipoId, esRival: false,
+    puntos: ACCION_SELECCIONADA.puntos, creadoEn: res.creadoEn, jugadorNombre: nombreJugadora, tipoNombre: ACCION_SELECCIONADA.nombre,
+  });
+  if(ACCION_SELECCIONADA.puntos>0){
+    CAPTURA_DATA.partido.marcador_propio = (CAPTURA_DATA.partido.marcador_propio||0) + ACCION_SELECCIONADA.puntos;
+    document.getElementById('capMarcadorPropio').textContent = CAPTURA_DATA.partido.marcador_propio;
+  }
+  document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('primary'));
+  ACCION_SELECCIONADA = null;
+}
+
+async function registrarPuntosRival(puntos){
+  const res = await apiPlan('registrar_evento_partido_planillero', {
+    partidoId: PARTIDO_CAPTURA_ACTUAL, esRival: true, puntos,
+  });
+  if(res===null) return;
+  CAPTURA_DATA.log.unshift({ id: res.id, esRival: true, puntos, creadoEn: res.creadoEn });
+  CAPTURA_DATA.partido.marcador_rival = (CAPTURA_DATA.partido.marcador_rival||0) + puntos;
+  document.getElementById('capMarcadorRival').textContent = CAPTURA_DATA.partido.marcador_rival;
+  document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+}
+
+async function borrarEventoCaptura(logId){
+  if(!confirm('¿Borrar este evento? Esto ajusta el marcador si corresponde.')) return;
+  const item = CAPTURA_DATA.log.find(l=>l.id===logId);
+  const res = await apiPlan('eliminar_evento_partido_planillero', {logId});
+  if(res===null) return;
+  if(item){
+    if(item.esRival){
+      CAPTURA_DATA.partido.marcador_rival = Math.max(0, (CAPTURA_DATA.partido.marcador_rival||0) - item.puntos);
+      document.getElementById('capMarcadorRival').textContent = CAPTURA_DATA.partido.marcador_rival;
+    } else if(item.puntos>0){
+      CAPTURA_DATA.partido.marcador_propio = Math.max(0, (CAPTURA_DATA.partido.marcador_propio||0) - item.puntos);
+      document.getElementById('capMarcadorPropio').textContent = CAPTURA_DATA.partido.marcador_propio;
+    }
+  }
+  CAPTURA_DATA.log = CAPTURA_DATA.log.filter(l=>l.id!==logId);
+  document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  toast('Evento borrado');
+}
+
+function cambiarPartidoCaptura(){
+  safeSet('planillero_partido_actual', '');
+  PARTIDO_CAPTURA_ACTUAL = null;
+  cambiarPantalla('captura_estadisticas_planillero');
 }
 
 </script>

@@ -93,7 +93,7 @@ async function verDetalleEvento(pool, body) {
   );
 
   const cuotas = await pool.query(
-    `SELECT ec.id, ec.jugador_id AS "jugadorId", j.nombres || ' ' || j.apellidos AS jugador, ec.monto_cuota AS "montoCuota", ec.evento_fecha_id AS "eventoFechaId",
+    `SELECT ec.id, ec.jugador_id AS "jugadorId", j.nombres || ' ' || j.apellidos AS jugador, ec.monto_cuota AS "montoCuota", ec.evento_fecha_id AS "eventoFechaId", ec.numero_camiseta AS "numeroCamiseta",
        COALESCE((SELECT SUM(m.monto) FROM sport_control.evento_movimientos m WHERE m.evento_id = $1 AND m.jugador_id = ec.jugador_id AND m.evento_fecha_id IS NOT DISTINCT FROM ec.evento_fecha_id), 0) AS "montoPagado"
      FROM sport_control.evento_cuota_jugador ec
      JOIN sport_control.jugadores j ON j.id = ec.jugador_id
@@ -141,18 +141,18 @@ async function eliminarPresupuestoItem(pool, body) {
 }
 
 async function asignarCuotaJugador(pool, body) {
-  const { eventoId, eventoFechaId, jugadorId, montoCuota } = body;
+  const { eventoId, eventoFechaId, jugadorId, montoCuota, numeroCamiseta } = body;
   const fechaId = eventoFechaId || null;
   const existente = await pool.query(
     `SELECT id FROM sport_control.evento_cuota_jugador WHERE evento_id = $1 AND jugador_id = $2 AND evento_fecha_id IS NOT DISTINCT FROM $3`,
     [eventoId, jugadorId, fechaId]
   );
   if (existente.rows[0]) {
-    await pool.query(`UPDATE sport_control.evento_cuota_jugador SET monto_cuota = $1 WHERE id = $2`, [montoCuota, existente.rows[0].id]);
+    await pool.query(`UPDATE sport_control.evento_cuota_jugador SET monto_cuota = $1, numero_camiseta = $2 WHERE id = $3`, [montoCuota, numeroCamiseta || null, existente.rows[0].id]);
   } else {
     await pool.query(
-      `INSERT INTO sport_control.evento_cuota_jugador (evento_id, evento_fecha_id, jugador_id, monto_cuota) VALUES ($1, $2, $3, $4)`,
-      [eventoId, fechaId, jugadorId, montoCuota]
+      `INSERT INTO sport_control.evento_cuota_jugador (evento_id, evento_fecha_id, jugador_id, monto_cuota, numero_camiseta) VALUES ($1, $2, $3, $4, $5)`,
+      [eventoId, fechaId, jugadorId, montoCuota, numeroCamiseta || null]
     );
   }
   return { success: true };
