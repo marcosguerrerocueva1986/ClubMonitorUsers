@@ -1745,6 +1745,10 @@ async function cargarPantallaEditarRepresentado(cont){
       <input id="editJugRepCorreo" value="${esc(perfil.correo||'')}" type="email" autocomplete="off">
       <button class="primary block" style="margin-top:10px" onclick="guardarEditarRepresentado()">Guardar</button>
     </div>
+    <div class="card" style="border-color:var(--gold)">
+      <div class="fl-label" style="margin-bottom:6px">🔍 Diagnóstico temporal — lo que devolvió el servidor</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:pre-wrap;color:var(--chalk-dim)">${esc(JSON.stringify(perfil, null, 2))}</div>
+    </div>
   `;
 }
 
