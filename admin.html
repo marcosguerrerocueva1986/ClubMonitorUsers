@@ -2672,6 +2672,7 @@ function renderSubtabCuotas(){
     <p style="color:var(--chalk-dim);font-size:12px;margin-top:0">Los jugadores en esta lista son los inscritos oficiales del evento (para reportes). Los de refuerzo que no pagan se agregan igual, con cuota $0. Los pagos se pueden registrar de a poco — cada movimiento se suma hasta cubrir la cuota completa.</p>
     <div class="card">
       <div class="card-title"><h3>Total: $${totalCuotas.toFixed(2)} · Pagado: $${totalCuotasPagado.toFixed(2)}</h3></div>
+      <div class="meta">👤 ${data.cuotas.length} jugador(es) inscrito(s)</div>
     </div>
     <div class="row-actions" style="margin:10px 0;flex-wrap:wrap">
       <input id="filtroCuotaTexto" placeholder="Buscar jugador..." style="flex:2;min-width:140px" oninput="aplicarFiltroCuotas()" value="${esc(eventoCuotaFiltroTexto)}">
@@ -2709,9 +2710,36 @@ function renderListaCuotasFiltrada(){
         <div class="fl-value">${esc(c.jugador)} ${c.numeroCamiseta ? '<span style="color:var(--gold)">#'+esc(c.numeroCamiseta)+'</span> ' : ''}<span style="color:var(--chalk-dim);font-size:12px">(${esc(nombreFecha(c.eventoFechaId))})</span></div>
         <div class="fl-label">Cuota: $${c.montoCuota} · Pagado: $${c.montoPagado} ${Number(c.montoPagado)>=Number(c.montoCuota) ? '✓' : '· Pendiente: $'+(Number(c.montoCuota)-Number(c.montoPagado)).toFixed(2)}</div>
       </div>
-      <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
+      <div style="display:flex;gap:6px">
+        <button class="sm" onclick='abrirEditarCuota(${JSON.stringify(c).replace(/"/g,"&quot;")})'>Editar</button>
+        <button class="sm danger" onclick="quitarCuotaJugador(${c.id})">Quitar</button>
+      </div>
     </div>
   `).join('');
+}
+
+function abrirEditarCuota(c){
+  const html = `
+    <div class="sheet-head"><h2>Editar cuota</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">${esc(c.jugador)} — ${esc(nombreFecha(c.eventoFechaId))}</p>
+    <label>Monto de la cuota</label>
+    <input id="editCuotaMonto" type="number" step="0.01" value="${c.montoCuota}">
+    <label>Número de camiseta para este evento (opcional)</label>
+    <input id="editCuotaNumeroCamiseta" value="${esc(c.numeroCamiseta||'')}" placeholder="Ej: 10">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarCuota(${c.jugadorId}, ${c.eventoFechaId||'null'})">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarCuota(jugadorId, eventoFechaId){
+  const montoCuota = parseFloat(document.getElementById('editCuotaMonto').value);
+  const numeroCamiseta = document.getElementById('editCuotaNumeroCamiseta').value.trim();
+  if(isNaN(montoCuota) || montoCuota < 0){ toast('Escribe un monto válido', true); return; }
+  const res = await api('asignar_cuota_jugador_app', {eventoId: eventoActualId, eventoFechaId, jugadorId, montoCuota, numeroCamiseta});
+  if(res===null) return;
+  toast('Cuota actualizada');
+  cerrarSheet();
+  await recargarDetalleEvento();
 }
 
 function movimientosFiltrados(){
@@ -2917,6 +2945,13 @@ async function guardarCuotaJugador(){
   const montoCuota = parseFloat(document.getElementById('cuotaMonto').value);
   const numeroCamiseta = document.getElementById('cuotaNumeroCamiseta').value.trim();
   if(isNaN(montoCuota) || montoCuota < 0){ toast('Escribe un monto válido (puede ser 0 para jugadores de refuerzo)', true); return; }
+
+  const yaExiste = eventoActualData.cuotas.some(c => c.jugadorId===jugadorId && (c.eventoFechaId||null)===(eventoFechaId||null));
+  if(yaExiste){
+    const nombreJugador = document.getElementById('cuotaJugadorId').selectedOptions[0].textContent;
+    if(!confirm(`${nombreJugador} ya está inscrita en ${nombreFecha(eventoFechaId)}. ¿Quieres reemplazar su cuota/número actual con estos valores?`)) return;
+  }
+
   const res = await api('asignar_cuota_jugador_app', {eventoId: eventoActualId, eventoFechaId, jugadorId, montoCuota, numeroCamiseta});
   if(res===null) return;
   toast('Cuota asignada');
