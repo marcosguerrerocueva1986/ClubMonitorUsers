@@ -469,6 +469,7 @@ function cambiarPantalla(clave){
     'cuenta_representante': cargarPantallaCuentaRep,
     'eventos_representante': cargarPantallaEventosRep,
     'novedades_representante': cargarPantallaNovedadesRep,
+    'editar_representado_representante': cargarPantallaEditarRepresentado,
     'mis_partidos_jugador': cargarPantallaPartidosJug,
     'mi_cuenta_jugador': cargarPantallaCuentaJug,
     'eventos_jugador': cargarPantallaEventosJug,
@@ -1039,11 +1040,31 @@ async function cargarPantallaPartidosRep(cont){
         📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
       </div>
       <div class="row-actions">
-        ${p.estado!=='finalizado' && p.miEstado==='confirmado' ? `<button class="sm primary" onclick="verQrRep(${p.id})">📲 Ver código QR</button>` : ''}
+        ${p.estado==='finalizado' ? '' : (p.miEstado==='confirmado' ? `
+          <button class="sm primary" onclick="verQrRep(${p.id})">📲 Ver código QR</button>
+          <button class="sm danger" onclick="cancelarPartidoRep(${p.id})">No va</button>
+        ` : `
+          <button class="sm primary" onclick="confirmarPartidoRep(${p.id})">✅ Va</button>
+        `)}
         ${p.tieneEstadisticas ? `<button class="sm primary" onclick="verEstadisticasPartidoRep(${p.id})">📊 Ver estadísticas</button>` : ''}
       </div>
     </div>
   `).join('');
+}
+
+async function confirmarPartidoRep(partidoId){
+  const res = await apiRep('confirmar_partido_representante', { partidoId });
+  if(res===null) return;
+  toast('¡Confirmado!');
+  cambiarPantalla('partidos_representante');
+}
+
+async function cancelarPartidoRep(partidoId){
+  if(!confirm('¿Confirmar que no va a este partido?')) return;
+  const res = await apiRep('cancelar_partido_representante', { partidoId });
+  if(res===null) return;
+  toast('Actualizado');
+  cambiarPantalla('partidos_representante');
 }
 
 async function verEstadisticasPartidoRep(partidoId){
@@ -1742,6 +1763,45 @@ function fechaHoraRep(f){
   const d = new Date(f);
   const hora = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+' · '+hora;
+}
+
+/* ---------- Editar representado (datos del jugador, rol representante) ---------- */
+async function cargarPantallaEditarRepresentado(cont){
+  if(!MIS_JUGADORES_CARGADOS){ await cargarJugadoresRepApp(); }
+  if(!JUGADOR_ACTUAL){ cont.innerHTML = '<div class="empty">Todavía no tienes ningún jugador vinculado.</div>'; return; }
+  cont.innerHTML = '<div class="spinner"></div>';
+  const perfil = await apiRep('obtener_perfil_jugador_representante');
+  if(perfil===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>Datos de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
+      <label>Nombres</label>
+      <input id="editJugRepNombres" value="${esc(perfil.nombres||'')}">
+      <label>Apellidos</label>
+      <input id="editJugRepApellidos" value="${esc(perfil.apellidos||'')}">
+      <label>Alias (nombre corto de camiseta)</label>
+      <input id="editJugRepAlias" value="${esc(perfil.alias||'')}" placeholder="Ej: PEPE">
+      <label>Cédula</label>
+      <input id="editJugRepCedula" value="${esc(perfil.cedula||'')}">
+      <label>Correo</label>
+      <input id="editJugRepCorreo" value="${esc(perfil.correo||'')}" type="email">
+      <button class="primary block" style="margin-top:10px" onclick="guardarEditarRepresentado()">Guardar</button>
+    </div>
+  `;
+}
+
+async function guardarEditarRepresentado(){
+  const nombres = document.getElementById('editJugRepNombres').value.trim();
+  const apellidos = document.getElementById('editJugRepApellidos').value.trim();
+  const alias = document.getElementById('editJugRepAlias').value.trim();
+  const cedula = document.getElementById('editJugRepCedula').value.trim();
+  const correo = document.getElementById('editJugRepCorreo').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await apiRep('actualizar_datos_jugador_representante', {nombres, apellidos, alias, cedula, correo});
+  if(res===null) return;
+  toast('Datos actualizados');
+  JUGADOR_ACTUAL.nombres = nombres;
+  actualizarHeaderJugador();
 }
 
 
@@ -2602,7 +2662,8 @@ function renderCapturaPartido(cont){
   cont.innerHTML = `
     <div class="cap-salir">
       <button class="sm" onclick="cambiarPartidoCaptura()">✕ Salir</button>
-      <span style="color:var(--chalk-dim)">${esc(p.alias||'Partido')}</span>
+      <span style="color:var(--chalk-dim);flex:1">${esc(p.alias||'Partido')}</span>
+      <button class="sm" onclick="mostrarCapturaPartido(document.getElementById('pantallasContainer'))">🔄</button>
     </div>
 
     <div class="cap-marcador">
@@ -2633,7 +2694,7 @@ function renderCapturaPartido(cont){
         <div class="cap-jugadoras" id="capJugadorasGrid">
           ${d.jugadores.map(j=>`
             <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'>
-              <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombres)}</span>
+              <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombreCorto)}</span>
             </button>
           `).join('')}
         </div>

@@ -189,7 +189,7 @@ async function registrarJugadorPwa(pool, body) {
 
 async function obtenerMiPerfil(pool, jugadorId) {
   const r = await pool.query(
-    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo,
+    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo, j.alias,
             (SELECT eventos_habilitado_jugador FROM sport_control.configuracion_club WHERE id = 1) AS eventos_habilitado,
             (SELECT whatsapp_checkin_numero FROM sport_control.configuracion_club WHERE id = 1) AS whatsapp_checkin_numero,
             (SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1) AS representantes_habilitado,
@@ -374,8 +374,8 @@ async function verMiQr(pool, jugadorId, partidoId) {
 
 async function actualizarMisDatos(pool, jugadorId, body) {
   await pool.query(
-    `UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2, cedula = $3, correo = $4 WHERE id = $5`,
-    [body.nombres, body.apellidos, body.cedula, body.correo, jugadorId]
+    `UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2, cedula = $3, correo = $4, alias = $5 WHERE id = $6`,
+    [body.nombres, body.apellidos, body.cedula, body.correo, body.alias || null, jugadorId]
   );
   return { success: true, data: true };
 }
@@ -894,3 +894,5 @@ module.exports.registrarPagoComprobante = registrarPagoComprobante;
 module.exports.aplicarPago = aplicarPago;
 module.exports.aplicarPagoEvento = aplicarPagoEvento;
 module.exports.guardarSaldoFavor = guardarSaldoFavor;
+module.exports.confirmarMiPartido = confirmarMiPartido;
+module.exports.cancelarMiPartido = cancelarMiPartido;

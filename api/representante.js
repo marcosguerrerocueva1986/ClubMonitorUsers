@@ -18,7 +18,7 @@ const {
   verMisInvitados, listarMisEventos, verEventoPublico, verMovimientosEventoJugador,
   verComprobanteMovimientoJugador, actualizarMisDatos, analizarComprobante,
   registrarPagoComprobante, aplicarPago, aplicarPagoEvento, guardarSaldoFavor,
-  verDetallePartidoStatsJugador, verFotoPartidoAdmin,
+  verDetallePartidoStatsJugador, verFotoPartidoAdmin, confirmarMiPartido, cancelarMiPartido,
 } = require('./jugador');
 
 async function actualizarPerfilRepresentante(pool, representanteId, body) {
@@ -55,7 +55,7 @@ async function marcarNovedadLeidaRepresentante(pool, representanteId, body) {
 }
 
 async function obtenerPerfilRepresentante(pool, representanteId) {
-  const r = await pool.query(`SELECT nombres, apellidos, telefono, cedula FROM sport_control.representantes WHERE id = $1`, [representanteId]);
+  const r = await pool.query(`SELECT id, nombres, apellidos, telefono, cedula FROM sport_control.representantes WHERE id = $1`, [representanteId]);
   const permisos = await pool.query(`SELECT funcionalidad, habilitado FROM sport_control.permisos_pantallas WHERE rol = 'representante'`);
   const mapa = {};
   permisos.rows.forEach(p => { mapa[p.funcionalidad] = p.habilitado; });
@@ -227,6 +227,8 @@ module.exports = async (req, res) => {
     switch (accion) {
       case 'obtener_perfil_jugador_representante': return res.status(200).json(await obtenerMiPerfil(pool, jugadorId));
       case 'ver_partidos_jugador_representante': return res.status(200).json(await verMisPartidos(pool, jugadorId));
+      case 'confirmar_partido_representante': return res.status(200).json(await confirmarMiPartido(pool, jugadorId, body));
+      case 'cancelar_partido_representante': return res.status(200).json(await cancelarMiPartido(pool, jugadorId, body));
       case 'ver_detalle_partido_stats_representante': return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
       case 'ver_foto_partido_representante': return res.status(200).json(await verFotoPartidoAdmin(pool, body));
       case 'ver_deuda_jugador_representante': return res.status(200).json(await verPendientesPago(pool, jugadorId));

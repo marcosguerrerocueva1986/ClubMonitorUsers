@@ -308,7 +308,7 @@ async function abrirCapturaPartido(pool, body) {
   // evento (si el partido pertenece a uno) tiene prioridad sobre el
   // numero de base del jugador.
   const jugadores = await pool.query(
-    `SELECT j.id, j.nombres, j.apellidos,
+    `SELECT j.id, j.nombres, j.apellidos, COALESCE(j.alias, j.nombres) AS "nombreCorto",
        COALESCE(ecj.numero_camiseta, j.numero_camiseta) AS "numeroCamiseta"
      FROM sport_control.confirmaciones_partido cp
      JOIN sport_control.jugadores j ON j.id = cp.jugador_id
