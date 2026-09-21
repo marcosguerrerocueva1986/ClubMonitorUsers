@@ -107,6 +107,37 @@ if ('serviceWorker' in navigator) {
   @keyframes spin{to{transform:rotate(360deg);}}
   .login-card{max-width:400px;margin:15vh auto 0;padding:0 24px;text-align:center;}
   .login-card .mark{font-size:48px;margin-bottom:10px;}
+
+  /* Modo pantalla completa para la captura en vivo -- oculta encabezado
+     y menu inferior para aprovechar cada pixel en el telefono. */
+  body.modo-captura header.top, body.modo-captura nav.tabs{display:none;}
+  body.modo-captura main{padding:8px 8px calc(8px + env(safe-area-inset-bottom));}
+  .cap-salir{position:sticky;top:0;z-index:5;background:var(--pitch-1);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;}
+
+  .cap-marcador{display:flex;justify-content:space-around;align-items:center;background:var(--pitch-2);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px;}
+  .cap-marcador .equipo{text-align:center;}
+  .cap-marcador .equipo .etq{font-size:11px;color:var(--chalk-dim);text-transform:uppercase;}
+  .cap-marcador .equipo .pts{font-size:28px;font-weight:700;color:var(--gold);font-family:'Oswald',sans-serif;}
+
+  .cap-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  @media (max-width:640px) and (orientation:portrait){ .cap-grid{grid-template-columns:1fr;} }
+
+  .cap-panel{background:var(--pitch-2);border:1px solid var(--line);border-radius:10px;padding:8px;}
+  .cap-panel-title{font-size:11px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;}
+
+  .cap-acciones{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .cap-btn-accion{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;color:var(--chalk);font-weight:700;font-size:14px;padding:12px 4px;text-align:center;}
+  .cap-btn-accion.activa{border-color:var(--gold);background:rgba(255,210,63,.12);color:var(--gold);}
+  .cap-btn-rival{grid-column:span 2;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:2px;}
+  .cap-btn-rival button{background:rgba(232,93,76,.12);border:2px solid rgba(232,93,76,.35);color:var(--red);border-radius:8px;font-weight:700;font-size:13px;padding:10px 2px;}
+
+  .cap-jugadoras{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .cap-btn-jugadora{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;}
+  .cap-btn-jugadora .num{font-size:18px;font-weight:700;color:var(--gold);display:block;}
+  .cap-btn-jugadora .nom{font-size:10px;color:var(--chalk-dim);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .cap-log{max-height:160px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+  .cap-log-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--line);}
   .login-card h1{font-size:26px;margin:0 0 4px;}
   .login-card p{color:var(--chalk-dim);font-size:14px;margin-bottom:20px;}
 </style>
@@ -415,6 +446,7 @@ const apiRep = (accion, extra) => {
 
 function cambiarPantalla(clave){
   pantallaActual = clave;
+  document.body.classList.remove('modo-captura');
   document.querySelectorAll('nav.tabs button[data-clave]').forEach(b=>b.classList.toggle('active', b.dataset.clave===clave));
   const enMas = SESION.menu.slice(MAX_TABS_VISIBLES).some(p=>p.clave===clave);
   const btnMas = document.getElementById('btnTabMas');
@@ -2562,54 +2594,52 @@ async function mostrarCapturaPartido(cont){
 }
 
 function renderCapturaPartido(cont){
+  document.body.classList.add('modo-captura');
   const d = CAPTURA_DATA;
   const p = d.partido;
   cont.innerHTML = `
-    <button class="sm" style="margin-bottom:10px" onclick="cambiarPartidoCaptura()">↔️ Cambiar de partido</button>
+    <div class="cap-salir">
+      <button class="sm" onclick="cambiarPartidoCaptura()">✕ Salir</button>
+      <span style="color:var(--chalk-dim)">${esc(p.alias||'Partido')}</span>
+    </div>
 
-    <div class="card" style="display:flex;justify-content:space-around;align-items:center;text-align:center">
-      <div>
-        <div class="fl-label">NOSOTROS</div>
-        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;color:var(--gold)" id="capMarcadorPropio">${p.marcador_propio||0}</div>
+    <div class="cap-marcador">
+      <div class="equipo"><div class="etq">Nuestro equipo</div><div class="pts" id="capMarcadorPropio">${p.marcador_propio||0}</div></div>
+      <div style="color:var(--chalk-dim)">VS</div>
+      <div class="equipo"><div class="etq">${esc(p.rival_nombre||'Rival')}</div><div class="pts" id="capMarcadorRival" style="color:var(--chalk)">${p.marcador_rival||0}</div></div>
+    </div>
+
+    <div class="cap-grid">
+      <div class="cap-panel">
+        <div class="cap-panel-title">1. Toca la acción</div>
+        <div class="cap-acciones" id="capAccionesGrid">
+          ${d.tipos.map(t=>`
+            <button class="cap-btn-accion" data-tipo="${t.id}" onclick="seleccionarAccionCaptura(${t.id}, ${t.puntos}, '${esc(t.nombre)}', this)">${esc(t.nombre)}${t.puntos>0 ? ' +'+t.puntos : ''}</button>
+          `).join('')}
+          <div class="cap-btn-rival">
+            <button onclick="registrarPuntosRival(1)">+1 Rival</button>
+            <button onclick="registrarPuntosRival(2)">+2 Rival</button>
+            <button onclick="registrarPuntosRival(3)">+3 Rival</button>
+          </div>
+        </div>
       </div>
-      <div style="color:var(--chalk-dim);font-size:14px">VS</div>
-      <div>
-        <div class="fl-label">${esc(p.rival_nombre||'RIVAL')}</div>
-        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700" id="capMarcadorRival">${p.marcador_rival||0}</div>
+
+      <div class="cap-panel">
+        <div class="cap-panel-title">2. Toca a la jugadora</div>
+        <div class="cap-jugadoras" id="capJugadorasGrid">
+          ${d.jugadores.map(j=>`
+            <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'>
+              <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombres)}</span>
+            </button>
+          `).join('')}
+        </div>
+        ${d.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:12px">Nadie ha confirmado asistencia todavía.</p>' : ''}
       </div>
     </div>
 
-    <div class="card">
-      <div class="fl-label" style="margin-bottom:8px">1. TOCA LA ACCIÓN</div>
-      <div class="row-actions tabbar-scroll" id="capAccionesGrid">
-        ${d.tipos.map(t=>`
-          <button class="sm" data-tipo="${t.id}" onclick="seleccionarAccionCaptura(${t.id}, ${t.puntos}, '${esc(t.nombre)}', this)">${esc(t.nombre)}${t.puntos>0 ? ' +'+t.puntos : ''}</button>
-        `).join('')}
-      </div>
-      <div class="fl-label" style="margin:12px 0 8px">PUNTOS DEL RIVAL (directo, sin elegir jugadora)</div>
-      <div class="row-actions">
-        <button class="sm danger" onclick="registrarPuntosRival(1)">+1 Rival</button>
-        <button class="sm danger" onclick="registrarPuntosRival(2)">+2 Rival</button>
-        <button class="sm danger" onclick="registrarPuntosRival(3)">+3 Rival</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="fl-label" style="margin-bottom:8px">2. TOCA LA JUGADORA</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="capJugadorasGrid">
-        ${d.jugadores.map(j=>`
-          <button class="jugador-card" style="padding:10px 4px;text-align:center" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'>
-            <div style="font-size:20px;font-weight:700;color:var(--gold)">#${esc(j.numeroCamiseta||'—')}</div>
-            <div style="font-size:11px;color:var(--chalk-dim)">${esc(j.nombres)}</div>
-          </button>
-        `).join('')}
-      </div>
-      ${d.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Nadie ha confirmado asistencia a este partido todavía.</p>' : ''}
-    </div>
-
-    <div class="card">
-      <div class="fl-label" style="margin-bottom:8px">ÚLTIMOS EVENTOS</div>
-      <div id="capLog" style="max-height:220px;overflow-y:auto">
+    <div class="cap-panel" style="margin-top:8px">
+      <div class="cap-panel-title">Últimos eventos</div>
+      <div id="capLog" class="cap-log">
         ${renderLogCapturaHtml(d.log)}
       </div>
     </div>
@@ -2617,22 +2647,20 @@ function renderCapturaPartido(cont){
 }
 
 function renderLogCapturaHtml(log){
-  if(log.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay eventos registrados.</p>';
+  if(log.length===0) return '<div class="cap-log-item"><span style="color:var(--chalk-dim)">Sistema listo. Selecciona una acción.</span></div>';
   return log.map(item=>`
-    <div class="field-line">
-      <div>
-        <span class="fl-label">${new Date(item.creadoEn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
-        <span class="fl-value" style="margin-left:6px">${item.esRival ? 'Punto del rival (+'+item.puntos+')' : esc(item.jugadorNombre)+' → '+esc(item.tipoNombre)+(item.puntos>0?' (+'+item.puntos+')':'')}</span>
-      </div>
-      <button class="sm danger" onclick="borrarEventoCaptura(${item.id})">🗑️</button>
+    <div class="cap-log-item">
+      <span style="color:var(--chalk-dim)">${new Date(item.creadoEn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+      <span style="flex:1;margin:0 8px">${item.esRival ? 'Rival (+'+item.puntos+')' : esc(item.jugadorNombre)+' → '+esc(item.tipoNombre)+(item.puntos>0?' (+'+item.puntos+')':'')}</span>
+      <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" onclick="borrarEventoCaptura(${item.id})">🗑️</button>
     </div>
   `).join('');
 }
 
 function seleccionarAccionCaptura(tipoId, puntos, nombre, btnEl){
   ACCION_SELECCIONADA = { tipoId, puntos, nombre };
-  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('primary'));
-  btnEl.classList.add('primary');
+  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('activa'));
+  btnEl.classList.add('activa');
 }
 
 async function registrarAccionJugadora(jugadorId, nombreJugadora){
@@ -2654,7 +2682,7 @@ async function registrarAccionJugadora(jugadorId, nombreJugadora){
     document.getElementById('capMarcadorPropio').textContent = CAPTURA_DATA.partido.marcador_propio;
   }
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
-  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('primary'));
+  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('activa'));
   ACCION_SELECCIONADA = null;
 }
 
