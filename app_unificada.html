@@ -337,6 +337,16 @@ async function confirmarCambioClaveObligatorio(){
   await entrarApp(login.nombres);
 }
 
+// Si el navegador restaura la pagina desde su cache interno (al usar
+// "atras" del telefono), event.persisted viene en true -- en ese caso
+// se recarga la pantalla actual para no mostrar datos congelados de
+// antes de guardar algun cambio.
+window.addEventListener('pageshow', function(event){
+  if(event.persisted && typeof pantallaActual !== 'undefined' && pantallaActual && SESION){
+    cambiarPantalla(pantallaActual);
+  }
+});
+
 if(TOKEN){
   api('obtener_sesion_y_menu').then(res=>{
     if(res!==null && res.roles.length>0){ entrarApp(res.nombres, res); }
@@ -1073,58 +1083,6 @@ async function verEstadisticasPartidoRep(partidoId){
   mostrarEstadisticasPartidoJugador(data, 'representante');
 }
 
-function mostrarEstadisticasPartidoJugador(data, contexto){
-  const p = data.partido;
-  const grupos = {};
-  data.valores.forEach(v => {
-    const clave = v.jugador || '__equipo__';
-    if(!grupos[clave]) grupos[clave] = [];
-    grupos[clave].push(v);
-  });
-  const equipoStats = grupos['__equipo__'] || [];
-  const jugadorStats = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
-
-  const html = `
-    <div class="sheet-head"><h2>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    ${p.eventoNombre ? `<p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">🎒 Parte de: ${esc(p.eventoNombre)}</p>` : ''}
-    ${p.marcador_propio!==null && p.marcador_rival!==null ? `
-      <div class="card" style="text-align:center">
-        <div class="fl-label">${fechaCorta(p.fecha)}</div>
-        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;margin:8px 0">
-          Nosotros ${p.marcador_propio} — ${p.marcador_rival} ${esc(p.rival_nombre||'Rival')}
-        </div>
-      </div>
-    ` : ''}
-    ${p.jugadorDestacado ? `<div class="ok-card">⭐ Jugador destacado: ${esc(p.jugadorDestacado)}</div>` : ''}
-    ${(p.tieneFotoEquipo || p.tieneFotoPlanilla) ? `
-      <div class="row-actions" style="margin-bottom:12px">
-        ${p.tieneFotoEquipo ? `<button class="sm" onclick="verFotoPartidoRep(${p.id}, 'equipo')">📷 Foto del equipo</button>` : ''}
-        ${p.tieneFotoPlanilla ? `<button class="sm" onclick="verFotoPartidoRep(${p.id}, 'planilla')">📋 Planilla de control</button>` : ''}
-      </div>
-    ` : ''}
-    ${equipoStats.length>0 ? `
-      <div class="card">
-        <div class="card-title"><h3>Estadísticas del equipo</h3></div>
-        ${equipoStats.map(v=>`<div class="field-line"><div class="fl-label">${esc(v.nombre)}</div><div class="fl-value">${v.valor}</div></div>`).join('')}
-      </div>
-    ` : ''}
-    ${jugadorStats.length>0 ? `
-      <div class="card">
-        <div class="card-title"><h3>Estadísticas por jugador</h3></div>
-        ${jugadorStats.map(([nombre, stats])=>`
-          <div style="padding:8px 0;border-bottom:1px solid var(--line)">
-            <div class="fl-value" style="margin-bottom:4px">${esc(nombre)}</div>
-            <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
-          </div>
-        `).join('')}
-      </div>
-    ` : ''}
-    ${p.notas ? `<div class="card"><div class="card-title"><h3>Notas</h3></div><p style="font-size:14px;color:var(--chalk-dim);white-space:pre-wrap">${esc(p.notas)}</p></div>` : ''}
-    ${equipoStats.length===0 && jugadorStats.length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
-  `;
-  abrirSheet(html);
-}
-
 async function verFotoPartidoRep(partidoId, tipo){
   const res = await apiRep('ver_foto_partido_representante', {partidoId, tipo});
   if(res===null) return;
@@ -1481,7 +1439,7 @@ function renderFechasEventoRep(){
     html += '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
   } else {
     html += fechas.map(f=>{
-      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id);
+      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id).sort((a,b)=>(a.hora||'').localeCompare(b.hora||''));
       return `
         <div class="card">
           <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
@@ -1776,15 +1734,15 @@ async function cargarPantallaEditarRepresentado(cont){
     <div class="card">
       <div class="card-title"><h3>Datos de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
       <label>Nombres</label>
-      <input id="editJugRepNombres" value="${esc(perfil.nombres||'')}">
+      <input id="editJugRepNombres" value="${esc(perfil.nombres||'')}" autocomplete="off">
       <label>Apellidos</label>
-      <input id="editJugRepApellidos" value="${esc(perfil.apellidos||'')}">
+      <input id="editJugRepApellidos" value="${esc(perfil.apellidos||'')}" autocomplete="off">
       <label>Alias (nombre corto de camiseta)</label>
-      <input id="editJugRepAlias" value="${esc(perfil.alias||'')}" placeholder="Ej: PEPE">
+      <input id="editJugRepAlias" value="${esc(perfil.alias||'')}" placeholder="Ej: PEPE" autocomplete="off">
       <label>Cédula</label>
-      <input id="editJugRepCedula" value="${esc(perfil.cedula||'')}">
+      <input id="editJugRepCedula" value="${esc(perfil.cedula||'')}" autocomplete="off">
       <label>Correo</label>
-      <input id="editJugRepCorreo" value="${esc(perfil.correo||'')}" type="email">
+      <input id="editJugRepCorreo" value="${esc(perfil.correo||'')}" type="email" autocomplete="off">
       <button class="primary block" style="margin-top:10px" onclick="guardarEditarRepresentado()">Guardar</button>
     </div>
   `;
@@ -1859,14 +1817,21 @@ async function verEstadisticasPartidoJugador(partidoId){
 function mostrarEstadisticasPartidoJugador(data, contexto){
   const p = data.partido;
   const grupos = {};
+  const nombresPorId = {};
   data.valores.forEach(v => {
-    const clave = v.jugador || '__equipo__';
+    const clave = v.jugadorId || '__equipo__';
     if(!grupos[clave]) grupos[clave] = [];
     grupos[clave].push(v);
+    if(v.jugadorId) nombresPorId[v.jugadorId] = v.jugador;
   });
   const equipoStats = grupos['__equipo__'] || [];
-  const jugadorStats = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
+  const idsRepresentados = new Set((typeof MIS_JUGADORES !== 'undefined' ? MIS_JUGADORES : []).map(j=>j.id));
 
+  window._statsPartidoGrupos = grupos;
+  window._statsPartidoNombresPorId = nombresPorId;
+  window._statsPartidoIdsRepresentados = idsRepresentados;
+
+  const mostrarSoloRepresentados = contexto==='representante';
   const accionFoto = contexto==='representante' ? 'verFotoPartidoRep' : 'verFotoPartidoJugadorAccion';
   const html = `
     <div class="sheet-head"><h2>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
@@ -1892,21 +1857,51 @@ function mostrarEstadisticasPartidoJugador(data, contexto){
         ${equipoStats.map(v=>`<div class="field-line"><div class="fl-label">${esc(v.nombre)}</div><div class="fl-value">${v.valor}</div></div>`).join('')}
       </div>
     ` : ''}
-    ${jugadorStats.length>0 ? `
-      <div class="card">
-        <div class="card-title"><h3>Estadísticas por jugador</h3></div>
-        ${jugadorStats.map(([nombre, stats])=>`
-          <div style="padding:8px 0;border-bottom:1px solid var(--line)">
-            <div class="fl-value" style="margin-bottom:4px">${esc(nombre)}</div>
-            <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
-          </div>
-        `).join('')}
-      </div>
+    ${mostrarSoloRepresentados ? `
+      <label style="display:flex;align-items:center;gap:8px;flex-direction:row;font-size:13px;color:var(--chalk-dim);text-transform:none;margin-bottom:8px">
+        <input type="checkbox" id="chkSoloRepresentados" checked onchange="rerenderStatsPorJugador()" style="width:18px;height:18px">
+        Solo de representados
+      </label>
     ` : ''}
+    <div id="statsPorJugadorCard">${renderStatsPorJugadorHtml(mostrarSoloRepresentados)}</div>
     ${p.notas ? `<div class="card"><div class="card-title"><h3>Notas</h3></div><p style="font-size:14px;color:var(--chalk-dim);white-space:pre-wrap">${esc(p.notas)}</p></div>` : ''}
-    ${equipoStats.length===0 && jugadorStats.length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
+    ${equipoStats.length===0 && Object.keys(grupos).filter(k=>k!=='__equipo__').length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
   `;
   abrirSheet(html);
+}
+
+function renderStatsPorJugadorHtml(soloRepresentados){
+  const grupos = window._statsPartidoGrupos || {};
+  const nombresPorId = window._statsPartidoNombresPorId || {};
+  const idsRepresentados = window._statsPartidoIdsRepresentados || new Set();
+
+  let entradas = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
+  if(soloRepresentados){
+    entradas = entradas.filter(([jugadorId]) => idsRepresentados.has(parseInt(jugadorId)));
+  }
+
+  if(entradas.length===0){
+    return soloRepresentados
+      ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno de tus representados tiene estadísticas en este partido. Desmarca el filtro para ver a todos.</p>'
+      : '';
+  }
+
+  return `
+    <div class="card">
+      <div class="card-title"><h3>Estadísticas por jugador</h3></div>
+      ${entradas.map(([jugadorId, stats])=>`
+        <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+          <div class="fl-value" style="margin-bottom:4px">${esc(nombresPorId[jugadorId]||'—')}</div>
+          <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function rerenderStatsPorJugador(){
+  const chk = document.getElementById('chkSoloRepresentados');
+  document.getElementById('statsPorJugadorCard').innerHTML = renderStatsPorJugadorHtml(chk ? chk.checked : false);
 }
 
 async function verFotoPartidoJugadorAccion(partidoId, tipo){
@@ -2141,29 +2136,6 @@ async function verMisUltimosPagos(){
 }
 
 let pagoState = { pagoId: null, montoDisponible: 0, origenSaldoFavor: false, montoOriginal: 0 };
-
-function fileToBase64(file){
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = (e) => { img.src = e.target.result; };
-    reader.onerror = reject;
-    img.onload = () => {
-      const maxDim = 1280;
-      let w = img.width, h = img.height;
-      if(w > maxDim || h > maxDim){
-        if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
-        else { w = Math.round(w * maxDim / h); h = maxDim; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.65).split(',')[1]);
-    };
-    img.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 function abrirSubirComprobante(){
   const html = `
@@ -2511,7 +2483,7 @@ function renderFechasEventoJugador(){
     html += '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
   } else {
     html += fechas.map(f=>{
-      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id);
+      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id).sort((a,b)=>(a.hora||'').localeCompare(b.hora||''));
       return `
         <div class="card">
           <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>

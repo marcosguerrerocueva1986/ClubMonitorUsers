@@ -325,7 +325,7 @@ async function verDetallePartidoStatsJugador(pool, body) {
   if (!partido) return { success: false, error: 'Partido no encontrado.' };
 
   const valores = await pool.query(
-    `SELECT te.nombre, te.nivel, pe.valor, j.nombres || ' ' || j.apellidos AS jugador
+    `SELECT te.nombre, te.nivel, pe.valor, j.id AS "jugadorId", j.nombres || ' ' || j.apellidos AS jugador
      FROM sport_control.partido_estadisticas pe
      JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
      LEFT JOIN sport_control.jugadores j ON j.id = pe.jugador_id
