@@ -184,6 +184,85 @@ async function quitarCuotaJugador(pool, body) {
   return { success: true };
 }
 
+async function enviarPushMovimientoRepresentante(pool, jugadorId, monto, tipoDireccion, tipoNombre, eventoNombre) {
+  try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
+
+    const representantes = await pool.query(
+      `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
+      [jugadorId]
+    );
+    if (representantes.rows.length === 0) return;
+
+    // Mensaje corto pero completo: monto, si fue pago o cargo, y el
+    // evento -- pensado para caber comodo en una notificacion sin
+    // truncarse en la mayoria de telefonos.
+    const esPago = tipoDireccion === 'ingreso';
+    const titulo = esPago ? '💰 Pago registrado' : '📤 Cargo registrado';
+    const montoFmt = Number(monto).toFixed(2);
+    const cuerpo = `${esPago ? 'Se registró un pago de' : 'Se registró un cargo de'} $${montoFmt} (${tipoNombre}) en ${eventoNombre}.`;
+
+    await enviarPushPorRepresentantes(c, representantes.rows.map(r => r.representante_id), titulo, cuerpo);
+  } catch (e) {
+    console.error('Push de movimiento de evento falló (no bloquea el registro):', e);
+  }
+}
+
+// Movimiento GENERAL del evento (sin jugador puntual): les llega a
+// TODOS los representantes de los jugadores que son parte del evento
+// -- "parte del evento" se define como tener una fila en
+// evento_cuota_jugador, sin importar si el monto de esa cuota es 0.
+async function enviarPushMovimientoGeneralRepresentantes(pool, eventoId, monto, tipoDireccion, tipoNombre, eventoNombre) {
+  try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
+
+    const representantes = await pool.query(
+      `SELECT DISTINCT jr.representante_id
+       FROM sport_control.evento_cuota_jugador ecj
+       JOIN sport_control.jugador_representante jr ON jr.jugador_id = ecj.jugador_id
+       WHERE ecj.evento_id = $1`,
+      [eventoId]
+    );
+    if (representantes.rows.length === 0) return;
+
+    const esPago = tipoDireccion === 'ingreso';
+    const titulo = esPago ? '💰 Nuevo ingreso al evento' : '📤 Nuevo gasto del evento';
+    const montoFmt = Number(monto).toFixed(2);
+    const cuerpo = `${eventoNombre}: ${tipoNombre} — $${montoFmt}`;
+
+    await enviarPushPorRepresentantes(c, representantes.rows.map(r => r.representante_id), titulo, cuerpo);
+  } catch (e) {
+    console.error('Push general de movimiento de evento falló (no bloquea el registro):', e);
+  }
+}
+
+async function enviarPushPorRepresentantes(config, representanteIds, titulo, cuerpo) {
+  const filters = [];
+  representanteIds.forEach((id, i) => {
+    if (i > 0) filters.push({ operator: 'OR' });
+    filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(id) });
+  });
+  await fetch('https://onesignal.com/api/v1/notifications', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
+    },
+    body: JSON.stringify({
+      app_id: config.onesignal_app_id,
+      filters,
+      target_channel: 'push',
+      headings: { en: titulo },
+      contents: { en: cuerpo },
+      url: config.sitio_url_representante || '',
+    }),
+  });
+}
+
 async function registrarMovimientoEvento(pool, body) {
   const { eventoId, eventoFechaId, tipoMovimientoId, jugadorId, monto, fecha, descripcion, comprobanteBase64 } = body;
   if (!eventoId || !tipoMovimientoId || !monto) return { success: false, error: 'Faltan datos del movimiento.' };
@@ -192,6 +271,22 @@ async function registrarMovimientoEvento(pool, body) {
      VALUES ($1, $2, $3, $4, $5, COALESCE($6::date, CURRENT_DATE), $7, $8, NOW()) RETURNING id`,
     [eventoId, eventoFechaId || null, tipoMovimientoId, jugadorId || null, monto, fecha || null, descripcion || null, comprobanteBase64 || null]
   );
+
+  const info = await pool.query(
+    `SELECT e.nombre AS "eventoNombre", t.nombre AS "tipoNombre", t.tipo AS "tipoDireccion"
+     FROM sport_control.eventos e, sport_control.tipos_movimiento_evento t
+     WHERE e.id = $1 AND t.id = $2`,
+    [eventoId, tipoMovimientoId]
+  );
+  if (info.rows[0]) {
+    const { eventoNombre, tipoNombre, tipoDireccion } = info.rows[0];
+    if (jugadorId) {
+      await enviarPushMovimientoRepresentante(pool, jugadorId, monto, tipoDireccion, tipoNombre, eventoNombre);
+    } else {
+      await enviarPushMovimientoGeneralRepresentantes(pool, eventoId, monto, tipoDireccion, tipoNombre, eventoNombre);
+    }
+  }
+
   return { success: true, data: { id: r.rows[0].id } };
 }
 
