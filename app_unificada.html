@@ -423,6 +423,9 @@ function cambiarPantalla(clave){
     'cuenta_representante': cargarPantallaCuentaRep,
     'eventos_representante': cargarPantallaEventosRep,
     'novedades_representante': cargarPantallaNovedadesRep,
+    'mis_partidos_jugador': cargarPantallaPartidosJug,
+    'mi_cuenta_jugador': cargarPantallaCuentaJug,
+    'eventos_jugador': cargarPantallaEventosJug,
   };
   const fn = renderizadores[clave];
   if(fn) fn(cont);
@@ -1692,6 +1695,804 @@ function fechaHoraRep(f){
   const d = new Date(f);
   const hora = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+' · '+hora;
+}
+
+
+/* ---------- Jugador: Partidos, Cuenta, Eventos (portado de jugador/index.html) ---------- */
+let PERFIL = null;
+let PERFIL_JUG_CARGADO = false;
+
+async function cargarPerfilJugApp(){
+  const perfil = await apiJug('obtener_mi_perfil_jugador');
+  if(perfil===null) return;
+  PERFIL = perfil;
+  PERFIL_JUG_CARGADO = true;
+}
+
+async function cargarPantallaPartidosJug(cont){
+  if(!PERFIL_JUG_CARGADO){ await cargarPerfilJugApp(); }
+  const list = cont;
+  list.innerHTML = '<div class="spinner"></div>';
+  const partidos = await apiJug('ver_mis_partidos_jugador');
+  if(partidos===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  if(partidos.length===0){
+    list.innerHTML = '<div class="empty"><span class="ic">' + window._iconoDeporteActual + '</span>No hay partidos activos por ahora.</div>';
+    return;
+  }
+  list.innerHTML = partidos.map(p=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${p.alias ? esc(p.alias) : 'Partido'}</h3>
+        <span class="badge ${p.estado==='finalizado' ? 'finalizado' : p.miEstado}">${p.estado==='finalizado' ? 'Finalizado' : (p.miEstado==='confirmado' ? 'Voy' : (p.miEstado==='cancelado' ? 'No voy' : 'Sin confirmar'))}</span>
+      </div>
+      <div class="meta">
+        📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
+        📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
+      </div>
+      <div class="row-actions">
+        ${p.estado==='finalizado' ? '' : (p.miEstado==='confirmado' ? `
+          <button class="sm primary" onclick="verMiQR(${p.id})">📲 Mi código QR</button>
+          <button class="sm danger" onclick="cancelarPartido(${p.id})">No voy</button>
+        ` : `
+          <button class="sm primary" onclick="confirmarPartido(${p.id})">✅ Voy</button>
+        `)}
+        ${p.tieneEstadisticas ? `<button class="sm primary" onclick="verEstadisticasPartidoJugador(${p.id})">📊 Ver estadísticas</button>` : ''}
+        <button class="sm" onclick='abrirOpciones(${p.id}, ${JSON.stringify(p.alias||"Partido")}, ${p.miEstado==="confirmado"})'>⚙️ Opciones</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function verEstadisticasPartidoJugador(partidoId){
+  const data = await apiJug('ver_detalle_partido_stats_jugador', {partidoId});
+  if(data===null) return;
+  mostrarEstadisticasPartidoJugador(data, 'jugador');
+}
+
+function mostrarEstadisticasPartidoJugador(data, contexto){
+  const p = data.partido;
+  const grupos = {};
+  data.valores.forEach(v => {
+    const clave = v.jugador || '__equipo__';
+    if(!grupos[clave]) grupos[clave] = [];
+    grupos[clave].push(v);
+  });
+  const equipoStats = grupos['__equipo__'] || [];
+  const jugadorStats = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
+
+  const accionFoto = contexto==='representante' ? 'verFotoPartidoRep' : 'verFotoPartidoJugadorAccion';
+  const html = `
+    <div class="sheet-head"><h2>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${p.eventoNombre ? `<p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">🎒 Parte de: ${esc(p.eventoNombre)}</p>` : ''}
+    ${p.marcador_propio!==null && p.marcador_rival!==null ? `
+      <div class="card" style="text-align:center">
+        <div class="fl-label">${fechaCorta(p.fecha)}</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;margin:8px 0">
+          Nosotros ${p.marcador_propio} — ${p.marcador_rival} ${esc(p.rival_nombre||'Rival')}
+        </div>
+      </div>
+    ` : ''}
+    ${p.jugadorDestacado ? `<div class="ok-card">⭐ Jugador destacado: ${esc(p.jugadorDestacado)}</div>` : ''}
+    ${(p.tieneFotoEquipo || p.tieneFotoPlanilla) ? `
+      <div class="row-actions" style="margin-bottom:12px">
+        ${p.tieneFotoEquipo ? `<button class="sm" onclick="${accionFoto}(${p.id}, 'equipo')">📷 Foto del equipo</button>` : ''}
+        ${p.tieneFotoPlanilla ? `<button class="sm" onclick="${accionFoto}(${p.id}, 'planilla')">📋 Planilla de control</button>` : ''}
+      </div>
+    ` : ''}
+    ${equipoStats.length>0 ? `
+      <div class="card">
+        <div class="card-title"><h3>Estadísticas del equipo</h3></div>
+        ${equipoStats.map(v=>`<div class="field-line"><div class="fl-label">${esc(v.nombre)}</div><div class="fl-value">${v.valor}</div></div>`).join('')}
+      </div>
+    ` : ''}
+    ${jugadorStats.length>0 ? `
+      <div class="card">
+        <div class="card-title"><h3>Estadísticas por jugador</h3></div>
+        ${jugadorStats.map(([nombre, stats])=>`
+          <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+            <div class="fl-value" style="margin-bottom:4px">${esc(nombre)}</div>
+            <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    ${p.notas ? `<div class="card"><div class="card-title"><h3>Notas</h3></div><p style="font-size:14px;color:var(--chalk-dim);white-space:pre-wrap">${esc(p.notas)}</p></div>` : ''}
+    ${equipoStats.length===0 && jugadorStats.length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function verFotoPartidoJugadorAccion(partidoId, tipo){
+  const res = await apiJug('ver_foto_partido_jugador', {partidoId, tipo});
+  if(res===null) return;
+  if(!res.foto){ toast('No hay foto', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>${tipo==='planilla'?'Planilla de control':'Foto del equipo'}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.foto}" style="width:100%;border-radius:12px">
+  `;
+  abrirSheet(html);
+}
+
+async function confirmarPartido(partidoId){
+  const res = await apiJug('confirmar_mi_partido_jugador', { partidoId });
+  if(res===null) return;
+  toast('¡Confirmado!');
+  cambiarPantalla('mis_partidos_jugador');
+  if(res.token) mostrarQR(res.token);
+}
+
+async function cancelarPartido(partidoId){
+  if(!confirm('¿Seguro que no vas a este partido?')) return;
+  const res = await apiJug('cancelar_mi_partido_jugador', { partidoId });
+  if(res===null) return;
+  toast('Listo, avisado');
+  cambiarPantalla('mis_partidos_jugador');
+}
+
+async function verMiQR(partidoId){
+  const res = await apiJug('ver_mi_qr_jugador', { partidoId });
+  if(res===null) return;
+  if(!res.token){ toast('Aún no tienes código para este partido', true); return; }
+  mostrarQR(res.token);
+}
+
+function mostrarQR(token, nombreContexto){
+  const numeroCheckin = (PERFIL && PERFIL.whatsappCheckinNumero) || '';
+  const waLink = `https://wa.me/${numeroCheckin}?text=ASISTIO-` + token;
+  const url = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent(waLink);
+  const html = `
+    <div class="sheet-head"><h2>${nombreContexto ? esc(nombreContexto) : 'Tu código QR'}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="qr-box"><img id="qrImgActual" src="${url}" alt="Código QR"></div>
+    <p style="color:var(--chalk-dim);font-size:13px;text-align:center">Muéstralo en la entrada de la cancha. Es válido solo para este partido y se usa una vez.</p>
+    <button class="primary block" style="margin-top:12px" onclick='compartirQR(${JSON.stringify(url)}, ${JSON.stringify(waLink)}, ${JSON.stringify(nombreContexto||'')})'>📤 Compartir</button>
+  `;
+  abrirSheet(html);
+}
+
+async function compartirQR(imgUrl, waLink, nombreContexto){
+  try{
+    if(navigator.share){
+      try{
+        const resp = await fetch(imgUrl);
+        const blob = await resp.blob();
+        const file = new File([blob], 'codigo-qr.png', { type: blob.type || 'image/png' });
+        if(navigator.canShare && navigator.canShare({ files: [file] })){
+          await navigator.share({ files: [file], title: 'Mi código QR', text: nombreContexto ? ('Código QR — ' + nombreContexto) : 'Mi código QR' });
+          return;
+        }
+      }catch(e){}
+      await navigator.share({ title: 'Mi código QR', text: (nombreContexto ? nombreContexto + ' — ' : '') + 'Aquí está mi código de asistencia', url: waLink });
+    } else {
+      await navigator.clipboard.writeText(waLink);
+      toast('Link copiado — pégalo en WhatsApp para compartirlo');
+    }
+  }catch(e){
+    if(e && e.name !== 'AbortError'){ toast('No se pudo compartir', true); }
+  }
+}
+
+function abrirOpciones(partidoId, alias, confirmado){
+  const html = `
+    <div class="sheet-head"><h2>Opciones</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;margin-top:-4px">${esc(alias)}</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+      ${confirmado ? `
+        <button class="block" onclick='abrirInvitados(${partidoId}, ${JSON.stringify(alias)})'>🎟️ Gestionar mis invitados</button>
+        <button class="block" onclick="verMiQR(${partidoId})">📲 Ver mi código QR</button>
+        <button class="block danger" onclick="cancelarPartido(${partidoId})">No voy a este partido</button>
+      ` : `
+        <p style="color:var(--chalk-dim);font-size:14px">Primero confirma "Voy" para poder gestionar invitados o ver tu código.</p>
+      `}
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+let invitadosCache = { partidoId: null, data: [] };
+
+async function abrirInvitados(partidoId, alias){
+  const data = await apiJug('ver_mis_invitados_partido_jugador', { partidoId });
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  const misExentos = await apiJug('listar_mis_exentos_jugador');
+  const exentosAprobados = (misExentos || []).filter(e => e.estado === 'aprobado');
+  const html = `
+    <div class="sheet-head"><h2>Mis invitados</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px">${esc(alias)}</p>
+    <div id="listaInvitadosJugador">${renderInvitadosJugador(data)}</div>
+    <label style="margin-top:18px">Agregar invitado (paga entrada)</label>
+    <input id="nuevoInvitadoNombre" placeholder="Nombre completo">
+    <button class="primary block" style="margin-top:10px" onclick="agregarInvitadoJugador(${partidoId})">Agregar</button>
+    ${exentosAprobados.length > 0 ? `
+      <label style="margin-top:18px">O elige de tus exentos (no paga entrada)</label>
+      <select id="selectExentoInvitado">
+        <option value="">Selecciona...</option>
+        ${exentosAprobados.map(e => `<option value="${e.id}">${esc(e.nombres)} ${esc(e.apellidos)} (${esc(e.relacion)})</option>`).join('')}
+      </select>
+      <button class="block" style="margin-top:10px" onclick="agregarExentoComoInvitado(${partidoId})">Agregar exento</button>
+    ` : `
+      <p style="color:var(--chalk-dim);font-size:12px;margin-top:14px">¿Tienes hijos u otros invitados exentos de pago? Agrégalos desde tu Perfil.</p>
+    `}
+  `;
+  abrirSheet(html);
+}
+
+function renderInvitadosJugador(data){
+  if(data.length===0) return '<p style="color:var(--chalk-dim);font-size:14px">Aún no tienes invitados en este partido.</p>';
+  return data.map(inv=>`
+    <div class="field-line">
+      <div class="fl-value">${esc(inv.nombre)} ${inv.exento ? '<span class="badge confirmado" style="margin-left:6px">Exento</span>' : ''}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${inv.token ? `<button class="sm primary" onclick='mostrarQR(${JSON.stringify(inv.token)}, ${JSON.stringify(inv.nombre)})'>📱 QR</button>` : ''}
+        <button class="sm danger" onclick="quitarInvitadoJugador(${inv.id})">Quitar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function agregarExentoComoInvitado(partidoId){
+  const exentoId = document.getElementById('selectExentoInvitado').value;
+  if(!exentoId){ toast('Selecciona un exento de la lista', true); return; }
+  const res = await apiJug('agregar_invitado_partido_jugador', { partidoId, exentoId: parseInt(exentoId) });
+  if(res===null) return;
+  toast('Invitado exento agregado');
+  const data = await apiJug('ver_mis_invitados_partido_jugador', { partidoId });
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  document.getElementById('listaInvitadosJugador').innerHTML = renderInvitadosJugador(data);
+  cambiarPantalla('mis_partidos_jugador');
+}
+
+async function agregarInvitadoJugador(partidoId){
+  const nombre = document.getElementById('nuevoInvitadoNombre').value.trim();
+  if(!nombre){ toast('Escribe el nombre del invitado', true); return; }
+  const res = await apiJug('agregar_invitado_partido_jugador', { partidoId, nombre });
+  if(res===null) return;
+  toast('Invitado agregado');
+  const data = await apiJug('ver_mis_invitados_partido_jugador', { partidoId });
+  if(data===null) return;
+  invitadosCache = { partidoId, data };
+  document.getElementById('listaInvitadosJugador').innerHTML = renderInvitadosJugador(data);
+  document.getElementById('nuevoInvitadoNombre').value = '';
+  cambiarPantalla('mis_partidos_jugador');
+}
+
+async function quitarInvitadoJugador(invitadoId){
+  if(!confirm('¿Quitar a este invitado?')) return;
+  const res = await apiJug('quitar_invitado_partido_jugador', { invitadoId });
+  if(res===null) return;
+  toast('Invitado quitado');
+  const data = await apiJug('ver_mis_invitados_partido_jugador', { partidoId: invitadosCache.partidoId });
+  if(data===null) return;
+  invitadosCache.data = data;
+  document.getElementById('listaInvitadosJugador').innerHTML = renderInvitadosJugador(data);
+  cambiarPantalla('mis_partidos_jugador');
+}
+async function cargarPantallaCuentaJug(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const d = await apiJug('ver_pendientes_pago_jugador');
+  if(d===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  const p = d.pendientes || {};
+  let html = '';
+
+  if(d.saldoAFavor > 0){
+    html += `
+      <div class="card" style="border-color:rgba(255,210,63,.5);background:linear-gradient(180deg, rgba(255,210,63,.10), var(--pitch-2) 60%)">
+        <div class="fl-label">💰 TIENES SALDO A FAVOR</div>
+        <div style="font-family:'Oswald',sans-serif;font-size:28px;color:var(--gold);font-weight:700;margin:4px 0">$${Number(d.saldoAFavor).toFixed(2)}</div>
+        <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5;margin:0 0 12px">Esto es dinero que pagaste de más en algún momento y que todavía no se ha usado. Puedes aplicarlo a cualquier deuda pendiente cuando quieras.</p>
+        <button class="primary block sm" onclick="abrirUsarSaldoFavor()">Usar mi saldo a favor</button>
+      </div>
+    `;
+  }
+
+  if(p.meses_atraso >= 1){
+    html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
+  } else {
+    html += `<div class="ok-card">✓ Tu mensualidad está al día.</div>`;
+  }
+  if((p.multas_propias||[]).length>0){
+    html += `<div class="alert-card">⚠️ Tienes ${p.multas_propias.length} multa(s) propia(s) pendiente(s) — $${p.total_multas_propias}</div>`;
+  }
+  if((p.multas_invitados||[]).length>0){
+    html += `<div class="alert-card">⚠️ Tienes ${p.multas_invitados.length} multa(s) por invitados pendiente(s) — $${p.total_multas_invitados}</div>`;
+  }
+  if((p.invitados_pendientes||[]).length>0){
+    html += `<div class="card"><div class="card-title"><h3>🎟️ Invitados sin pagar</h3></div><p class="meta">${p.invitados_pendientes.length} invitado(s) pendiente(s) por un total de $${p.total_invitados}</p></div>`;
+  }
+
+  html += `
+    <div class="card">
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6;margin:0 0 12px">
+        📸 <b>¿Ya hiciste una transferencia al club?</b><br>
+        Sube aquí la foto de tu comprobante. Nosotros leemos el monto automáticamente y tú eliges a qué deuda aplicarlo — sin necesidad de escribir a nadie por WhatsApp.
+      </p>
+      <button class="primary block" onclick="abrirSubirComprobante()">📤 Subir comprobante de pago</button>
+    </div>
+    <button class="block" onclick="verMisUltimosPagos()">🧾 Ver mis últimos pagos</button>
+  `;
+  cont.innerHTML = html;
+}
+
+async function verMisUltimosPagos(){
+  const pagos = await apiJug('ver_mis_ultimos_pagos_jugador');
+  if(pagos===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Mis últimos pagos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px">Últimos ${pagos.length} pago(s), del más reciente al más antiguo.</p>
+    ${pagos.length===0 ? '<p style="color:var(--chalk-dim)">Aún no tienes pagos registrados.</p>' : pagos.map(p=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${esc(p.motivo)}</div>
+          <div class="fl-label">${fechaCorta(p.fecha)}</div>
+        </div>
+        <div class="fl-value" style="color:var(--gold)">$${p.monto}</div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
+}
+
+let pagoState = { pagoId: null, montoDisponible: 0, origenSaldoFavor: false, montoOriginal: 0 };
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const maxDim = 1280;
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.65).split(',')[1]);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function abrirSubirComprobante(){
+  const html = `
+    <div class="sheet-head"><h2>Subir comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">
+      <b>Paso 1 de 3.</b> Toma una foto clara de tu comprobante de transferencia (o elige una foto que ya tengas guardada en tu celular).<br><br>
+      El sistema va a leer el monto y los datos automáticamente. En el siguiente paso podrás revisar y corregir esa información antes de continuar.
+    </p>
+    <label>Foto del comprobante</label>
+    <input type="file" id="comprobanteFile" accept="image/*">
+    <button class="primary block" style="margin-top:16px" onclick="analizarComprobante()">Analizar comprobante</button>
+    <div id="comprobanteLoading" style="display:none;text-align:center;margin-top:16px">
+      <div class="spinner"></div>
+      <p style="color:var(--chalk-dim);font-size:13px">Leyendo tu comprobante, un momento...</p>
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+async function analizarComprobante(){
+  const input = document.getElementById('comprobanteFile');
+  if(!input.files || !input.files[0]){ toast('Primero elige o toma una foto', true); return; }
+  document.getElementById('comprobanteLoading').style.display = 'block';
+  let base64;
+  try{ base64 = await fileToBase64(input.files[0]); }
+  catch(e){ toast('No se pudo leer la foto, intenta de nuevo', true); document.getElementById('comprobanteLoading').style.display='none'; return; }
+  const res = await apiJug('analizar_comprobante_jugador', { imagenBase64: base64 });
+  document.getElementById('comprobanteLoading').style.display = 'none';
+  if(res===null) return;
+  if(res.duplicado){
+    toast('Este comprobante ya había sido usado antes', true);
+    return;
+  }
+  mostrarConfirmarComprobante(res);
+}
+
+function mostrarConfirmarComprobante(datos){
+  const avisoNoDetectado = !datos.esComprobante ? `
+    <div class="alert-card">⚠️ No pudimos leer esta foto como un comprobante de pago válido. Vuelve atrás y sube una foto más clara, o contacta al administrador del club si el problema sigue.</div>
+  ` : '';
+  const html = `
+    <div class="sheet-head"><h2>Confirma los datos</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${avisoNoDetectado}
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6"><b>Paso 2 de 3.</b> Esto es lo que leímos automáticamente de tu comprobante. Si algo no coincide con tu pago real, toca "Tomar otra foto" — por seguridad, estos datos no se pueden editar manualmente.</p>
+    <label>Monto pagado (en dólares)</label>
+    <input id="confMonto" type="number" step="0.01" inputmode="decimal" value="${datos.monto || ''}" readonly style="opacity:.75">
+    <label>Banco</label>
+    <input id="confBanco" value="${esc(datos.banco || '')}" readonly style="opacity:.75">
+    <label>Número de comprobante</label>
+    <input id="confNumero" value="${esc(datos.numeroComprobante || '')}" readonly style="opacity:.75">
+    <label>Fecha de la transferencia</label>
+    <input id="confFecha" value="${esc(datos.fechaComprobante || '')}" readonly style="opacity:.75">
+    <button class="primary block" style="margin-top:18px" onclick="confirmarYRegistrarPago()">Confirmar y continuar</button>
+    <button class="block" style="margin-top:8px" onclick="abrirSubirComprobante()">📸 Tomar otra foto</button>
+  `;
+  abrirSheet(html);
+}
+
+async function confirmarYRegistrarPago(){
+  const monto = parseFloat(document.getElementById('confMonto').value);
+  const banco = document.getElementById('confBanco').value.trim();
+  const numeroComprobante = document.getElementById('confNumero').value.trim();
+  const fecha = document.getElementById('confFecha').value.trim();
+  if(!monto || monto<=0){ toast('Escribe un monto válido', true); return; }
+  if(!numeroComprobante){ toast('Falta el número de comprobante', true); return; }
+  if(!fecha){ toast('Falta la fecha de la transferencia', true); return; }
+  const res = await apiJug('registrar_pago_comprobante_jugador', { monto, banco, numeroComprobante, fecha });
+  if(res===null) return;
+  pagoState = { pagoId: res.pagoId, montoDisponible: Number(res.monto), origenSaldoFavor: false, montoOriginal: Number(res.monto) };
+  await abrirDistribuirPago();
+}
+
+async function abrirUsarSaldoFavor(){
+  const d = await apiJug('ver_pendientes_pago_jugador');
+  if(d===null) return;
+  if(!d.saldoAFavor || d.saldoAFavor<=0){ toast('No tienes saldo a favor disponible', true); return; }
+  pagoState = { pagoId: null, montoDisponible: Number(d.saldoAFavor), origenSaldoFavor: true };
+  mostrarDistribucion(d.pendientes);
+}
+
+async function abrirDistribuirPago(){
+  const d = await apiJug('ver_pendientes_pago_jugador');
+  if(d===null) return;
+  mostrarDistribucion(d.pendientes);
+}
+
+function mostrarDistribucion(p){
+  const filas = [];
+  if(p.deuda_mensualidad > 0){
+    const etiqueta = p.meses_atraso > 0 ? p.meses_atraso+' mes(es) atrasado(s)' : 'mes actual';
+    filas.push({tipo:'mensualidad', label:'Mensualidad ('+etiqueta+')', monto:p.deuda_mensualidad});
+  }
+  if((p.invitados_pendientes||[]).length > 0){
+    filas.push({tipo:'invitado', label:'🎟️ Invitados pendientes ('+p.invitados_pendientes.length+')', monto:p.total_invitados});
+  }
+  if((p.multas_propias||[]).length > 0){
+    filas.push({tipo:'multas_propias', label:'⚠️ Multas propias ('+p.multas_propias.length+')', monto:p.total_multas_propias});
+  }
+  if((p.multas_invitados||[]).length > 0){
+    filas.push({tipo:'multas_invitados', label:'⚠️ Multas por invitados ('+p.multas_invitados.length+')', monto:p.total_multas_invitados});
+  }
+  (p.partidos_especiales||[]).forEach(pe=>{
+    filas.push({tipo:'partido_especial', label:'Partido especial: '+esc(pe.alias||''), monto:pe.monto, partidoId:pe.partido_id, conceptoMonto:pe.monto});
+  });
+
+  const html = `
+    <div class="sheet-head"><h2>¿A qué lo aplicamos?</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-4px"><b>Paso 3 de 3.</b> Elige un concepto para tu pago.</p>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">TIENES DISPONIBLE PARA PAGAR</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:32px;color:var(--gold);font-weight:700">$${pagoState.montoDisponible.toFixed(2)}</div>
+    </div>
+    <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">👉 <b>Toca el concepto</b> al que quieres aplicar este dinero. Si sobra algo después, te preguntaremos qué hacer con el resto — no se pierde nada, siempre queda guardado a tu nombre.</p>
+    ${filas.length===0 ? '<div class="ok-card">✓ No tienes deudas pendientes en este momento. Este monto se guardará como saldo a favor.</div>' : filas.map((f)=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${f.label}</div>
+          <div class="fl-label">Debes: $${f.monto}</div>
+        </div>
+        <button class="sm primary" onclick='aplicarPagoConcepto(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Aplicar aquí</button>
+      </div>
+    `).join('')}
+    ${filas.length===0 ? `<button class="primary block" style="margin-top:12px" onclick="guardarComoSaldoFavor(${pagoState.montoDisponible})">Guardar como saldo a favor</button>` : ''}
+  `;
+  abrirSheet(html);
+}
+
+async function aplicarPagoConcepto(f){
+  const montoAAplicar = Math.min(pagoState.montoDisponible, Number(f.monto));
+  const sobranteFrontend = pagoState.montoDisponible - montoAAplicar;
+  const body = {
+    tipoConcepto: f.tipo,
+    monto: montoAAplicar,
+    origenSaldoFavor: pagoState.origenSaldoFavor,
+    pagoId: pagoState.pagoId,
+    partidoId: f.partidoId,
+    conceptoMonto: f.conceptoMonto,
+  };
+  const res = await apiJug('aplicar_pago_jugador', body);
+  if(res===null) return;
+  if(res.pagoId) pagoState.pagoId = res.pagoId;
+  pagoState.origenSaldoFavor = false;
+  res.restante = sobranteFrontend + Number(res.restante || 0);
+  mostrarResultadoPago(res);
+}
+
+function mostrarResultadoPago(res){
+  const restante = Number(res.restante || 0);
+  const botonCompartir = pagoState.montoOriginal > 0 ? `
+    <button class="block" style="margin-top:8px" onclick="compartirComprobanteGrupo()">📤 Avisar al grupo de WhatsApp</button>
+  ` : '';
+  let html = `
+    <div class="sheet-head"><h2>Resultado de tu pago</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="ok-card">✓ ${esc(res.mensaje)}</div>
+  `;
+  if(restante > 0.009){
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;line-height:1.6">Todavía te quedan <b>$${restante.toFixed(2)}</b> de este pago sin usar. Elige qué quieres hacer con ese dinero:</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+        <button class="block primary" onclick="continuarConRestante(${restante})">Aplicarlo a otra deuda ahora mismo</button>
+        <button class="block" onclick="guardarComoSaldoFavor(${restante})">Guardarlo como saldo a favor para más adelante</button>
+      </div>
+      ${botonCompartir}
+    `;
+  } else {
+    html += `
+      <p style="color:var(--chalk-dim);font-size:14px;text-align:center;margin-top:8px">Tu pago quedó aplicado por completo. ¡Gracias!</p>
+      ${botonCompartir}
+      <button class="primary block" style="margin-top:8px" onclick="cerrarSheet(); cambiarPantalla('mi_cuenta_jugador');">Listo</button>
+    `;
+  }
+  abrirSheet(html);
+}
+
+function compartirComprobanteGrupo(){
+  const nombre = (PERFIL && PERFIL.nombres) ? PERFIL.nombres.split(' ')[0] : '';
+  const texto = `✅ Hola, soy ${nombre}. Envié mi comprobante de pago por $${pagoState.montoOriginal.toFixed(2)} — ya quedó registrado y aplicado en la app del club.`;
+  const url = 'https://wa.me/?text=' + encodeURIComponent(texto);
+  window.open(url, '_blank');
+}
+
+async function continuarConRestante(restante){
+  pagoState.montoDisponible = restante;
+  await abrirDistribuirPago();
+}
+
+async function guardarComoSaldoFavor(restante){
+  const res = await apiJug('guardar_restante_saldo_favor_jugador', { pagoId: pagoState.pagoId, monto: restante });
+  if(res===null) return;
+  toast('Guardado como saldo a favor');
+  cerrarSheet();
+  cambiarPantalla('mi_cuenta_jugador');
+}
+
+async function verDocumento(slug, filename){
+  const res = await apiJug('ver_documento_jugador', { slug });
+  if(res===null) return;
+  if(!res.contenido_base64){ toast('Documento no disponible', true); return; }
+  try{
+    const byteChars = atob(res.contenido_base64);
+    const byteNumbers = new Array(byteChars.length);
+    for(let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.filename || filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 3000);
+  }catch(e){
+    toast('No se pudo abrir el documento', true);
+  }
+}
+
+async function cargarPantallaEventosJug(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await apiJug('listar_mis_eventos_jugador');
+  if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  if(data.length===0){
+    cont.innerHTML = '<div class="empty"><span class="ic">🎒</span>Todavía no estás inscrito en ningún evento.</div>';
+    return;
+  }
+  cont.innerHTML = data.map(e=>`
+    <div class="card">
+      <div class="card-title">
+        <h3>${esc(e.nombre)}</h3>
+        <span class="badge ${e.estado==='activo' ? 'confirmando' : (e.estado==='finalizado' ? 'finalizado' : 'cancelado')}">${esc(e.estado)}</span>
+      </div>
+      <div class="meta">
+        📍 ${esc(e.lugar||'—')}<br>
+        📅 ${e.fecha_inicio ? fechaCorta(e.fecha_inicio) : '—'} ${e.fecha_fin ? '→ '+fechaCorta(e.fecha_fin) : ''}<br>
+        Tu cuota: $${e.montoCuota} · Pagado: $${e.montoPagado} ${Number(e.montoPagado)>=Number(e.montoCuota) ? '✓' : ''}
+      </div>
+      <button class="sm primary" onclick="abrirDetalleEventoJugador(${e.id})">Ver detalle</button>
+    </div>
+  `).join('');
+}
+
+async function abrirDetalleEventoJugador(eventoId){
+  eventoJugActualId = eventoId;
+  eventoJugSubtabActual = 'resumen';
+  const data = await apiJug('ver_evento_publico_jugador', {eventoId});
+  if(data===null) return;
+  eventoJugActualData = data;
+  mostrarDetalleEventoJugador();
+}
+
+function nombreFechaJug(fechaId){
+  if(!fechaId) return 'General';
+  const f = eventoJugActualData.fechas.find(x=>x.id===fechaId);
+  return f ? (f.descripcion || fechaCorta(f.fecha)) : 'General';
+}
+
+function mostrarDetalleEventoJugador(){
+  const data = eventoJugActualData;
+  const e = data.evento;
+  const cont = document.getElementById('pantallasContainer');
+
+  const subtabs = [
+    {key:'resumen', label:'📊 Resumen'},
+    {key:'fechas', label:'📅 Fechas'},
+    {key:'estadisticas', label:'🏆 Estadísticas'},
+    {key:'movimientos', label:'🧾 Movimientos'},
+  ];
+
+  cont.innerHTML = `
+    <button class="sm" style="margin-bottom:10px" onclick="cambiarPantalla('eventos_jugador')">← Volver a mis eventos</button>
+    <div class="card">
+      <div class="card-title">
+        <h3>${esc(e.nombre)}</h3>
+        <span class="badge ${e.estado==='activo' ? 'confirmando' : (e.estado==='finalizado' ? 'finalizado' : 'cancelado')}">${esc(e.estado)}</span>
+      </div>
+      <div class="meta">📍 ${esc(e.lugar||'—')} ${e.fecha_inicio ? '· 📅 '+fechaCorta(e.fecha_inicio) : ''} ${e.fecha_fin ? '→ '+fechaCorta(e.fecha_fin) : ''}</div>
+    </div>
+    <div class="row-actions tabbar-scroll" id="eventoJugSubtabBar" style="margin:14px 0">
+      ${subtabs.map(s=>`<button class="sm ${eventoJugSubtabActual===s.key?'primary':''}" onclick="cambiarSubtabEventoJugador('${s.key}')">${s.label}</button>`).join('')}
+    </div>
+    <div id="eventoJugSubtabContent"></div>
+  `;
+  renderSubtabEventoJugadorActual();
+}
+
+function cambiarSubtabEventoJugador(sub){
+  eventoJugSubtabActual = sub;
+  const keys = ['resumen','fechas','estadisticas','movimientos'];
+  document.querySelectorAll('#eventoJugSubtabBar button').forEach((btn,i)=>btn.classList.toggle('primary', keys[i]===sub));
+  renderSubtabEventoJugadorActual();
+}
+
+function renderSubtabEventoJugadorActual(){
+  if(eventoJugSubtabActual==='resumen') document.getElementById('eventoJugSubtabContent').innerHTML = renderResumenEventoJugador();
+  if(eventoJugSubtabActual==='fechas') document.getElementById('eventoJugSubtabContent').innerHTML = renderFechasEventoJugador();
+  if(eventoJugSubtabActual==='estadisticas') document.getElementById('eventoJugSubtabContent').innerHTML = renderEstadisticasEventoJugador();
+  if(eventoJugSubtabActual==='movimientos') cargarMovimientosEventoJugador();
+}
+
+function renderResumenEventoJugador(){
+  const d = eventoJugActualData;
+  const pendiente = d.miCuota!==null ? Math.max(d.miCuota - d.miPagado, 0) : null;
+  return `
+    <div class="card">
+      <div class="card-title"><h3>Tu cuota</h3></div>
+      ${d.miCuota===null ? '<p style="color:var(--chalk-dim);font-size:13px">No tienes una cuota asignada en este evento.</p>' : `
+        <div class="field-line"><div class="fl-label">Cuota</div><div class="fl-value">$${d.miCuota.toFixed(2)}</div></div>
+        <div class="field-line"><div class="fl-label">Pagado</div><div class="fl-value" style="color:var(--green-ok)">$${d.miPagado.toFixed(2)}</div></div>
+        <div class="field-line"><div class="fl-label">Pendiente</div><div class="fl-value" style="color:${pendiente>0?'var(--red)':'var(--green-ok)'}">$${pendiente.toFixed(2)} ${pendiente===0?'✓':''}</div></div>
+      `}
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Financiero general del evento</h3></div>
+      <div class="field-line"><div class="fl-label">Total recaudado (todas las cuotas)</div><div class="fl-value" style="color:var(--green-ok)">$${d.totalRecaudado.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Total esperado (todas las cuotas)</div><div class="fl-value">$${d.totalEsperadoCuotas.toFixed(2)}</div></div>
+    </div>
+    ${d.gastosPorRubro.length>0 ? `
+    <div class="card">
+      <div class="card-title"><h3>Gastos por rubro</h3></div>
+      ${d.gastosPorRubro.map(g=>`
+        <div class="field-line"><div class="fl-label">${esc(g.rubro)}</div><div class="fl-value">$${g.gastado} ${g.proyectado>0 ? '<span style="color:var(--chalk-dim);font-size:12px"> / $'+g.proyectado+' proyectado</span>' : ''}</div></div>
+      `).join('')}
+    </div>` : ''}
+  `;
+}
+
+function renderPartidoEventoLinea(p){
+  return `
+    <div class="field-line" style="cursor:pointer" onclick="verEstadisticasPartidoJugador(${p.id})">
+      <div>
+        <div class="fl-value">${esc(p.alias || 'Partido')} ${p.estado==='finalizado' ? '<span class="badge finalizado">Finalizado</span>' : ''}</div>
+        <div class="fl-label">${fechaCorta(p.fecha)} ${p.hora ? '· '+p.hora.slice(0,5) : ''} · 📍 ${esc(p.lugar||'—')}</div>
+      </div>
+      ${p.tieneEstadisticas ? '<span style="font-size:18px">📊</span>' : ''}
+    </div>
+  `;
+}
+
+function renderFechasEventoJugador(){
+  const fechas = eventoJugActualData.fechas;
+  const partidos = eventoJugActualData.partidos || [];
+  const generales = partidos.filter(p=>!p.eventoFechaId);
+  let html = '';
+  if(fechas.length===0){
+    html += '<p style="color:var(--chalk-dim);font-size:13px">Este evento es de una sola fecha/sede.</p>';
+  } else {
+    html += fechas.map(f=>{
+      const partidosDeFecha = partidos.filter(p=>p.eventoFechaId===f.id);
+      return `
+        <div class="card">
+          <div class="fl-value">${esc(f.descripcion || fechaCorta(f.fecha))}</div>
+          <div class="fl-label" style="margin-bottom:8px">${fechaCorta(f.fecha)} · 📍 ${esc(f.lugar||'—')}</div>
+          ${partidosDeFecha.length===0 ? '<p style="color:var(--chalk-dim);font-size:12px">Sin partidos vinculados.</p>' : partidosDeFecha.map(renderPartidoEventoLinea).join('')}
+        </div>
+      `;
+    }).join('');
+  }
+  if(generales.length>0){
+    html += `<div class="card"><div class="fl-value" style="margin-bottom:8px">Partidos generales del evento</div>${generales.map(renderPartidoEventoLinea).join('')}</div>`;
+  }
+  return html || '<p style="color:var(--chalk-dim);font-size:13px">Sin partidos vinculados a este evento todavía.</p>';
+}
+
+function renderEstadisticasEventoJugador(){
+  const d = eventoJugActualData;
+  const stats = d.estadisticasEvento || [];
+  const partidosConfirmados = stats.length>0 ? stats[0].partidosConfirmados : 0;
+  if(stats.length===0){
+    return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas disponibles para este evento.</p>';
+  }
+  return `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Basado en ${partidosConfirmados} partido(s) confirmado(s) por ti dentro de este evento.</p>
+    <div class="card">
+      <div class="card-title"><h3>Tus totales en el evento</h3></div>
+      ${stats.map(s=>`
+        <div class="field-line">
+          <div class="fl-label">${esc(s.nombre)}</div>
+          <div class="fl-value">${s.total} <span style="color:var(--chalk-dim);font-size:12px">(prom. ${Number(s.promedio).toFixed(2)}/partido)</span></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function cargarMovimientosEventoJugador(){
+  const cont = document.getElementById('eventoJugSubtabContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+  const movs = await apiJug('ver_movimientos_evento_jugador', {eventoId: eventoJugActualId});
+  if(movs===null) return;
+  if(movs.length===0){ cont.innerHTML = '<p style="color:var(--chalk-dim);font-size:14px">Sin movimientos registrados todavía.</p>'; return; }
+  cont.innerHTML = movs.map(m=>`
+    <div class="field-line">
+      <div>
+        <div class="fl-value">${esc(m.tipoMovimiento)} ${m.jugador ? '— '+esc(m.jugador) : ''}</div>
+        <div class="fl-label">${fechaCorta(m.fecha)} · ${esc(nombreFechaJug(m.eventoFechaId))} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="fl-value" style="color:${m.tipo==='ingreso' ? 'var(--green-ok)' : 'var(--red)'}">${m.tipo==='ingreso'?'+':'-'}$${m.monto}</div>
+        ${m.tieneComprobante ? `<button class="sm" onclick="verComprobanteMovimientoJugador(${m.id})">📷</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function verComprobanteMovimientoJugador(movimientoId){
+  const res = await apiJug('ver_comprobante_movimiento_jugador', {movimientoId});
+  if(res===null) return;
+  if(!res.comprobante_base64){ toast('No hay foto para este movimiento', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>Comprobante</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <img src="data:image/jpeg;base64,${res.comprobante_base64}" style="width:100%;border-radius:12px">
+  `;
+  abrirSheet(html);
+}
+
+async function eliminarExentoJugador(exentoId){
+  if(!confirm('¿Quitar a esta persona de tu lista de exentos?')) return;
+  const res = await apiJug('eliminar_exento_jugador', { exentoId });
+  if(res===null) return;
+  toast(res.eliminadoCompleto ? 'Eliminado' : 'Quitado de tu lista');
+  const data = await apiJug('listar_mis_exentos_jugador');
+  if(data===null) return;
+  mostrarMisExentos(data);
+}
+
+async function agregarExentoJugador(){
+  const nombres = document.getElementById('exentoNombres').value.trim();
+  const apellidos = document.getElementById('exentoApellidos').value.trim();
+  const tipoRelacionId = parseInt(document.getElementById('exentoTipoRelacion').value);
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  const res = await apiJug('agregar_exento_jugador', { nombres, apellidos, tipoRelacionId });
+  if(res===null) return;
+  toast('Enviado. El club debe aprobarlo antes de poder usarlo.');
+  const data = await apiJug('listar_mis_exentos_jugador');
+  if(data===null) return;
+  mostrarMisExentos(data);
 }
 
 </script>
