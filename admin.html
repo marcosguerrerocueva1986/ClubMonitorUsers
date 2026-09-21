@@ -1282,6 +1282,8 @@ function abrirEditarJugador(j){
     <input id="editNombres" value="${esc(j.nombres)}">
     <label>Apellidos</label>
     <input id="editApellidos" value="${esc(j.apellidos)}">
+    <label>Alias (nombre corto de camiseta)</label>
+    <input id="editAlias" value="${esc(j.alias || '')}" placeholder="Ej: PEPE">
     <label>Cédula</label>
     <input id="editCedula" value="${esc(j.cedula || '')}">
     <label>Correo</label>
@@ -1315,6 +1317,7 @@ async function guardarEditarJugador(id){
     id,
     nombres: document.getElementById('editNombres').value.trim(),
     apellidos: document.getElementById('editApellidos').value.trim(),
+    alias: document.getElementById('editAlias').value.trim(),
     cedula: document.getElementById('editCedula').value.trim(),
     correo: document.getElementById('editCorreo').value.trim(),
     telefono: document.getElementById('editTelefono').value.trim(),
