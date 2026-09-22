@@ -244,6 +244,32 @@ function fileToBase64(file){
     reader.readAsDataURL(file);
   });
 }
+
+// Version minima -- para comprobantes que solo son respaldo (no se
+// necesita calidad de foto, solo que los numeros se puedan leer si
+// hace falta revisar despues).
+function fileToBase64Minimo(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const maxDim = 640;
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.4).split(',')[1]);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 function abrirSheet(html){
   cerrarSheet();
   const overlay = document.createElement('div');
@@ -514,6 +540,8 @@ function cambiarPantalla(clave){
     'dashboard_financiero': cargarPantallaDashboardFinanciero,
     'movimientos_financiero': cargarPantallaMovimientosFinanciero,
     'rubros_financiero': cargarPantallaRubrosFinanciero,
+    'horario_entrenador': cargarPantallaHorarioEntrenador,
+    'calendario_entrenador': cargarPantallaCalendarioEntrenador,
   };
   const fn = renderizadores[clave];
   if(fn) fn(cont);
@@ -2897,6 +2925,8 @@ async function abrirRegistrarPagoMensualidadFin(jugadorId, nombre){
     <input id="pagoMensMontoFin" type="number" step="0.01" placeholder="0.00">
     <label>Fecha</label>
     <input id="pagoMensFechaFin" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <label>Comprobante (foto, opcional)</label>
+    <input id="pagoMensComprobanteFin" type="file" accept="image/*" capture="environment">
     <button class="primary block" style="margin-top:12px" onclick="guardarPagoMensualidadFin(${jugadorId}, ${rubroMensualidad.id}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">Guardar</button>
   `;
   abrirSheet(html);
@@ -2905,8 +2935,14 @@ async function abrirRegistrarPagoMensualidadFin(jugadorId, nombre){
 async function guardarPagoMensualidadFin(jugadorId, rubroId, nombre){
   const monto = parseFloat(document.getElementById('pagoMensMontoFin').value);
   const fecha = document.getElementById('pagoMensFechaFin').value;
+  const archivo = document.getElementById('pagoMensComprobanteFin').files[0];
   if(isNaN(monto) || monto<=0){ toast('Escribe un monto válido', true); return; }
-  const res = await apiFin('registrar_movimiento_club_financiero', {rubroId, jugadorId, monto, fecha});
+  let comprobanteBase64 = null;
+  if(archivo){
+    try{ comprobanteBase64 = await fileToBase64Minimo(archivo); }
+    catch(e){ toast('No se pudo procesar la imagen', true); return; }
+  }
+  const res = await apiFin('registrar_movimiento_club_financiero', {rubroId, jugadorId, monto, fecha, comprobanteBase64});
   if(res===null) return;
   toast('Pago registrado');
   abrirDetalleMensualidadFin(jugadorId, nombre);
@@ -2962,6 +2998,8 @@ async function abrirRegistrarMovimientoFin(rubros){
     <input id="movFinPeriodo" placeholder="Ej: 2026-09">
     <label>Descripción (opcional)</label>
     <input id="movFinDescripcion" placeholder="Ej: Pago en efectivo">
+    <label>Comprobante (foto, opcional)</label>
+    <input id="movFinComprobante" type="file" accept="image/*" capture="environment">
     <button class="primary block" style="margin-top:12px" onclick="guardarMovimientoFin()">Guardar</button>
   `;
   abrirSheet(html);
@@ -2994,8 +3032,14 @@ async function guardarMovimientoFin(){
   const fecha = document.getElementById('movFinFecha').value;
   const periodo = document.getElementById('movFinPeriodo').value.trim();
   const descripcion = document.getElementById('movFinDescripcion').value.trim();
+  const archivo = document.getElementById('movFinComprobante').files[0];
   if(isNaN(monto) || monto<=0){ toast('Escribe un monto válido', true); return; }
-  const res = await apiFin('registrar_movimiento_club_financiero', {rubroId, jugadorId, monto, fecha, periodo, descripcion});
+  let comprobanteBase64 = null;
+  if(archivo){
+    try{ comprobanteBase64 = await fileToBase64Minimo(archivo); }
+    catch(e){ toast('No se pudo procesar la imagen', true); return; }
+  }
+  const res = await apiFin('registrar_movimiento_club_financiero', {rubroId, jugadorId, monto, fecha, periodo, descripcion, comprobanteBase64});
   if(res===null) return;
   toast('Movimiento registrado');
   cerrarSheet();
@@ -3073,6 +3117,124 @@ async function toggleRubroFinAccion(rubroId, activo){
   const res = await apiFin('toggle_rubro_club_financiero', {rubroId, activo});
   if(res===null) return;
   cambiarPantalla('rubros_financiero');
+}
+
+
+/* ---------- Entrenador: Horario semanal y Calendario ---------- */
+const DIAS_SEMANA_ENT = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DIAS_CORTO_ENT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+let DIA_SELECCIONADO_HORARIO = new Date().getDay();
+
+async function cargarPantallaHorarioEntrenador(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await apiEnt('listar_horario_semanal_entrenador');
+  if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  window._horarioEntData = data;
+  renderPantallaHorarioEntrenador(cont);
+}
+
+function renderPantallaHorarioEntrenador(cont){
+  const data = window._horarioEntData;
+  const horariosDelDia = data.horarios.filter(h=>h.diaSemana===DIA_SELECCIONADO_HORARIO);
+  cont.innerHTML = `
+    <div class="row-actions tabbar-scroll" style="margin-bottom:10px">
+      ${DIAS_CORTO_ENT.map((d,i)=>`<button class="sm ${i===DIA_SELECCIONADO_HORARIO?'primary':''}" onclick="seleccionarDiaHorarioEnt(${i})">${d}</button>`).join('')}
+    </div>
+    ${horariosDelDia.length===0 ? '<div class="empty"><span class="ic">📅</span>Sin entrenamientos programados este día.</div>' : horariosDelDia.map(h=>{
+      const asis = data.asistencias[h.grupoId];
+      return `
+        <div class="card">
+          <div class="card-title"><h3>${esc(h.grupoNombre)}</h3></div>
+          <div class="meta">🕐 ${h.horaInicio ? h.horaInicio.slice(0,5) : ''}${h.horaFin ? ' - '+h.horaFin.slice(0,5) : ''} · 📍 ${esc(h.lugar||'—')}</div>
+          ${asis ? `<div class="ok-card" style="margin-top:8px">Última sesión (${fechaCorta(asis.fecha)}): ${asis.asistieron}/${asis.total} asistieron</div>` : '<p style="color:var(--chalk-dim);font-size:12px;margin-top:8px">Sin sesiones registradas todavía.</p>'}
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+function seleccionarDiaHorarioEnt(dia){
+  DIA_SELECCIONADO_HORARIO = dia;
+  renderPantallaHorarioEntrenador(document.getElementById('pantallasContainer'));
+}
+
+/* ---------- Calendario ---------- */
+let CALENDARIO_ENT_ANIO = new Date().getFullYear();
+let CALENDARIO_ENT_MES = new Date().getMonth() + 1; // 1-12
+let CALENDARIO_ENT_DIA_SEL = null;
+
+async function cargarPantallaCalendarioEntrenador(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  await cargarMesCalendarioEnt(cont);
+}
+
+async function cargarMesCalendarioEnt(cont){
+  const data = await apiEnt('listar_calendario_mes_entrenador', {anio: CALENDARIO_ENT_ANIO, mes: CALENDARIO_ENT_MES});
+  if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  window._calendarioEntData = data;
+  CALENDARIO_ENT_DIA_SEL = null;
+  renderCalendarioEntrenador(cont);
+}
+
+function renderCalendarioEntrenador(cont){
+  const data = window._calendarioEntData;
+  const diasConActividad = new Set();
+  data.sesiones.forEach(s=>diasConActividad.add(new Date(s.fecha).getUTCDate()));
+  data.partidos.forEach(p=>diasConActividad.add(new Date(p.fecha).getUTCDate()));
+
+  const primerDia = new Date(Date.UTC(CALENDARIO_ENT_ANIO, CALENDARIO_ENT_MES-1, 1));
+  const diasEnMes = new Date(Date.UTC(CALENDARIO_ENT_ANIO, CALENDARIO_ENT_MES, 0)).getUTCDate();
+  const offsetInicio = primerDia.getUTCDay();
+  const nombreMes = primerDia.toLocaleDateString('es-EC', {month:'long', year:'numeric', timeZone:'UTC'});
+
+  let celdas = '';
+  for(let i=0;i<offsetInicio;i++) celdas += '<div></div>';
+  for(let d=1; d<=diasEnMes; d++){
+    const activo = diasConActividad.has(d);
+    const seleccionado = d===CALENDARIO_ENT_DIA_SEL;
+    celdas += `<div onclick="seleccionarDiaCalendarioEnt(${d})" style="text-align:center;padding:8px 2px;border-radius:8px;cursor:pointer;${seleccionado?'background:var(--gold);color:#000;font-weight:700;':''}">
+      ${d}${activo && !seleccionado ? '<div style="width:5px;height:5px;border-radius:50%;background:var(--gold);margin:2px auto 0"></div>' : ''}
+    </div>`;
+  }
+
+  cont.innerHTML = `
+    <div class="row-actions" style="justify-content:space-between;margin-bottom:10px">
+      <button class="sm" onclick="cambiarMesCalendarioEnt(-1)">← </button>
+      <div style="font-weight:700;text-transform:capitalize">${nombreMes}</div>
+      <button class="sm" onclick="cambiarMesCalendarioEnt(1)">→</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:13px">
+      ${DIAS_CORTO_ENT.map(d=>`<div style="text-align:center;color:var(--chalk-dim);font-size:11px">${d}</div>`).join('')}
+      ${celdas}
+    </div>
+    <div id="calendarioEntDetalle" style="margin-top:14px">${renderDetalleDiaCalendarioEnt()}</div>
+  `;
+}
+
+function renderDetalleDiaCalendarioEnt(){
+  if(!CALENDARIO_ENT_DIA_SEL) return '<p style="color:var(--chalk-dim);font-size:13px">Toca un día con punto para ver el detalle.</p>';
+  const data = window._calendarioEntData;
+  const sesionesDia = data.sesiones.filter(s=>new Date(s.fecha).getUTCDate()===CALENDARIO_ENT_DIA_SEL);
+  const partidosDia = data.partidos.filter(p=>new Date(p.fecha).getUTCDate()===CALENDARIO_ENT_DIA_SEL);
+  if(sesionesDia.length===0 && partidosDia.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Sin actividad este día.</p>';
+  return `
+    <div class="card">
+      ${sesionesDia.map(s=>`<div class="field-line"><div class="fl-value">🏋️ ${esc(s.grupo)}</div><div class="fl-label">${esc(s.detalle||'Entrenamiento')}</div></div>`).join('')}
+      ${partidosDia.map(p=>`<div class="field-line"><div class="fl-value">⚽ ${esc(p.alias||'Partido')}</div><div class="fl-label">${p.hora?p.hora.slice(0,5)+' · ':''}📍 ${esc(p.detalle||'—')}</div></div>`).join('')}
+    </div>
+  `;
+}
+
+function seleccionarDiaCalendarioEnt(dia){
+  CALENDARIO_ENT_DIA_SEL = dia;
+  renderCalendarioEntrenador(document.getElementById('pantallasContainer'));
+}
+
+function cambiarMesCalendarioEnt(delta){
+  CALENDARIO_ENT_MES += delta;
+  if(CALENDARIO_ENT_MES > 12){ CALENDARIO_ENT_MES = 1; CALENDARIO_ENT_ANIO++; }
+  if(CALENDARIO_ENT_MES < 1){ CALENDARIO_ENT_MES = 12; CALENDARIO_ENT_ANIO--; }
+  cargarMesCalendarioEnt(document.getElementById('pantallasContainer'));
 }
 
 </script>

@@ -361,6 +361,71 @@ async function obtenerIndicadoresGenerales(pool) {
   };
 }
 
+    // Devuelve los grupos que este entrenador puede ver -- todos si es
+// director, solo los suyos si no.
+async function obtenerGruposVisibles(pool, entrenadorId) {
+  const rolR = await pool.query(`SELECT rol FROM sport_control.entrenadores WHERE id = $1`, [entrenadorId]);
+  const esDirector = rolR.rows[0] && rolR.rows[0].rol === 'director';
+  const grupos = esDirector
+    ? await pool.query(`SELECT id FROM sport_control.grupos WHERE activo = true`)
+    : await pool.query(`SELECT grupo_id AS id FROM sport_control.entrenador_grupo WHERE entrenador_id = $1`, [entrenadorId]);
+  return grupos.rows.map(g => g.id);
+}
+
+async function listarHorarioSemanal(pool, entrenadorId) {
+  const grupoIds = await obtenerGruposVisibles(pool, entrenadorId);
+  if (grupoIds.length === 0) return { success: true, data: { horarios: [], asistencias: {} } };
+
+  const horarios = await pool.query(
+    `SELECT h.dia_semana AS "diaSemana", h.hora_inicio AS "horaInicio", h.hora_fin AS "horaFin", h.lugar, g.id AS "grupoId", g.nombre AS "grupoNombre"
+     FROM sport_control.horarios_grupo h JOIN sport_control.grupos g ON g.id = h.grupo_id
+     WHERE h.grupo_id = ANY($1::int[]) AND h.activo = true
+     ORDER BY h.dia_semana, h.hora_inicio`,
+    [grupoIds]
+  );
+
+  const asistencias = {};
+  for (const grupoId of grupoIds) {
+    const ultima = await pool.query(
+      `SELECT id, fecha FROM sport_control.sesiones_entrenamiento WHERE grupo_id = $1 ORDER BY fecha DESC LIMIT 1`,
+      [grupoId]
+    );
+    if (ultima.rows[0]) {
+      const conteo = await pool.query(
+        `SELECT COUNT(*) FILTER (WHERE asistio) AS asistieron, COUNT(*) AS total FROM sport_control.asistencia_entrenamiento WHERE sesion_id = $1`,
+        [ultima.rows[0].id]
+      );
+      asistencias[grupoId] = { fecha: ultima.rows[0].fecha, asistieron: Number(conteo.rows[0].asistieron), total: Number(conteo.rows[0].total) };
+    }
+  }
+
+  return { success: true, data: { horarios: horarios.rows, asistencias } };
+}
+
+async function listarCalendarioMes(pool, entrenadorId, body) {
+  const { anio, mes } = body; // mes 1-12
+  const grupoIds = await obtenerGruposVisibles(pool, entrenadorId);
+  if (grupoIds.length === 0) return { success: true, data: [] };
+
+  const sesiones = await pool.query(
+    `SELECT se.fecha, g.nombre AS grupo, 'entrenamiento' AS tipo, se.rutina AS detalle, se.grupo_id AS "grupoId"
+     FROM sport_control.sesiones_entrenamiento se JOIN sport_control.grupos g ON g.id = se.grupo_id
+     WHERE se.grupo_id = ANY($1::int[]) AND EXTRACT(YEAR FROM se.fecha) = $2 AND EXTRACT(MONTH FROM se.fecha) = $3`,
+    [grupoIds, anio, mes]
+  );
+
+  const partidos = await pool.query(
+    `SELECT DISTINCT p.fecha, p.alias, 'partido' AS tipo, p.lugar AS detalle, p.hora
+     FROM sport_control.partidos p
+     JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.estado = 'confirmado'
+     JOIN sport_control.jugadores j ON j.id = cp.jugador_id
+     WHERE j.grupo_id = ANY($1::int[]) AND EXTRACT(YEAR FROM p.fecha) = $2 AND EXTRACT(MONTH FROM p.fecha) = $3`,
+    [grupoIds, anio, mes]
+  );
+
+  return { success: true, data: { sesiones: sesiones.rows, partidos: partidos.rows } };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
   const body = req.body || {};
@@ -404,7 +469,9 @@ module.exports = async (req, res) => {
     if (accion === 'listar_partidos_grupo_entrenador') return res.status(200).json(await listarPartidosGrupo(pool, body));
     if (accion === 'ver_detalle_partido_stats_entrenador') return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
     if (accion === 'ver_foto_partido_entrenador') return res.status(200).json(await verFotoPartidoAdmin(pool, body));
-    if (accion === 'obtener_indicadores_generales_entrenador') {
+    if (accion === 'listar_horario_semanal_entrenador') return res.status(200).json(await listarHorarioSemanal(pool, entrenadorId));
+    if (accion === 'listar_calendario_mes_entrenador') return res.status(200).json(await listarCalendarioMes(pool, entrenadorId, body));
+if (accion === 'obtener_indicadores_generales_entrenador') {
       const rolR = await pool.query(`SELECT rol FROM sport_control.entrenadores WHERE id = $1`, [entrenadorId]);
       if (!rolR.rows[0] || rolR.rows[0].rol !== 'director') return res.status(200).json({ success: false, error: 'Solo el rol Director puede ver esto.' });
       return res.status(200).json(await obtenerIndicadoresGenerales(pool));
