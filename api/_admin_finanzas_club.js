@@ -91,7 +91,97 @@ async function eliminarMovimientoClub(pool, body) {
   return { success: true };
 }
 
+/* ---------- Mensualidad dinamica: meses pendientes + pagos parciales ---------- */
+
+// Genera la lista de meses ('YYYY-MM') desde el inicio hasta el mes
+// actual, ambos inclusive.
+function generarMesesDesde(fechaInicio) {
+  const meses = [];
+  const inicio = new Date(fechaInicio);
+  const hoy = new Date();
+  let y = inicio.getUTCFullYear(), m = inicio.getUTCMonth();
+  const yFin = hoy.getUTCFullYear(), mFin = hoy.getUTCMonth();
+  while (y < yFin || (y === yFin && m <= mFin)) {
+    meses.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return meses;
+}
+
+// Reparte lo pagado, mes por mes, del mas antiguo hacia el mas nuevo
+// -- asi un pago parcial cubre primero la deuda mas vieja, sin que
+// quien registra el pago tenga que decir a que mes corresponde.
+async function calcularMensualidadJugador(pool, jugadorId) {
+  const cfg = await pool.query(
+    `SELECT j.fecha_inicio_mensualidad_propia AS propia, c.fecha_inicio_mensualidades AS club
+     FROM sport_control.jugadores j, sport_control.configuracion_club c
+     WHERE j.id = $1 AND c.id = 1`,
+    [jugadorId]
+  );
+  const fechaInicio = cfg.rows[0] && (cfg.rows[0].propia || cfg.rows[0].club);
+  if (!fechaInicio) return { meses: [], montoMensualidad: 0, totalPagado: 0, totalAdeudado: 0, mesesAtraso: 0 };
+
+  const rubro = await pool.query(`SELECT monto_sugerido FROM sport_control.rubros_club WHERE nombre = 'Mensualidad' LIMIT 1`);
+  const montoMensualidad = Number((rubro.rows[0] && rubro.rows[0].monto_sugerido) || 0);
+
+  const pagos = await pool.query(
+    `SELECT COALESCE(SUM(m.monto), 0) AS total FROM sport_control.movimientos_club m
+     JOIN sport_control.rubros_club rc ON rc.id = m.rubro_id
+     WHERE rc.nombre = 'Mensualidad' AND m.jugador_id = $1`,
+    [jugadorId]
+  );
+  let saldoDisponible = Number(pagos.rows[0].total);
+  const totalPagado = saldoDisponible;
+
+  const mesesLista = generarMesesDesde(fechaInicio);
+  const meses = mesesLista.map(periodo => {
+    let estado, montoPagadoMes;
+    if (saldoDisponible >= montoMensualidad) {
+      estado = 'pagado'; montoPagadoMes = montoMensualidad; saldoDisponible -= montoMensualidad;
+    } else if (saldoDisponible > 0) {
+      estado = 'parcial'; montoPagadoMes = saldoDisponible; saldoDisponible = 0;
+    } else {
+      estado = 'pendiente'; montoPagadoMes = 0;
+    }
+    return { periodo, monto: montoMensualidad, montoPagado: montoPagadoMes, estado };
+  });
+
+  const mesesAtraso = meses.filter(m => m.estado !== 'pagado').length;
+  const totalAdeudado = meses.reduce((acc, m) => acc + (m.monto - m.montoPagado), 0);
+
+  return { meses, montoMensualidad, totalPagado, totalAdeudado, mesesAtraso };
+}
+
+async function verMensualidadJugadorAdmin(pool, body) {
+  const data = await calcularMensualidadJugador(pool, body.jugadorId);
+  return { success: true, data };
+}
+
+async function dashboardMorososMensualidad(pool) {
+  const jugadores = await pool.query(`SELECT id, nombres, apellidos, telefono FROM sport_control.jugadores WHERE estado = 'activo'`);
+  const resultados = [];
+  for (const j of jugadores.rows) {
+    const calc = await calcularMensualidadJugador(pool, j.id);
+    if (calc.mesesAtraso > 0) {
+      resultados.push({ jugadorId: j.id, nombres: j.nombres, apellidos: j.apellidos, telefono: j.telefono, mesesAtraso: calc.mesesAtraso, totalAdeudado: calc.totalAdeudado });
+    }
+  }
+  resultados.sort((a, b) => b.mesesAtraso - a.mesesAtraso);
+
+  const grupos = { '1_mes': [], '2_meses': [], '3_mas': [] };
+  resultados.forEach(r => {
+    if (r.mesesAtraso === 1) grupos['1_mes'].push(r);
+    else if (r.mesesAtraso === 2) grupos['2_meses'].push(r);
+    else grupos['3_mas'].push(r);
+  });
+
+  const totalAdeudadoClub = resultados.reduce((acc, r) => acc + r.totalAdeudado, 0);
+  return { success: true, data: { grupos, totalMorosos: resultados.length, totalAdeudadoClub } };
+}
+
 module.exports = {
   listarRubros, crearRubro, editarRubro, toggleRubro,
   listarMovimientosClub, registrarMovimientoClub, eliminarMovimientoClub,
+  verMensualidadJugadorAdmin, dashboardMorososMensualidad,
 };
