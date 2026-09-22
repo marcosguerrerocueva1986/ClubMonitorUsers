@@ -10,7 +10,7 @@
 
 const bcrypt = require('bcryptjs');
 const { getPool } = require('./_db');
-const { verDetallePartidoStatsJugador, verFotoPartidoAdmin } = require('./jugador');
+const { verDetallePartidoStatsJugador, verFotoPartidoAdmin, verHistorialTorneosJugadorEntrenador } = require('./jugador');
 
 const MAX_INTENTOS = 5;
 const MINUTOS_BLOQUEO = 15;
@@ -469,6 +469,7 @@ module.exports = async (req, res) => {
     if (accion === 'listar_partidos_grupo_entrenador') return res.status(200).json(await listarPartidosGrupo(pool, body));
     if (accion === 'ver_detalle_partido_stats_entrenador') return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
     if (accion === 'ver_foto_partido_entrenador') return res.status(200).json(await verFotoPartidoAdmin(pool, body));
+    if (accion === 'ver_historial_torneos_entrenador') return res.status(200).json(await verHistorialTorneosJugadorEntrenador(pool, body.jugadorId));
     if (accion === 'listar_horario_semanal_entrenador') return res.status(200).json(await listarHorarioSemanal(pool, entrenadorId));
     if (accion === 'listar_calendario_mes_entrenador') return res.status(200).json(await listarCalendarioMes(pool, entrenadorId, body));
 if (accion === 'obtener_indicadores_generales_entrenador') {

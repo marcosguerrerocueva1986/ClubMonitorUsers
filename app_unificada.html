@@ -838,6 +838,7 @@ function mostrarHistorialJugador(jugadorId, nombre, data, novedades){
     <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     ${data.porcentaje!==null ? `<div class="card" style="text-align:center"><div class="fl-label">ASISTENCIA</div><div style="font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;color:var(--gold)">${data.porcentaje}%</div><div class="fl-label">${data.asistio} de ${data.total} sesiones</div></div>` : '<p style="color:var(--chalk-dim);font-size:13px">Sin historial de asistencia todavía.</p>'}
     <button class="sm" onclick="abrirCambiarGrupo(${jugadorId}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">↔️ Cambiar de grupo</button>
+    <button class="sm" onclick="abrirHistorialTorneosEnt(${jugadorId}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">🏆 Historial de torneos</button>
     <div class="card" style="margin-top:12px">
       <div class="card-title"><h3>Novedades</h3></div>
       ${novedades.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin novedades registradas.</p>' : novedades.map(n=>`
@@ -1781,7 +1782,71 @@ function fechaHoraRep(f){
   return dias[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()+' · '+hora;
 }
 
-/* ---------- Editar representado (datos del jugador, rol representante) ---------- */
+/* ---------- Historial de torneos + indicador de aporte (entrenador) ---------- */
+function renderGaugeAporte(pct, nivel){
+  const colores = { normal: '#f5c518', promedio: '#3b82c4', gran_aporte: '#2e9e5b' };
+  const etiquetas = { normal: 'Normal', promedio: 'Promedio', gran_aporte: 'Gran aporte' };
+  const color = colores[nivel] || colores.normal;
+  const r = 40, cx = 50, cy = 50;
+  const arcLen = Math.PI * r;
+  const relleno = (Math.max(0, Math.min(100, pct)) / 100) * arcLen;
+  return `
+    <svg viewBox="0 0 100 62" style="width:110px;height:auto">
+      <line x1="50" y1="4" x2="50" y2="12" stroke="var(--chalk-dim)" stroke-width="2"/>
+      <path d="M 10,50 A ${r},${r} 0 0 1 90,50" fill="none" stroke="var(--pitch-3)" stroke-width="9" stroke-linecap="round"/>
+      <path d="M 10,50 A ${r},${r} 0 0 1 90,50" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
+        stroke-dasharray="${relleno.toFixed(1)} ${arcLen.toFixed(1)}"/>
+      <text x="50" y="46" text-anchor="middle" font-size="18" font-weight="700" fill="var(--chalk)">${pct}%</text>
+    </svg>
+    <div style="text-align:center;font-size:11px;color:${color};font-weight:600">${etiquetas[nivel] || ''}</div>
+  `;
+}
+
+function renderTarjetaTorneo(t, conGauge){
+  return `
+    <div class="card">
+      <div class="card-title"><h3>${esc(t.nombre)}</h3></div>
+      <div class="meta">${t.fecha ? fechaCorta(t.fecha) : ''}</div>
+      ${conGauge ? `
+        <div style="display:flex;align-items:center;gap:14px;margin:8px 0">
+          ${renderGaugeAporte(t.aportePct, t.nivel)}
+          <div style="font-size:12px;color:var(--chalk-dim)">Tu aporte: ${t.miAporte} pts<br>Promedio del equipo: ${t.promedioEquipo} pts</div>
+        </div>
+      ` : ''}
+      ${t.stats.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin estadísticas registradas en este torneo.</p>' : `
+        <div style="color:var(--chalk-dim);font-size:13px">${t.stats.map(s=>esc(s.nombre)+': '+s.total).join(' · ')}</div>
+      `}
+    </div>
+  `;
+}
+
+async function abrirHistorialTorneosJug(){
+  const data = await apiJug('ver_historial_torneos_jugador');
+  if(data===null) return;
+  mostrarHistorialTorneos(data, false, 'Historial de torneos');
+}
+
+async function abrirHistorialTorneosRep(){
+  const data = await apiRep('ver_historial_torneos_representante');
+  if(data===null) return;
+  mostrarHistorialTorneos(data, false, 'Historial de torneos');
+}
+
+async function abrirHistorialTorneosEnt(jugadorId, nombreJugador){
+  const data = await apiEnt('ver_historial_torneos_entrenador', {jugadorId});
+  if(data===null) return;
+  mostrarHistorialTorneos(data, true, 'Historial de torneos — '+nombreJugador);
+}
+
+function mostrarHistorialTorneos(data, conGauge, titulo){
+  const html = `
+    <div class="sheet-head"><h2>${esc(titulo)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length===0 ? '<div class="empty"><span class="ic">🏆</span>Sin torneos registrados todavía.</div>' : data.map(t=>renderTarjetaTorneo(t, conGauge)).join('')}
+  `;
+  abrirSheet(html);
+}
+
+
 async function cargarPantallaEditarRepresentado(cont){
   if(!MIS_JUGADORES_CARGADOS){ await cargarJugadoresRepApp(); }
   if(!JUGADOR_ACTUAL){ cont.innerHTML = '<div class="empty">Todavía no tienes ningún jugador vinculado.</div>'; return; }
@@ -1797,16 +1862,15 @@ async function cargarPantallaEditarRepresentado(cont){
       <input id="editJugRepApellidos" value="${esc(perfil.apellidos||'')}" autocomplete="off">
       <label>Alias (nombre corto de camiseta)</label>
       <input id="editJugRepAlias" value="${esc(perfil.alias||'')}" placeholder="Ej: PEPE" autocomplete="off">
+      <label>Fecha de nacimiento</label>
+      <input id="editJugRepFechaNacimiento" type="date" value="${esc(perfil.fecha_nacimiento ? String(perfil.fecha_nacimiento).slice(0,10) : '')}" autocomplete="off">
       <label>Cédula</label>
       <input id="editJugRepCedula" value="${esc(perfil.cedula||'')}" autocomplete="off">
       <label>Correo</label>
       <input id="editJugRepCorreo" value="${esc(perfil.correo||'')}" type="email" autocomplete="off">
       <button class="primary block" style="margin-top:10px" onclick="guardarEditarRepresentado()">Guardar</button>
     </div>
-    <div class="card" style="border-color:var(--gold)">
-      <div class="fl-label" style="margin-bottom:6px">🔍 Diagnóstico temporal — lo que devolvió el servidor</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:pre-wrap;color:var(--chalk-dim)">${esc(JSON.stringify(perfil, null, 2))}</div>
-    </div>
+    <button class="block" onclick="abrirHistorialTorneosRep()">🏆 Historial de torneos</button>
   `;
 }
 
@@ -1814,10 +1878,11 @@ async function guardarEditarRepresentado(){
   const nombres = document.getElementById('editJugRepNombres').value.trim();
   const apellidos = document.getElementById('editJugRepApellidos').value.trim();
   const alias = document.getElementById('editJugRepAlias').value.trim();
+  const fechaNacimiento = document.getElementById('editJugRepFechaNacimiento').value;
   const cedula = document.getElementById('editJugRepCedula').value.trim();
   const correo = document.getElementById('editJugRepCorreo').value.trim();
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
-  const res = await apiRep('actualizar_datos_jugador_representante', {nombres, apellidos, alias, cedula, correo});
+  const res = await apiRep('actualizar_datos_jugador_representante', {nombres, apellidos, alias, fechaNacimiento, cedula, correo});
   if(res===null) return;
   toast('Datos actualizados');
   JUGADOR_ACTUAL.nombres = nombres;
@@ -1846,7 +1911,7 @@ async function cargarPantallaPartidosJug(cont){
     list.innerHTML = '<div class="empty"><span class="ic">' + window._iconoDeporteActual + '</span>No hay partidos activos por ahora.</div>';
     return;
   }
-  list.innerHTML = partidos.map(p=>`
+  list.innerHTML = '<button class="block" style="margin-bottom:10px" onclick="abrirHistorialTorneosJug()">🏆 Historial de torneos</button>' + partidos.map(p=>`
     <div class="card">
       <div class="card-title">
         <h3>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${p.alias ? esc(p.alias) : 'Partido'}</h3>

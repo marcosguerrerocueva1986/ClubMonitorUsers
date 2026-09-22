@@ -189,7 +189,7 @@ async function registrarJugadorPwa(pool, body) {
 
 async function obtenerMiPerfil(pool, jugadorId) {
   const r = await pool.query(
-    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo, j.alias,
+    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo, j.alias, j.fecha_nacimiento,
             (SELECT eventos_habilitado_jugador FROM sport_control.configuracion_club WHERE id = 1) AS eventos_habilitado,
             (SELECT whatsapp_checkin_numero FROM sport_control.configuracion_club WHERE id = 1) AS whatsapp_checkin_numero,
             (SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1) AS representantes_habilitado,
@@ -200,7 +200,7 @@ async function obtenerMiPerfil(pool, jugadorId) {
     [jugadorId]
   );
   const row = r.rows[0];
-  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, alias: row.alias, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado, misExentosHabilitado: row.mis_exentos_habilitado, miCuentaHabilitado: row.mi_cuenta_habilitado, partidosHabilitado: row.partidos_habilitado } };
+  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado, misExentosHabilitado: row.mis_exentos_habilitado, miCuentaHabilitado: row.mi_cuenta_habilitado, partidosHabilitado: row.partidos_habilitado } };
 }
 
 async function listarMisRepresentantes(pool, jugadorId) {
@@ -374,8 +374,8 @@ async function verMiQr(pool, jugadorId, partidoId) {
 
 async function actualizarMisDatos(pool, jugadorId, body) {
   await pool.query(
-    `UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2, cedula = $3, correo = $4, alias = $5 WHERE id = $6`,
-    [body.nombres, body.apellidos, body.cedula, body.correo, body.alias || null, jugadorId]
+    `UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2, cedula = $3, correo = $4, alias = $5, fecha_nacimiento = $6 WHERE id = $7`,
+    [body.nombres, body.apellidos, body.cedula, body.correo, body.alias || null, body.fechaNacimiento || null, jugadorId]
   );
   return { success: true, data: true };
 }
@@ -663,6 +663,79 @@ async function guardarSaldoFavor(pool, jugadorId, body) {
 // configuracion_club.eventos_habilitado_jugador = true
 // ============================================================
 
+async function verHistorialTorneosJugador(pool, jugadorId) {
+  const eventos = await pool.query(
+    `SELECT DISTINCT e.id, e.nombre, e.fecha_inicio
+     FROM sport_control.evento_cuota_jugador ec JOIN sport_control.eventos e ON e.id = ec.evento_id
+     WHERE ec.jugador_id = $1 ORDER BY e.fecha_inicio DESC NULLS LAST`,
+    [jugadorId]
+  );
+  const resultado = [];
+  for (const ev of eventos.rows) {
+    const stats = await pool.query(
+      `SELECT te.nombre, SUM(pe.valor) AS total
+       FROM sport_control.partido_estadisticas pe
+       JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
+       JOIN sport_control.partidos p ON p.id = pe.partido_id
+       WHERE p.evento_id = $1 AND pe.jugador_id = $2
+       GROUP BY te.nombre, te.orden ORDER BY te.orden`,
+      [ev.id, jugadorId]
+    );
+    resultado.push({ eventoId: ev.id, nombre: ev.nombre, fecha: ev.fecha_inicio, stats: stats.rows });
+  }
+  return { success: true, data: resultado };
+}
+
+async function verHistorialTorneosJugadorEntrenador(pool, jugadorId) {
+  const eventos = await pool.query(
+    `SELECT DISTINCT e.id, e.nombre, e.fecha_inicio
+     FROM sport_control.evento_cuota_jugador ec JOIN sport_control.eventos e ON e.id = ec.evento_id
+     WHERE ec.jugador_id = $1 ORDER BY e.fecha_inicio DESC NULLS LAST`,
+    [jugadorId]
+  );
+  const resultado = [];
+  for (const ev of eventos.rows) {
+    const stats = await pool.query(
+      `SELECT te.nombre, SUM(pe.valor) AS total
+       FROM sport_control.partido_estadisticas pe
+       JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
+       JOIN sport_control.partidos p ON p.id = pe.partido_id
+       WHERE p.evento_id = $1 AND pe.jugador_id = $2
+       GROUP BY te.nombre, te.orden ORDER BY te.orden`,
+      [ev.id, jugadorId]
+    );
+
+    // "Aporte" = suma de (valor * puntos que otorga esa estadistica) --
+    // funciona igual de bien para cualquier disciplina, ya que usa los
+    // puntos configurados en el catalogo, no un nombre fijo.
+    const aporteJugador = await pool.query(
+      `SELECT COALESCE(SUM(pe.valor * te.puntos), 0) AS total
+       FROM sport_control.partido_estadisticas pe JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
+       JOIN sport_control.partidos p ON p.id = pe.partido_id
+       WHERE p.evento_id = $1 AND pe.jugador_id = $2`,
+      [ev.id, jugadorId]
+    );
+    const equipo = await pool.query(
+      `SELECT pe.jugador_id, COALESCE(SUM(pe.valor * te.puntos), 0) AS total
+       FROM sport_control.partido_estadisticas pe JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
+       JOIN sport_control.partidos p ON p.id = pe.partido_id
+       WHERE p.evento_id = $1 AND pe.jugador_id IS NOT NULL
+       GROUP BY pe.jugador_id`,
+      [ev.id]
+    );
+    const totalEquipo = equipo.rows.reduce((acc, r) => acc + Number(r.total), 0);
+    const numJugadores = equipo.rows.length || 1;
+    const promedioEquipo = totalEquipo / numJugadores;
+    const miAporte = Number(aporteJugador.rows[0].total);
+    const ratio = promedioEquipo > 0 ? miAporte / promedioEquipo : (miAporte > 0 ? 2 : 0);
+    const aportePct = Math.max(0, Math.min(100, Math.round(ratio * 50)));
+    const nivel = aportePct < 50 ? 'normal' : (aportePct <= 70 ? 'promedio' : 'gran_aporte');
+
+    resultado.push({ eventoId: ev.id, nombre: ev.nombre, fecha: ev.fecha_inicio, stats: stats.rows, aportePct, nivel, miAporte, promedioEquipo: Math.round(promedioEquipo * 10) / 10 });
+  }
+  return { success: true, data: resultado };
+}
+
 async function listarMisEventos(pool, jugadorId) {
   const r = await pool.query(
     `SELECT e.id, e.nombre, e.lugar, e.fecha_inicio, e.fecha_fin, e.estado,
@@ -836,6 +909,7 @@ module.exports = async (req, res) => {
       case 'ver_mi_qr_jugador': return res.status(200).json(await verMiQr(pool, jugadorId, body.partidoId));
       case 'actualizar_mis_datos_jugador': return res.status(200).json(await actualizarMisDatos(pool, jugadorId, body));
       case 'confirmar_mi_partido_jugador': return res.status(200).json(await confirmarMiPartido(pool, jugadorId, body));
+      case 'ver_historial_torneos_jugador': return res.status(200).json(await verHistorialTorneosJugador(pool, jugadorId));
       case 'cancelar_mi_partido_jugador': return res.status(200).json(await cancelarMiPartido(pool, jugadorId, body));
       case 'ver_documento_jugador': return res.status(200).json(await verDocumento(pool, body));
       case 'marcar_push_habilitado_jugador': return res.status(200).json(await marcarPushHabilitado(pool, jugadorId));
@@ -896,3 +970,5 @@ module.exports.aplicarPagoEvento = aplicarPagoEvento;
 module.exports.guardarSaldoFavor = guardarSaldoFavor;
 module.exports.confirmarMiPartido = confirmarMiPartido;
 module.exports.cancelarMiPartido = cancelarMiPartido;
+module.exports.verHistorialTorneosJugador = verHistorialTorneosJugador;
+module.exports.verHistorialTorneosJugadorEntrenador = verHistorialTorneosJugadorEntrenador;

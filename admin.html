@@ -1650,6 +1650,8 @@ function abrirEditarJugador(j){
     <input id="editApellidos" value="${esc(j.apellidos)}">
     <label>Alias (nombre corto de camiseta)</label>
     <input id="editAlias" value="${esc(j.alias || '')}" placeholder="Ej: PEPE">
+    <label>Fecha de nacimiento</label>
+    <input id="editFechaNacimiento" type="date" value="${esc(j.fecha_nacimiento ? String(j.fecha_nacimiento).slice(0,10) : '')}">
     <label>Cédula</label>
     <input id="editCedula" value="${esc(j.cedula || '')}">
     <label>Correo</label>
@@ -1684,6 +1686,7 @@ async function guardarEditarJugador(id){
     nombres: document.getElementById('editNombres').value.trim(),
     apellidos: document.getElementById('editApellidos').value.trim(),
     alias: document.getElementById('editAlias').value.trim(),
+    fechaNacimiento: document.getElementById('editFechaNacimiento').value,
     cedula: document.getElementById('editCedula').value.trim(),
     correo: document.getElementById('editCorreo').value.trim(),
     telefono: document.getElementById('editTelefono').value.trim(),
@@ -2179,6 +2182,7 @@ async function cargarParametros(){
     {key:'meses_maximo_atraso', label:'Meses máx. de atraso', val:p.meses_maximo_atraso, prefix:''},
     {key:'numero_admin', label:'Número del admin', val:p.numero_admin, prefix:''},
     {key:'fecha_inicio_recaudacion', label:'Inicio de recaudación (DD/MM/AAAA)', val:p.fecha_inicio_recaudacion, prefix:''},
+    {key:'fecha_inicio_mensualidades', label:'Fecha base de mensualidades del club (DD/MM/AAAA)', val:p.fecha_inicio_mensualidades, prefix:''},
     {key:'meses_retener_codigos', label:'Meses para conservar códigos QR usados', val:p.meses_retener_codigos, prefix:''},
     {key:'icono_deporte', label:'Ícono del deporte (emoji, ej: ⚽ 🏀 🏐 🎾)', val:p.icono_deporte, prefix:''},
   ];
@@ -3802,13 +3806,17 @@ function mostrarDetalleGrupo(data){
 }
 
 function abrirAgregarHorario(){
+  const dias = [['1','Lunes'],['2','Martes'],['3','Miércoles'],['4','Jueves'],['5','Viernes'],['6','Sábado'],['0','Domingo']];
   const html = `
     <div class="sheet-head"><h2>Agregar horario</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <label>Día de la semana</label>
-    <select id="horarioDia">
-      <option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option>
-      <option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option>
-    </select>
+    <label>Días de la semana (marca todos los que apliquen)</label>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">
+      ${dias.map(([v,n])=>`
+        <label style="display:flex;align-items:center;gap:6px;flex-direction:row;text-transform:none;font-size:14px;background:var(--pitch-3);padding:8px 12px;border-radius:8px;cursor:pointer">
+          <input type="checkbox" class="horarioDiaCheck" value="${v}" style="width:18px;height:18px"> ${n}
+        </label>
+      `).join('')}
+    </div>
     <label>Hora inicio</label>
     <input id="horarioInicio" type="time">
     <label>Hora fin (opcional)</label>
@@ -3821,14 +3829,17 @@ function abrirAgregarHorario(){
 }
 
 async function guardarAgregarHorario(){
-  const diaSemana = parseInt(document.getElementById('horarioDia').value);
+  const diasMarcados = Array.from(document.querySelectorAll('.horarioDiaCheck:checked')).map(c=>parseInt(c.value));
   const horaInicio = document.getElementById('horarioInicio').value;
   const horaFin = document.getElementById('horarioFin').value;
   const lugar = document.getElementById('horarioLugar').value.trim();
+  if(diasMarcados.length===0){ toast('Marca al menos un día', true); return; }
   if(!horaInicio){ toast('Escoge la hora de inicio', true); return; }
-  const res = await api('crear_horario_grupo_admin', {grupoId: grupoDetalleActual.id, diaSemana, horaInicio, horaFin, lugar});
-  if(res===null) return;
-  toast('Horario agregado');
+  for(const diaSemana of diasMarcados){
+    const res = await api('crear_horario_grupo_admin', {grupoId: grupoDetalleActual.id, diaSemana, horaInicio, horaFin, lugar});
+    if(res===null) return;
+  }
+  toast(diasMarcados.length>1 ? 'Horarios agregados' : 'Horario agregado');
   abrirDetalleGrupo(grupoDetalleActual.id, grupoDetalleActual.nombre);
 }
 

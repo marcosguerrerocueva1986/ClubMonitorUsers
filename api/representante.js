@@ -18,7 +18,7 @@ const {
   verMisInvitados, listarMisEventos, verEventoPublico, verMovimientosEventoJugador,
   verComprobanteMovimientoJugador, actualizarMisDatos, analizarComprobante,
   registrarPagoComprobante, aplicarPago, aplicarPagoEvento, guardarSaldoFavor,
-  verDetallePartidoStatsJugador, verFotoPartidoAdmin, confirmarMiPartido, cancelarMiPartido,
+  verDetallePartidoStatsJugador, verFotoPartidoAdmin, confirmarMiPartido, cancelarMiPartido, verHistorialTorneosJugador,
 } = require('./jugador');
 
 async function actualizarPerfilRepresentante(pool, representanteId, body) {
@@ -228,6 +228,7 @@ module.exports = async (req, res) => {
       case 'obtener_perfil_jugador_representante': return res.status(200).json(await obtenerMiPerfil(pool, jugadorId));
       case 'ver_partidos_jugador_representante': return res.status(200).json(await verMisPartidos(pool, jugadorId));
       case 'confirmar_partido_representante': return res.status(200).json(await confirmarMiPartido(pool, jugadorId, body));
+      case 'ver_historial_torneos_representante': return res.status(200).json(await verHistorialTorneosJugador(pool, jugadorId));
       case 'cancelar_partido_representante': return res.status(200).json(await cancelarMiPartido(pool, jugadorId, body));
       case 'ver_detalle_partido_stats_representante': return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
       case 'ver_foto_partido_representante': return res.status(200).json(await verFotoPartidoAdmin(pool, body));
