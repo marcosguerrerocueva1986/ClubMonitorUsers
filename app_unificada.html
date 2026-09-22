@@ -96,6 +96,7 @@ if ('serviceWorker' in navigator) {
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;animation:fadeOv .2s ease;}
   @keyframes fadeOv{from{opacity:0}to{opacity:1}}
   .sheet{background:var(--pitch-1);width:100%;max-height:88vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));border-top:1px solid var(--line);}
+  @media (min-width:900px){ .finanzas-grid-morosos{grid-template-columns:repeat(3,1fr) !important;} }
   .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .sheet-head h2{margin:0;font-size:20px;}
   .sheet-close{background:none;border:none;color:var(--chalk-dim);font-size:22px;padding:4px 8px;}
@@ -136,6 +137,32 @@ if ('serviceWorker' in navigator) {
   .cap-jugadoras{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
   .cap-btn-jugadora{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;}
   .cap-btn-jugadora .num{font-size:18px;font-weight:700;color:var(--gold);display:block;}
+
+  /* Pantallas grandes (tablet/laptop): todo se agranda para aprovechar
+     el espacio -- el esquema de celular (arriba) queda intacto como
+     base, esto solo suma reglas por encima cuando hay lugar de sobra. */
+  @media (min-width:900px){
+    body.modo-captura main{max-width:1400px;margin:0 auto;padding-left:16px;padding-right:16px;}
+    .cap-marcador{padding:16px;}
+    .cap-marcador .equipo .etq{font-size:14px;}
+    .cap-marcador .equipo .pts{font-size:44px;}
+    .cap-panel{padding:16px;}
+    .cap-panel-title{font-size:14px;margin-bottom:12px;}
+    .cap-acciones{gap:10px;}
+    .cap-btn-accion{font-size:20px;padding:24px 8px;border-radius:12px;}
+    .cap-btn-rival{gap:10px;}
+    .cap-btn-rival button{font-size:18px;padding:20px 4px;border-radius:12px;}
+    .cap-jugadoras{grid-template-columns:repeat(4,1fr);gap:10px;}
+    .cap-btn-jugadora{padding:18px 4px;border-radius:12px;}
+    .cap-btn-jugadora .num{font-size:30px;}
+    .cap-btn-jugadora .nom{font-size:14px;}
+    .cap-log{font-size:14px;max-height:220px;}
+  }
+  @media (min-width:1300px){
+    .cap-jugadoras{grid-template-columns:repeat(5,1fr);}
+    .cap-btn-accion{font-size:22px;padding:28px 8px;}
+    .cap-btn-jugadora .num{font-size:34px;}
+  }
   .cap-btn-jugadora .nom{font-size:10px;color:var(--chalk-dim);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .cap-log{max-height:160px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:12px;}
@@ -484,6 +511,9 @@ function cambiarPantalla(clave){
     'mi_cuenta_jugador': cargarPantallaCuentaJug,
     'eventos_jugador': cargarPantallaEventosJug,
     'captura_estadisticas_planillero': cargarPantallaCapturaPlanillero,
+    'dashboard_financiero': cargarPantallaDashboardFinanciero,
+    'movimientos_financiero': cargarPantallaMovimientosFinanciero,
+    'rubros_financiero': cargarPantallaRubrosFinanciero,
   };
   const fn = renderizadores[clave];
   if(fn) fn(cont);
@@ -2799,6 +2829,250 @@ function cambiarPartidoCaptura(){
   safeSet('planillero_partido_actual', '');
   PARTIDO_CAPTURA_ACTUAL = null;
   cambiarPantalla('captura_estadisticas_planillero');
+}
+
+
+/* ---------- Financiero: dashboard de morosos, movimientos, catalogo de rubros ---------- */
+const apiFin = (accion, extra) => api(accion, extra);
+const MESES_NOMBRE_FIN = {'01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic'};
+
+async function cargarPantallaDashboardFinanciero(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const dash = await apiFin('dashboard_morosos_mensualidad_financiero');
+  if(dash===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  const g = dash.grupos;
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>${dash.totalMorosos} jugador(es) con mensualidad atrasada</h3></div>
+      <div class="meta">Total adeudado: $${dash.totalAdeudadoClub.toFixed(2)}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:10px" class="finanzas-grid-morosos">
+      ${[['1 mes de atraso','1_mes'],['2 meses de atraso','2_meses'],['3+ meses de atraso','3_mas']].map(([titulo,clave])=>`
+        <div class="card">
+          <div class="card-title"><h3>${titulo} (${g[clave].length})</h3></div>
+          ${g[clave].length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno.</p>' : g[clave].map(m=>`
+            <div class="field-line" style="cursor:pointer" onclick="abrirDetalleMensualidadFin(${m.jugadorId}, ${JSON.stringify(m.nombres+' '+m.apellidos).replace(/"/g,'&quot;')})">
+              <div class="fl-value">${esc(m.nombres)} ${esc(m.apellidos)}</div>
+              <div style="color:var(--red);font-weight:700">$${m.totalAdeudado.toFixed(2)}</div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function abrirDetalleMensualidadFin(jugadorId, nombre){
+  const data = await apiFin('ver_mensualidad_jugador_financiero', {jugadorId});
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card">
+      <div class="card-title"><h3>Adeudado: $${data.totalAdeudado.toFixed(2)}</h3></div>
+      <div class="meta">${data.mesesAtraso} mes(es) sin cubrir · Mensualidad: $${data.montoMensualidad.toFixed(2)}/mes</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Detalle por mes</h3></div>
+      ${data.meses.map(m=>{
+        const [y,mm] = m.periodo.split('-');
+        const color = m.estado==='pagado' ? 'var(--green-ok)' : (m.estado==='parcial' ? 'var(--gold)' : 'var(--red)');
+        const etiqueta = m.estado==='pagado' ? '✓ Pagado' : (m.estado==='parcial' ? 'Parcial $'+m.montoPagado.toFixed(2)+' de $'+m.monto.toFixed(2) : 'Pendiente $'+m.monto.toFixed(2));
+        return `<div class="field-line"><div class="fl-value">${MESES_NOMBRE_FIN[mm]} ${y}</div><div style="color:${color};font-weight:600;font-size:13px">${etiqueta}</div></div>`;
+      }).join('')}
+    </div>
+    <button class="primary block" onclick="abrirRegistrarPagoMensualidadFin(${jugadorId}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">+ Registrar pago</button>
+  `;
+  abrirSheet(html);
+}
+
+async function abrirRegistrarPagoMensualidadFin(jugadorId, nombre){
+  const rubros = await apiFin('listar_rubros_club_financiero');
+  if(rubros===null) return;
+  const rubroMensualidad = rubros.find(r=>r.nombre==='Mensualidad');
+  if(!rubroMensualidad){ toast('No existe el rubro Mensualidad en el catálogo', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>Registrar pago — ${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Se aplica automáticamente al mes más antiguo pendiente. Puede ser un monto parcial.</p>
+    <label>Monto</label>
+    <input id="pagoMensMontoFin" type="number" step="0.01" placeholder="0.00">
+    <label>Fecha</label>
+    <input id="pagoMensFechaFin" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <button class="primary block" style="margin-top:12px" onclick="guardarPagoMensualidadFin(${jugadorId}, ${rubroMensualidad.id}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarPagoMensualidadFin(jugadorId, rubroId, nombre){
+  const monto = parseFloat(document.getElementById('pagoMensMontoFin').value);
+  const fecha = document.getElementById('pagoMensFechaFin').value;
+  if(isNaN(monto) || monto<=0){ toast('Escribe un monto válido', true); return; }
+  const res = await apiFin('registrar_movimiento_club_financiero', {rubroId, jugadorId, monto, fecha});
+  if(res===null) return;
+  toast('Pago registrado');
+  abrirDetalleMensualidadFin(jugadorId, nombre);
+}
+
+/* ---------- Movimientos ---------- */
+async function cargarPantallaMovimientosFinanciero(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const [rubros, mov] = await Promise.all([
+    apiFin('listar_rubros_club_financiero'),
+    apiFin('listar_movimientos_club_financiero', {}),
+  ]);
+  if(rubros===null || mov===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-title"><h3>Ingresos: $${mov.totalIngresos.toFixed(2)} · Egresos: $${mov.totalEgresos.toFixed(2)}</h3></div>
+    </div>
+    <button class="primary block" style="margin-bottom:10px" onclick="abrirRegistrarMovimientoFin(${JSON.stringify(rubros).replace(/"/g,'&quot;')})">+ Registrar movimiento</button>
+    <div class="card">
+      <div class="card-title"><h3>Últimos movimientos</h3></div>
+      ${mov.movimientos.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno todavía.</p>' : mov.movimientos.map(m=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(m.rubro)} ${m.jugador ? '· '+esc(m.jugador) : ''}</div>
+            <div class="fl-label">${esc(String(m.fecha).slice(0,10))} ${m.periodo ? '· '+esc(m.periodo) : ''} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:${m.tipo==='ingreso'?'var(--green-ok)':'var(--red)'};font-weight:700">${m.tipo==='ingreso'?'+':'-'}$${Number(m.monto).toFixed(2)}</span>
+            <button class="sm danger" onclick="eliminarMovimientoFinAccion(${m.id})">✕</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function abrirRegistrarMovimientoFin(rubros){
+  const jugadores = await apiFin('listar_jugadores_financiero');
+  if(jugadores===null) return;
+  const activos = rubros.filter(r=>r.activo);
+  const html = `
+    <div class="sheet-head"><h2>Registrar movimiento</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Rubro</label>
+    <select id="movFinRubro" onchange="actualizarCamposMovFin(${JSON.stringify(activos).replace(/"/g,'&quot;')})">
+      ${activos.map(r=>`<option value="${r.id}" data-aplica="${r.aplicaA}">${esc(r.nombre)} (${r.tipo==='ingreso'?'Ingreso':'Egreso'})</option>`).join('')}
+    </select>
+    <div id="movFinJugadorWrap"></div>
+    <label>Monto</label>
+    <input id="movFinMonto" type="number" step="0.01" placeholder="0.00">
+    <label>Fecha</label>
+    <input id="movFinFecha" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <label>Periodo (opcional, ej: 2026-09)</label>
+    <input id="movFinPeriodo" placeholder="Ej: 2026-09">
+    <label>Descripción (opcional)</label>
+    <input id="movFinDescripcion" placeholder="Ej: Pago en efectivo">
+    <button class="primary block" style="margin-top:12px" onclick="guardarMovimientoFin()">Guardar</button>
+  `;
+  abrirSheet(html);
+  window._jugadoresParaMovFin = jugadores;
+  actualizarCamposMovFin(activos);
+}
+
+function actualizarCamposMovFin(rubros){
+  const select = document.getElementById('movFinRubro');
+  const aplica = select.selectedOptions[0].dataset.aplica;
+  const wrap = document.getElementById('movFinJugadorWrap');
+  if(aplica==='jugador'){
+    const jugadores = window._jugadoresParaMovFin || [];
+    wrap.innerHTML = `
+      <label>Jugador</label>
+      <select id="movFinJugador">
+        ${jugadores.map(j=>`<option value="${j.id}">${esc(j.nombres)} ${esc(j.apellidos)}</option>`).join('')}
+      </select>
+    `;
+  } else {
+    wrap.innerHTML = '';
+  }
+}
+
+async function guardarMovimientoFin(){
+  const rubroId = parseInt(document.getElementById('movFinRubro').value);
+  const jugadorSelect = document.getElementById('movFinJugador');
+  const jugadorId = jugadorSelect ? parseInt(jugadorSelect.value) : null;
+  const monto = parseFloat(document.getElementById('movFinMonto').value);
+  const fecha = document.getElementById('movFinFecha').value;
+  const periodo = document.getElementById('movFinPeriodo').value.trim();
+  const descripcion = document.getElementById('movFinDescripcion').value.trim();
+  if(isNaN(monto) || monto<=0){ toast('Escribe un monto válido', true); return; }
+  const res = await apiFin('registrar_movimiento_club_financiero', {rubroId, jugadorId, monto, fecha, periodo, descripcion});
+  if(res===null) return;
+  toast('Movimiento registrado');
+  cerrarSheet();
+  cambiarPantalla('movimientos_financiero');
+}
+
+async function eliminarMovimientoFinAccion(movimientoId){
+  if(!confirm('¿Eliminar este movimiento?')) return;
+  const res = await apiFin('eliminar_movimiento_club_financiero', {movimientoId});
+  if(res===null) return;
+  toast('Eliminado');
+  cambiarPantalla('movimientos_financiero');
+}
+
+/* ---------- Catalogo de rubros ---------- */
+async function cargarPantallaRubrosFinanciero(cont){
+  cont.innerHTML = '<div class="spinner"></div>';
+  const rubros = await apiFin('listar_rubros_club_financiero');
+  if(rubros===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
+  cont.innerHTML = `
+    ${rubros.map(r=>`
+      <div class="card">
+        <div class="card-title">
+          <h3>${esc(r.nombre)}</h3>
+          <span class="badge ${r.activo?'confirmando':'cancelado'}">${r.activo?'Activo':'Inactivo'}</span>
+        </div>
+        <div class="meta">${r.tipo==='ingreso'?'Ingreso':'Egreso'} · ${r.aplicaA==='jugador'?'A jugadores':'Del club'} · ${r.recurrencia}${r.montoSugerido ? ' · $'+Number(r.montoSugerido).toFixed(2) : ''}</div>
+        <button class="sm ${r.activo?'danger':'primary'}" style="margin-top:8px" onclick="toggleRubroFinAccion(${r.id}, ${!r.activo})">${r.activo?'Desactivar':'Activar'}</button>
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:10px" onclick="abrirNuevoRubroFin()">+ Agregar rubro</button>
+  `;
+}
+
+function abrirNuevoRubroFin(){
+  const html = `
+    <div class="sheet-head"><h2>Nuevo rubro</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombre</label>
+    <input id="nuevoRubroNombreFin" placeholder="Ej: Seguro deportivo">
+    <select id="nuevoRubroTipoFin" style="margin-top:8px">
+      <option value="ingreso">Ingreso</option>
+      <option value="egreso">Egreso</option>
+    </select>
+    <select id="nuevoRubroAplicaAFin" style="margin-top:8px">
+      <option value="jugador">Se cobra a jugadores</option>
+      <option value="club">Del club (servicios, auspicios)</option>
+    </select>
+    <select id="nuevoRubroRecurrenciaFin" style="margin-top:8px">
+      <option value="unico">Único</option>
+      <option value="mensual">Mensual</option>
+      <option value="anual">Anual</option>
+    </select>
+    <label style="margin-top:8px">Monto sugerido (opcional)</label>
+    <input id="nuevoRubroMontoFin" type="number" step="0.01" placeholder="0.00">
+    <button class="primary block" style="margin-top:12px" onclick="guardarNuevoRubroFin()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarNuevoRubroFin(){
+  const nombre = document.getElementById('nuevoRubroNombreFin').value.trim();
+  const tipo = document.getElementById('nuevoRubroTipoFin').value;
+  const aplicaA = document.getElementById('nuevoRubroAplicaAFin').value;
+  const recurrencia = document.getElementById('nuevoRubroRecurrenciaFin').value;
+  const montoSugerido = document.getElementById('nuevoRubroMontoFin').value;
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await apiFin('crear_rubro_club_financiero', {nombre, tipo, aplicaA, recurrencia, montoSugerido});
+  if(res===null) return;
+  toast('Rubro agregado');
+  cerrarSheet();
+  cambiarPantalla('rubros_financiero');
+}
+
+async function toggleRubroFinAccion(rubroId, activo){
+  const res = await apiFin('toggle_rubro_club_financiero', {rubroId, activo});
+  if(res===null) return;
+  cambiarPantalla('rubros_financiero');
 }
 
 </script>

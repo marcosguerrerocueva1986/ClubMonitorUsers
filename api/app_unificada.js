@@ -10,6 +10,11 @@
 // sesion) para que un cambio de rol se refleje de inmediato.
 
 const bcrypt = require('bcryptjs');
+const {
+  listarRubros, crearRubro, editarRubro, toggleRubro,
+  listarMovimientosClub, registrarMovimientoClub, eliminarMovimientoClub,
+  verMensualidadJugadorAdmin, dashboardMorososMensualidad,
+} = require('./_admin_finanzas_club');
 const { getPool } = require('./_db');
 
 const MAX_INTENTOS = 5;
@@ -55,6 +60,11 @@ async function detectarRoles(pool, cedula) {
      FROM sport_control.planilleros WHERE cedula = $1 AND activo = true`,
     [cedula]
   );
+  const financiero = await pool.query(
+    `SELECT id, nombres, apellidos, clave_hash, debe_cambiar_clave, clave_reset_expira, intentos_fallidos, bloqueado_hasta
+     FROM sport_control.financieros WHERE cedula = $1 AND activo = true`,
+    [cedula]
+  );
 
   const roles = [];
   if (jugador.rows[0]) roles.push('jugador');
@@ -64,6 +74,7 @@ async function detectarRoles(pool, cedula) {
     if (entrenador.rows[0].rol === 'director') roles.push('director');
   }
   if (planillero.rows[0]) roles.push('planillero');
+  if (financiero.rows[0]) roles.push('financiero');
 
   return {
     encontrado: roles.length > 0,
@@ -72,15 +83,16 @@ async function detectarRoles(pool, cedula) {
     representante: representante.rows[0] || null,
     entrenador: entrenador.rows[0] || null,
     planillero: planillero.rows[0] || null,
+    financiero: financiero.rows[0] || null,
     // nombre para el saludo: el primero que se encuentre disponible
-    nombres: (jugador.rows[0] || representante.rows[0] || entrenador.rows[0] || planillero.rows[0] || {}).nombres,
+    nombres: (jugador.rows[0] || representante.rows[0] || entrenador.rows[0] || planillero.rows[0] || financiero.rows[0] || {}).nombres,
   };
 }
 
 // La clave es UNA sola por persona, aunque tenga varios roles. Si ya
 // existe un hash en cualquiera de las tablas, ese es "el oficial".
 function encontrarClaveExistente(info) {
-  for (const registro of [info.representante, info.entrenador, info.jugador, info.planillero]) {
+  for (const registro of [info.representante, info.entrenador, info.jugador, info.planillero, info.financiero]) {
     if (registro && registro.clave_hash) return registro;
   }
   return null;
@@ -117,6 +129,7 @@ async function crearClaveUnificada(pool, body) {
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.representante.id]);
   if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.entrenador.id]);
   if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.planillero.id]);
+  if (info.financiero) await pool.query(`UPDATE sport_control.financieros SET clave_hash = $1, debe_cambiar_clave = false WHERE id = $2`, [hash, info.financiero.id]);
 
   const token = await crearSesion(pool, cedula);
   return { success: true, data: { token, nombres: info.nombres, roles: info.roles } };
@@ -149,6 +162,7 @@ async function verificarClaveUnificada(pool, body) {
     if (info.representante) await pool.query(`UPDATE sport_control.representantes SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.representante.id]);
     if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.entrenador.id]);
     if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.planillero.id]);
+    if (info.financiero) await pool.query(`UPDATE sport_control.financieros SET intentos_fallidos = $1, bloqueado_hasta = $2 WHERE id = $3`, [intentos, bloqueadoHasta, info.financiero.id]);
   };
 
   if (!coincide) {
@@ -183,6 +197,7 @@ async function cambiarClaveUnificada(pool, cedula, body) {
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.representante.id]);
   if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.entrenador.id]);
   if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.planillero.id]);
+  if (info.financiero) await pool.query(`UPDATE sport_control.financieros SET clave_hash = $1, debe_cambiar_clave = false, clave_reset_expira = NULL WHERE id = $2`, [hash, info.financiero.id]);
 
   return { success: true };
 }
@@ -243,6 +258,7 @@ async function obtenerPerfilUnificado(pool, cedula) {
      UNION ALL SELECT telefono FROM sport_control.entrenadores WHERE cedula = $1
      UNION ALL SELECT telefono FROM sport_control.jugadores WHERE cedula = $1
      UNION ALL SELECT telefono FROM sport_control.planilleros WHERE cedula = $1
+     UNION ALL SELECT telefono FROM sport_control.financieros WHERE cedula = $1
      LIMIT 1`,
     [cedula]
   );
@@ -265,6 +281,7 @@ async function actualizarPerfilUnificado(pool, cedula, body) {
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.representante.id]);
   if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.entrenador.id]);
   if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.planillero.id]);
+  if (info.financiero) await pool.query(`UPDATE sport_control.financieros SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.financiero.id]);
   return { success: true };
 }
 
@@ -484,6 +501,20 @@ module.exports = async (req, res) => {
       return res.status(200).json(await registrarEventoPartido(pool, info.planillero ? info.planillero.id : null, body));
     }
     if (accion === 'eliminar_evento_partido_planillero') return res.status(200).json(await eliminarEventoPartido(pool, body));
+
+    if (accion === 'listar_rubros_club_financiero') return res.status(200).json(await listarRubros(pool));
+    if (accion === 'crear_rubro_club_financiero') return res.status(200).json(await crearRubro(pool, body));
+    if (accion === 'editar_rubro_club_financiero') return res.status(200).json(await editarRubro(pool, body));
+    if (accion === 'toggle_rubro_club_financiero') return res.status(200).json(await toggleRubro(pool, body));
+    if (accion === 'listar_movimientos_club_financiero') return res.status(200).json(await listarMovimientosClub(pool, body));
+    if (accion === 'registrar_movimiento_club_financiero') return res.status(200).json(await registrarMovimientoClub(pool, body));
+    if (accion === 'eliminar_movimiento_club_financiero') return res.status(200).json(await eliminarMovimientoClub(pool, body));
+    if (accion === 'ver_mensualidad_jugador_financiero') return res.status(200).json(await verMensualidadJugadorAdmin(pool, body));
+    if (accion === 'dashboard_morosos_mensualidad_financiero') return res.status(200).json(await dashboardMorososMensualidad(pool));
+    if (accion === 'listar_jugadores_financiero') {
+      const r = await pool.query(`SELECT id, nombres, apellidos FROM sport_control.jugadores WHERE estado = 'activo' ORDER BY nombres`);
+      return res.status(200).json({ success: true, data: r.rows });
+    }
     if (accion === 'editar_evento_partido_planillero') return res.status(200).json(await editarEventoPartido(pool, body));
 
     // Endpoint de prueba de la Fase 1 -- se mantiene por compatibilidad

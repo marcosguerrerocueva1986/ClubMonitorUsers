@@ -216,6 +216,10 @@ if ('serviceWorker' in navigator) {
     max-height:min(85vh, 85dvh);overflow-y:auto;-webkit-overflow-scrolling:touch;
     animation:pop .18s ease;
   }
+  @media (min-width:900px){
+    .sheet.ancho{max-width:1100px;}
+    .finanzas-grid-morosos{grid-template-columns:repeat(3,1fr) !important;}
+  }
   @keyframes pop{from{transform:scale(.96);opacity:0;}to{transform:scale(1);opacity:1;}}
   .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
   .sheet-head h2{margin:0;font-size:20px;}
@@ -594,14 +598,217 @@ async function resetearClavePlanilleroAccion(planilleroId, nombres){
   abrirSheet(html);
 }
 
+async function abrirGestionFinancieros(){
+  const data = await api('listar_financieros_admin');
+  if(data===null) return;
+  mostrarGestionFinancieros(data);
+}
+
+function mostrarGestionFinancieros(data){
+  const html = `
+    <div class="sheet-head"><h2>💵 Financieros</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Personas autorizadas para gestionar cobros, rubros y mensualidades. No hace falta que sean jugadores, representantes ni entrenadores.</p>
+    ${data.length===0 ? '<div class="empty"><span class="ic">🔴</span>Sin financieros todavía.</div>' : data.map(p=>`
+      <div class="card">
+        <div class="card-title">
+          <h3>${esc(p.nombres)} ${esc(p.apellidos)}</h3>
+          <span class="badge ${p.activo?'confirmando':'cancelado'}">${p.activo?'Activo':'Inactivo'}</span>
+        </div>
+        <div class="meta">${esc(p.cedula)} · ${esc(p.telefono||'Sin teléfono')} ${!p.tieneClave ? '<span class="badge cancelado">Sin activar</span>' : ''}</div>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="sm" onclick='abrirEditarFinanciero(${JSON.stringify(p).replace(/"/g,"&quot;")})'>Editar</button>
+          <button class="sm" onclick="resetearClaveFinancieroAccion(${p.id}, ${JSON.stringify(p.nombres).replace(/"/g,'&quot;')})">🔒 Resetear clave</button>
+          <button class="sm ${p.activo?'danger':'primary'}" onclick="toggleFinancieroAccion(${p.id}, ${!p.activo})">${p.activo?'Desactivar':'Activar'}</button>
+        </div>
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:10px" onclick="abrirCrearFinanciero()">+ Agregar financiero</button>
+  `;
+  abrirSheet(html);
+}
+
+function abrirCrearFinanciero(){
+  const html = `
+    <div class="sheet-head"><h2>Agregar financiero</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="finNombres" placeholder="Nombres">
+    <label>Apellidos</label>
+    <input id="finApellidos" placeholder="Apellidos">
+    <label>Cédula</label>
+    <input id="finCedula" placeholder="Obligatoria" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="finTelefono" placeholder="Opcional" type="tel">
+    <button class="primary block" style="margin-top:16px" onclick="guardarCrearFinanciero()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCrearFinanciero(){
+  const nombres = document.getElementById('finNombres').value.trim();
+  const apellidos = document.getElementById('finApellidos').value.trim();
+  const cedula = document.getElementById('finCedula').value.trim();
+  const telefono = document.getElementById('finTelefono').value.trim();
+  if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
+  if(!cedula){ toast('La cédula es obligatoria', true); return; }
+  const res = await api('crear_financiero_admin', {nombres, apellidos, cedula, telefono});
+  if(res===null) return;
+  toast('Financiero agregado');
+  cerrarSheet();
+  abrirGestionFinancieros();
+}
+
+function abrirEditarFinanciero(p){
+  const html = `
+    <div class="sheet-head"><h2>Editar financiero</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombres</label>
+    <input id="finEditNombres" value="${esc(p.nombres)}">
+    <label>Apellidos</label>
+    <input id="finEditApellidos" value="${esc(p.apellidos)}">
+    <label>Cédula</label>
+    <input id="finEditCedula" value="${esc(p.cedula)}" inputmode="numeric">
+    <label>Teléfono</label>
+    <input id="finEditTelefono" value="${esc(p.telefono||'')}" type="tel">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarFinanciero(${p.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarFinanciero(financieroId){
+  const nombres = document.getElementById('finEditNombres').value.trim();
+  const apellidos = document.getElementById('finEditApellidos').value.trim();
+  const cedula = document.getElementById('finEditCedula').value.trim();
+  const telefono = document.getElementById('finEditTelefono').value.trim();
+  const res = await api('editar_financiero_admin', {financieroId, nombres, apellidos, cedula, telefono});
+  if(res===null) return;
+  toast('Financiero actualizado');
+  cerrarSheet();
+  abrirGestionFinancieros();
+}
+
+async function toggleFinancieroAccion(financieroId, activo){
+  const res = await api('toggle_financiero_admin', {financieroId, activo});
+  if(res===null) return;
+  abrirGestionFinancieros();
+}
+
+async function resetearClaveFinancieroAccion(financieroId, nombres){
+  if(!confirm('¿Generar una clave temporal nueva para '+nombres+'?')) return;
+  const res = await api('resetear_clave_financiero_admin', {financieroId});
+  if(res===null) return;
+  const telefonoLimpio = (res.telefono || '').replace(/\D/g,'');
+  const linkWhatsapp = telefonoLimpio ? `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(res.mensajeWhatsapp)}` : null;
+  const html = `
+    <div class="sheet-head"><h2>Clave temporal generada</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card" style="text-align:center">
+      <div class="fl-label">CLAVE TEMPORAL (válida 24 horas, un solo uso)</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:36px;color:var(--gold);font-weight:700;letter-spacing:4px;margin:8px 0">${res.claveTemporal}</div>
+    </div>
+    ${linkWhatsapp ? `<button class="primary block" onclick="window.open('${linkWhatsapp}','_blank')">📤 Enviar por WhatsApp</button>` : '<p class="meta">No tiene teléfono registrado — comparte la clave manualmente.</p>'}
+  `;
+  abrirSheet(html);
+}
+
 /* ---------- Finanzas del Club ---------- */
 async function abrirFinanzasClub(){
-  const [rubros, mov] = await Promise.all([
-    api('listar_rubros_club_admin'),
-    api('listar_movimientos_club_admin', {}),
-  ]);
+  const dash = await api('dashboard_morosos_mensualidad_admin');
+  if(dash===null) return;
+  mostrarDashboardFinanzas(dash);
+}
+
+function mostrarDashboardFinanzas(dash){
+  const g = dash.grupos;
+  const html = `
+    <div class="sheet-head"><h2>💵 Finanzas del Club</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card">
+      <div class="card-title"><h3>${dash.totalMorosos} jugador(es) con mensualidad atrasada</h3></div>
+      <div class="meta">Total adeudado: $${dash.totalAdeudadoClub.toFixed(2)}</div>
+    </div>
+    <div class="row-actions tabbar-scroll">
+      <button class="sm" onclick="abrirMovimientosClubDesdeFinanzas()">📋 Movimientos</button>
+      <button class="sm" onclick="abrirCatalogoRubrosDesdeFinanzas()">⚙️ Catálogo de rubros</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px" class="finanzas-grid-morosos">
+      ${[['1 mes de atraso','1_mes','confirmando'],['2 meses de atraso','2_meses','cancelado'],['3+ meses de atraso','3_mas','cancelado']].map(([titulo,clave,badge])=>`
+        <div class="card">
+          <div class="card-title"><h3>${titulo} (${g[clave].length})</h3></div>
+          ${g[clave].length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno.</p>' : g[clave].map(m=>`
+            <div class="field-line" style="cursor:pointer" onclick="abrirDetalleMensualidadJugador(${m.jugadorId}, ${JSON.stringify(m.nombres+' '+m.apellidos).replace(/"/g,'&quot;')})">
+              <div class="fl-value">${esc(m.nombres)} ${esc(m.apellidos)}</div>
+              <div style="color:var(--red);font-weight:700">$${m.totalAdeudado.toFixed(2)}</div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>
+  `;
+  abrirSheet(html, 'ancho');
+}
+
+async function abrirMovimientosClubDesdeFinanzas(){
+  const [rubros, mov] = await Promise.all([api('listar_rubros_club_admin'), api('listar_movimientos_club_admin', {})]);
   if(rubros===null || mov===null) return;
   mostrarFinanzasClub(rubros, mov);
+}
+async function abrirCatalogoRubrosDesdeFinanzas(){
+  const rubros = await api('listar_rubros_club_admin');
+  if(rubros===null) return;
+  abrirCatalogoRubros(rubros);
+}
+
+async function abrirDetalleMensualidadJugador(jugadorId, nombre){
+  const data = await api('ver_mensualidad_jugador_admin', {jugadorId});
+  if(data===null) return;
+  mostrarDetalleMensualidadJugador(jugadorId, nombre, data);
+}
+
+const MESES_NOMBRE = {'01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic'};
+
+function mostrarDetalleMensualidadJugador(jugadorId, nombre, data){
+  const html = `
+    <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div class="card">
+      <div class="card-title"><h3>Adeudado: $${data.totalAdeudado.toFixed(2)}</h3></div>
+      <div class="meta">${data.mesesAtraso} mes(es) sin cubrir por completo · Mensualidad: $${data.montoMensualidad.toFixed(2)}/mes</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Detalle por mes</h3></div>
+      ${data.meses.map(m=>{
+        const [y,mm] = m.periodo.split('-');
+        const color = m.estado==='pagado' ? 'var(--green-ok)' : (m.estado==='parcial' ? 'var(--gold)' : 'var(--red)');
+        const etiqueta = m.estado==='pagado' ? '✓ Pagado' : (m.estado==='parcial' ? 'Parcial $'+m.montoPagado.toFixed(2)+' de $'+m.monto.toFixed(2) : 'Pendiente $'+m.monto.toFixed(2));
+        return `<div class="field-line"><div class="fl-value">${MESES_NOMBRE[mm]} ${y}</div><div style="color:${color};font-weight:600;font-size:13px">${etiqueta}</div></div>`;
+      }).join('')}
+    </div>
+    <button class="primary block" onclick="abrirRegistrarPagoMensualidad(${jugadorId}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">+ Registrar pago</button>
+  `;
+  abrirSheet(html);
+}
+
+async function abrirRegistrarPagoMensualidad(jugadorId, nombre){
+  const rubros = await api('listar_rubros_club_admin');
+  if(rubros===null) return;
+  const rubroMensualidad = rubros.find(r=>r.nombre==='Mensualidad');
+  if(!rubroMensualidad){ toast('No existe el rubro Mensualidad en el catálogo', true); return; }
+  const html = `
+    <div class="sheet-head"><h2>Registrar pago — ${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Se aplica automáticamente al mes más antiguo pendiente. Puede ser un monto parcial.</p>
+    <label>Monto</label>
+    <input id="pagoMensMonto" type="number" step="0.01" placeholder="0.00">
+    <label>Fecha</label>
+    <input id="pagoMensFecha" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <button class="primary block" style="margin-top:12px" onclick="guardarPagoMensualidad(${jugadorId}, ${rubroMensualidad.id}, ${JSON.stringify(nombre).replace(/"/g,'&quot;')})">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarPagoMensualidad(jugadorId, rubroId, nombre){
+  const monto = parseFloat(document.getElementById('pagoMensMonto').value);
+  const fecha = document.getElementById('pagoMensFecha').value;
+  if(isNaN(monto) || monto<=0){ toast('Escribe un monto válido', true); return; }
+  const res = await api('registrar_movimiento_club_admin', {rubroId, jugadorId, monto, fecha});
+  if(res===null) return;
+  toast('Pago registrado');
+  abrirDetalleMensualidadJugador(jugadorId, nombre);
 }
 
 function mostrarFinanzasClub(rubros, mov){
@@ -765,7 +972,7 @@ async function abrirMenuMas(){
     `).join('')}
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="abrirMenuPorRol()">🧩 Menú por Rol (app unificada)</button>
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionPlanilleros()">🔴 Planilleros</button>
-    <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirFinanzasClub()">💵 Finanzas del Club</button>
+    <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionFinancieros()">💵 Financieros</button>
   `;
   abrirSheet(html);
 }
@@ -2188,13 +2395,13 @@ async function guardarParametro(key){
   if(res!==null){ toast('Parámetro actualizado'); cerrarSheet(); cargarParametros(); }
 }
 
-function abrirSheet(html){
+function abrirSheet(html, claseExtra){
   cerrarSheet();
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.id = 'sheetOverlay';
   overlay.onclick = (e)=>{ if(e.target===overlay) cerrarSheet(); };
-  overlay.innerHTML = `<div class="sheet">${html}</div>`;
+  overlay.innerHTML = `<div class="sheet ${claseExtra||''}">${html}</div>`;
   document.body.appendChild(overlay);
 }
 function cerrarSheet(){
