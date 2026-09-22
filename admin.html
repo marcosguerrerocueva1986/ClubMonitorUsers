@@ -594,6 +594,164 @@ async function resetearClavePlanilleroAccion(planilleroId, nombres){
   abrirSheet(html);
 }
 
+/* ---------- Finanzas del Club ---------- */
+async function abrirFinanzasClub(){
+  const [rubros, mov] = await Promise.all([
+    api('listar_rubros_club_admin'),
+    api('listar_movimientos_club_admin', {}),
+  ]);
+  if(rubros===null || mov===null) return;
+  mostrarFinanzasClub(rubros, mov);
+}
+
+function mostrarFinanzasClub(rubros, mov){
+  const html = `
+    <div class="sheet-head"><h2>💵 Finanzas del Club</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Matrículas, mensualidades, servicios, auspicios — todo lo que no es de un evento puntual.</p>
+    <div class="card">
+      <div class="card-title"><h3>Ingresos: $${mov.totalIngresos.toFixed(2)} · Egresos: $${mov.totalEgresos.toFixed(2)}</h3></div>
+    </div>
+    <div class="row-actions tabbar-scroll">
+      <button class="sm primary" onclick="abrirRegistrarMovimientoClub(${JSON.stringify(rubros).replace(/"/g,'&quot;')})">+ Registrar movimiento</button>
+      <button class="sm" onclick="abrirCatalogoRubros(${JSON.stringify(rubros).replace(/"/g,'&quot;')})">⚙️ Catálogo de rubros</button>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><h3>Últimos movimientos</h3></div>
+      ${mov.movimientos.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Ninguno todavía.</p>' : mov.movimientos.map(m=>`
+        <div class="field-line">
+          <div>
+            <div class="fl-value">${esc(m.rubro)} ${m.jugador ? '· '+esc(m.jugador) : ''}</div>
+            <div class="fl-label">${esc(String(m.fecha).slice(0,10))} ${m.periodo ? '· '+esc(m.periodo) : ''} ${m.descripcion ? '· '+esc(m.descripcion) : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:${m.tipo==='ingreso'?'var(--green-ok)':'var(--red)'};font-weight:700">${m.tipo==='ingreso'?'+':'-'}$${Number(m.monto).toFixed(2)}</span>
+            <button class="sm danger" onclick="eliminarMovimientoClubAccion(${m.id})">✕</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  abrirSheet(html);
+}
+
+function abrirCatalogoRubros(rubros){
+  const html = `
+    <div class="sheet-head"><h2>Catálogo de rubros</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${rubros.map(r=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${esc(r.nombre)} ${!r.activo ? '<span class="badge cancelado">Inactivo</span>' : ''}</div>
+          <div class="fl-label">${r.tipo==='ingreso'?'Ingreso':'Egreso'} · ${r.aplicaA==='jugador'?'A jugadores':'Del club'} · ${r.recurrencia}</div>
+        </div>
+        <button class="sm ${r.activo?'danger':'primary'}" onclick="toggleRubroClubAccion(${r.id}, ${!r.activo})">${r.activo?'Desactivar':'Activar'}</button>
+      </div>
+    `).join('')}
+    <label style="margin-top:12px">Nuevo rubro</label>
+    <input id="nuevoRubroNombre" placeholder="Ej: Seguro deportivo">
+    <select id="nuevoRubroTipo" style="margin-top:8px">
+      <option value="ingreso">Ingreso</option>
+      <option value="egreso">Egreso</option>
+    </select>
+    <select id="nuevoRubroAplicaA" style="margin-top:8px">
+      <option value="jugador">Se cobra a jugadores</option>
+      <option value="club">Del club (servicios, auspicios)</option>
+    </select>
+    <select id="nuevoRubroRecurrencia" style="margin-top:8px">
+      <option value="unico">Único</option>
+      <option value="mensual">Mensual</option>
+      <option value="anual">Anual</option>
+    </select>
+    <button class="primary block" style="margin-top:12px" onclick="guardarNuevoRubro()">Agregar rubro</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarNuevoRubro(){
+  const nombre = document.getElementById('nuevoRubroNombre').value.trim();
+  const tipo = document.getElementById('nuevoRubroTipo').value;
+  const aplicaA = document.getElementById('nuevoRubroAplicaA').value;
+  const recurrencia = document.getElementById('nuevoRubroRecurrencia').value;
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('crear_rubro_club_admin', {nombre, tipo, aplicaA, recurrencia});
+  if(res===null) return;
+  toast('Rubro agregado');
+  abrirFinanzasClub();
+}
+
+async function toggleRubroClubAccion(rubroId, activo){
+  const res = await api('toggle_rubro_club_admin', {rubroId, activo});
+  if(res===null) return;
+  const rubros = await api('listar_rubros_club_admin');
+  if(rubros===null) return;
+  abrirCatalogoRubros(rubros);
+}
+
+async function abrirRegistrarMovimientoClub(rubros){
+  const jugadores = await api('listar_jugadores');
+  if(jugadores===null) return;
+  const activos = rubros.filter(r=>r.activo);
+  const html = `
+    <div class="sheet-head"><h2>Registrar movimiento</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Rubro</label>
+    <select id="movClubRubro" onchange="actualizarCamposMovClub(${JSON.stringify(activos).replace(/"/g,'&quot;')})">
+      ${activos.map(r=>`<option value="${r.id}" data-aplica="${r.aplicaA}">${esc(r.nombre)} (${r.tipo==='ingreso'?'Ingreso':'Egreso'})</option>`).join('')}
+    </select>
+    <div id="movClubJugadorWrap"></div>
+    <label>Monto</label>
+    <input id="movClubMonto" type="number" step="0.01" placeholder="0.00">
+    <label>Fecha</label>
+    <input id="movClubFecha" type="date" value="${new Date().toISOString().slice(0,10)}">
+    <label>Periodo (opcional, ej: 2026-09 para mensualidad de septiembre)</label>
+    <input id="movClubPeriodo" placeholder="Ej: 2026-09">
+    <label>Descripción (opcional)</label>
+    <input id="movClubDescripcion" placeholder="Ej: Pago en efectivo">
+    <button class="primary block" style="margin-top:12px" onclick="guardarMovimientoClub()">Guardar</button>
+  `;
+  abrirSheet(html);
+  window._jugadoresParaMovClub = jugadores;
+  actualizarCamposMovClub(activos);
+}
+
+function actualizarCamposMovClub(rubros){
+  const select = document.getElementById('movClubRubro');
+  const aplica = select.selectedOptions[0].dataset.aplica;
+  const wrap = document.getElementById('movClubJugadorWrap');
+  if(aplica==='jugador'){
+    const jugadores = window._jugadoresParaMovClub || [];
+    wrap.innerHTML = `
+      <label>Jugador</label>
+      <select id="movClubJugador">
+        ${jugadores.map(j=>`<option value="${j.id}">${esc(j.nombres)} ${esc(j.apellidos)}</option>`).join('')}
+      </select>
+    `;
+  } else {
+    wrap.innerHTML = '';
+  }
+}
+
+async function guardarMovimientoClub(){
+  const rubroId = parseInt(document.getElementById('movClubRubro').value);
+  const jugadorSelect = document.getElementById('movClubJugador');
+  const jugadorId = jugadorSelect ? parseInt(jugadorSelect.value) : null;
+  const monto = parseFloat(document.getElementById('movClubMonto').value);
+  const fecha = document.getElementById('movClubFecha').value;
+  const periodo = document.getElementById('movClubPeriodo').value.trim();
+  const descripcion = document.getElementById('movClubDescripcion').value.trim();
+  if(isNaN(monto) || monto<=0){ toast('Escribe un monto válido', true); return; }
+  const res = await api('registrar_movimiento_club_admin', {rubroId, jugadorId, monto, fecha, periodo, descripcion});
+  if(res===null) return;
+  toast('Movimiento registrado');
+  abrirFinanzasClub();
+}
+
+async function eliminarMovimientoClubAccion(movimientoId){
+  if(!confirm('¿Eliminar este movimiento?')) return;
+  const res = await api('eliminar_movimiento_club_admin', {movimientoId});
+  if(res===null) return;
+  toast('Eliminado');
+  abrirFinanzasClub();
+}
+
 async function abrirMenuMas(){
   const opciones = [
     {tab:'parametros', icono:'⚙️', nombre:'Parámetros'},
@@ -607,6 +765,7 @@ async function abrirMenuMas(){
     `).join('')}
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="abrirMenuPorRol()">🧩 Menú por Rol (app unificada)</button>
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionPlanilleros()">🔴 Planilleros</button>
+    <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirFinanzasClub()">💵 Finanzas del Club</button>
   `;
   abrirSheet(html);
 }

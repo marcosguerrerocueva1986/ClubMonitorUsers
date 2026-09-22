@@ -21,6 +21,7 @@ const {
 } = require('./_admin_entrenadores');
 const { listarPantallasMenu, togglePantallaRol, toggleActivaPantalla } = require('./_admin_pantallas_menu');
 const { listarPlanilleros, crearPlanillero, editarPlanillero, togglePlanillero, resetearClavePlanilleroAdmin } = require('./_admin_planilleros');
+const { listarRubros, crearRubro, editarRubro, toggleRubro, listarMovimientosClub, registrarMovimientoClub, eliminarMovimientoClub } = require('./_admin_finanzas_club');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin, resetearClaveRepresentanteAdmin } = require('./_admin_jugadores');
 const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios, listarPermisosPantallas, togglePermisoPantalla } = require('./_admin_operaciones');
 const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento, listarEventosSelector, listarFechasEventoSelector } = require('./_admin_eventos');
@@ -105,6 +106,13 @@ module.exports = async (req, res) => {
       case 'editar_planillero_admin': return res.status(200).json(await editarPlanillero(pool, body));
       case 'toggle_planillero_admin': return res.status(200).json(await togglePlanillero(pool, body));
       case 'resetear_clave_planillero_admin': return res.status(200).json(await resetearClavePlanilleroAdmin(pool, body));
+      case 'listar_rubros_club_admin': return res.status(200).json(await listarRubros(pool));
+      case 'crear_rubro_club_admin': return res.status(200).json(await crearRubro(pool, body));
+      case 'editar_rubro_club_admin': return res.status(200).json(await editarRubro(pool, body));
+      case 'toggle_rubro_club_admin': return res.status(200).json(await toggleRubro(pool, body));
+      case 'listar_movimientos_club_admin': return res.status(200).json(await listarMovimientosClub(pool, body));
+      case 'registrar_movimiento_club_admin': return res.status(200).json(await registrarMovimientoClub(pool, body));
+      case 'eliminar_movimiento_club_admin': return res.status(200).json(await eliminarMovimientoClub(pool, body));
       case 'crear_horario_grupo_admin': return res.status(200).json(await crearHorarioGrupo(pool, body));
       case 'eliminar_horario_grupo_admin': return res.status(200).json(await eliminarHorarioGrupo(pool, body));
       case 'listar_representantes_jugador_admin': return res.status(200).json(await listarRepresentantesJugadorAdmin(pool, body));
