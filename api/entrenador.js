@@ -423,7 +423,30 @@ async function listarCalendarioMes(pool, entrenadorId, body) {
     [grupoIds, anio, mes]
   );
 
-  return { success: true, data: { sesiones: sesiones.rows, partidos: partidos.rows } };
+  // Horarios recurrentes: se proyectan sobre el mes para marcar todos
+  // los dias que "les toca" segun el dia de la semana, aunque todavia
+  // no exista una sesion puntual registrada ese dia.
+  const horariosGrupo = await pool.query(
+    `SELECT h.dia_semana AS "diaSemana", h.hora_inicio AS "horaInicio", h.lugar, g.nombre AS grupo
+     FROM sport_control.horarios_grupo h JOIN sport_control.grupos g ON g.id = h.grupo_id
+     WHERE h.grupo_id = ANY($1::int[]) AND h.activo = true`,
+    [grupoIds]
+  );
+  const horarios = [];
+  if (horariosGrupo.rows.length > 0) {
+    const diasEnMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+    for (let d = 1; d <= diasEnMes; d++) {
+      const fecha = new Date(Date.UTC(anio, mes - 1, d));
+      const diaSemana = fecha.getUTCDay();
+      horariosGrupo.rows.forEach(h => {
+        if (h.diaSemana === diaSemana) {
+          horarios.push({ fecha: fecha.toISOString().slice(0, 10), grupo: h.grupo, tipo: 'horario', detalle: h.lugar, hora: h.horaInicio });
+        }
+      });
+    }
+  }
+
+  return { success: true, data: { sesiones: sesiones.rows, partidos: partidos.rows, horarios } };
 }
 
 module.exports = async (req, res) => {

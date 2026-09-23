@@ -54,7 +54,8 @@ if ('serviceWorker' in navigator) {
   }
   #appRoot{ display:none; flex-direction:column; height:100vh; height:100dvh; }
   h1,h2,h3,.disp{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:0.02em;}
-  header.top{ flex-shrink:0; background:linear-gradient(180deg, var(--pitch-1) 70%, transparent); padding:18px 20px 14px; border-bottom:1px solid var(--line); }
+  header.top{ position:relative; flex-shrink:0; background:linear-gradient(180deg, var(--pitch-1) 70%, transparent); padding:18px 20px 14px; border-bottom:1px solid var(--line); }
+  .btn-cambiar-contexto{ position:absolute; top:16px; right:16px; background:var(--pitch-3); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; color:var(--gold); cursor:pointer; }
   header.top h1{font-size:20px;margin:0;font-weight:600;color:var(--chalk);}
   header.top .sub{font-size:12px;color:var(--chalk-dim);margin-top:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:0.03em;}
   .centerline{height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 10px, transparent 10px 18px);margin-top:12px;border-radius:2px;}
@@ -191,6 +192,7 @@ if ('serviceWorker' in navigator) {
   <header class="top">
     <img src="/api/logo" alt="" style="width:28px;height:28px;border-radius:7px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'"><h1 id="saludoHeader" style="display:inline">Hola 👋</h1>
     <div class="sub" id="rolesHeader" onclick="abrirSelectorContextual()" style="cursor:pointer">CARGANDO...</div>
+    <button class="btn-cambiar-contexto" id="btnCambiarContexto" style="display:none" onclick="abrirSelectorContextual()">Cambiar</button>
     <div class="centerline"></div>
   </header>
 
@@ -646,6 +648,8 @@ function actualizarHeaderGrupo(){
   if(!GRUPO_ACTUAL) return;
   const el = document.getElementById('rolesHeader');
   if(el) el.textContent = SESION.roles.map(r=>({jugador:'Jugador',representante:'Representante',entrenador:'Entrenador',director:'Director'}[r]||r)).join(' · ') + ' · Grupo: ' + GRUPO_ACTUAL.nombre.toUpperCase();
+  const btn = document.getElementById('btnCambiarContexto');
+  if(btn) btn.style.display = MIS_GRUPOS.length>1 ? 'block' : 'none';
 }
 
 async function cargarGruposEntApp(){
@@ -1054,6 +1058,8 @@ function actualizarHeaderJugador(){
   if(!JUGADOR_ACTUAL) return;
   const el = document.getElementById('rolesHeader');
   if(el) el.textContent = SESION.roles.map(r=>({jugador:'Jugador',representante:'Representante',entrenador:'Entrenador',director:'Director'}[r]||r)).join(' · ') + ' · Viendo: ' + JUGADOR_ACTUAL.nombres.toUpperCase();
+  const btn = document.getElementById('btnCambiarContexto');
+  if(btn) btn.style.display = MIS_JUGADORES.length>1 ? 'block' : 'none';
 }
 
 function abrirSelectorContextual(){
@@ -3246,6 +3252,7 @@ function renderCalendarioEntrenador(cont){
   const diasConActividad = new Set();
   data.sesiones.forEach(s=>diasConActividad.add(new Date(s.fecha).getUTCDate()));
   data.partidos.forEach(p=>diasConActividad.add(new Date(p.fecha).getUTCDate()));
+  (data.horarios||[]).forEach(h=>diasConActividad.add(new Date(h.fecha).getUTCDate()));
 
   const primerDia = new Date(Date.UTC(CALENDARIO_ENT_ANIO, CALENDARIO_ENT_MES-1, 1));
   const diasEnMes = new Date(Date.UTC(CALENDARIO_ENT_ANIO, CALENDARIO_ENT_MES, 0)).getUTCDate();
@@ -3281,10 +3288,15 @@ function renderDetalleDiaCalendarioEnt(){
   const data = window._calendarioEntData;
   const sesionesDia = data.sesiones.filter(s=>new Date(s.fecha).getUTCDate()===CALENDARIO_ENT_DIA_SEL);
   const partidosDia = data.partidos.filter(p=>new Date(p.fecha).getUTCDate()===CALENDARIO_ENT_DIA_SEL);
-  if(sesionesDia.length===0 && partidosDia.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Sin actividad este día.</p>';
+  // Solo se muestra el horario recurrente si ese grupo NO tiene ya una
+  // sesion puntual registrada ese mismo dia (para no duplicar la info).
+  const gruposConSesion = new Set(sesionesDia.map(s=>s.grupo));
+  const horariosDia = (data.horarios||[]).filter(h=>new Date(h.fecha).getUTCDate()===CALENDARIO_ENT_DIA_SEL && !gruposConSesion.has(h.grupo));
+  if(sesionesDia.length===0 && partidosDia.length===0 && horariosDia.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Sin actividad este día.</p>';
   return `
     <div class="card">
       ${sesionesDia.map(s=>`<div class="field-line"><div class="fl-value">🏋️ ${esc(s.grupo)}</div><div class="fl-label">${esc(s.detalle||'Entrenamiento')}</div></div>`).join('')}
+      ${horariosDia.map(h=>`<div class="field-line"><div class="fl-value">📅 ${esc(h.grupo)}</div><div class="fl-label">${h.hora?h.hora.slice(0,5)+' · ':''}📍 ${esc(h.detalle||'—')} (horario habitual)</div></div>`).join('')}
       ${partidosDia.map(p=>`<div class="field-line"><div class="fl-value">⚽ ${esc(p.alias||'Partido')}</div><div class="fl-label">${p.hora?p.hora.slice(0,5)+' · ':''}📍 ${esc(p.detalle||'—')}</div></div>`).join('')}
     </div>
   `;
