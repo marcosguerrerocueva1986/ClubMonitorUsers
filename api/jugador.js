@@ -200,7 +200,7 @@ async function obtenerMiPerfil(pool, jugadorId) {
     [jugadorId]
   );
   const row = r.rows[0];
-  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, alias:row.alias, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado, misExentosHabilitado: row.mis_exentos_habilitado, miCuentaHabilitado: row.mi_cuenta_habilitado, partidosHabilitado: row.partidos_habilitado } };
+  return { success: true, data: { jugadorId: row.jugador_id, nombres: row.nombres, apellidos: row.apellidos, telefono: row.telefono, cedula: row.cedula, correo: row.correo, alias: row.alias, fecha_nacimiento: row.fecha_nacimiento, eventosHabilitado: row.eventos_habilitado, whatsappCheckinNumero: row.whatsapp_checkin_numero, representantesHabilitado: row.representantes_habilitado, misExentosHabilitado: row.mis_exentos_habilitado, miCuentaHabilitado: row.mi_cuenta_habilitado, partidosHabilitado: row.partidos_habilitado } };
 }
 
 async function listarMisRepresentantes(pool, jugadorId) {

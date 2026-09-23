@@ -306,7 +306,7 @@ async function listarPartidosActivosPlanillero(pool) {
      FROM sport_control.partidos p
      LEFT JOIN sport_control.disciplinas d ON d.id = p.disciplina_id
      WHERE p.estado IN ('confirmando', 'en_juego', 'cerrado')
-     ORDER BY p.fecha DESC, p.hora DESC LIMIT 20`
+     ORDER BY p.fecha ASC, p.hora ASC LIMIT 20`
   );
   return { success: true, data: r.rows };
 }
