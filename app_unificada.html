@@ -570,6 +570,7 @@ async function cargarPantallaPerfil(cont){
       <div class="card-title"><h3>Tus roles en el club</h3></div>
       <div class="meta">${perfil.roles.map(r=>ETIQUETAS_ROL_HEADER[r]||r).join(' · ')}</div>
     </div>
+    ${perfil.roles.includes('jugador') && perfil.representantesHabilitado ? '<button class="block" onclick="abrirMisRepresentantesApp()">📇 Mis representantes</button>' : ''}
     <div class="card" id="pushCardApp">
       <div class="card-title"><h3>🔔 Notificaciones</h3></div>
       <p class="meta" id="pushEstadoTextoApp">Revisando el estado...</p>
@@ -724,6 +725,24 @@ function mostrarDiagnosticoApp(lineas){
 
 function copiarDiagnosticoApp(btn){
   navigator.clipboard.writeText(window._diagnosticoTextoApp || '').then(()=>{ btn.textContent = '✓ Copiado'; }).catch(()=>{ toast('No se pudo copiar', true); });
+}
+
+async function abrirMisRepresentantesApp(){
+  const data = await apiJug('listar_mis_representantes_jugador');
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>Mis representantes</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;line-height:1.5">Esta es la lista de tus representantes registrados. Para agregar, editar o quitar a alguien, pídele al administrador del club que lo haga por ti.</p>
+    ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no tienes representantes registrados.</p>' : data.map(r=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">${esc(r.nombres)} ${esc(r.apellidos)} ${!r.cedula ? '<span class="badge cancelado">Falta cédula</span>' : ''}</div>
+          <div class="fl-label">${esc(r.cedula||'Sin cédula')} · ${esc(r.telefono||'Sin teléfono')} ${r.descripcion ? '· '+esc(r.descripcion) : ''}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
 }
 
 async function guardarPerfil(){

@@ -264,6 +264,11 @@ async function obtenerPerfilUnificado(pool, cedula) {
      LIMIT 1`,
     [cedula]
   );
+  let representantesHabilitado = false;
+  if (info.jugador) {
+    const cfg = await pool.query(`SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1`);
+    representantesHabilitado = !!(cfg.rows[0] && cfg.rows[0].representantes_habilitado);
+  }
   return {
     success: true,
     data: {
@@ -272,6 +277,7 @@ async function obtenerPerfilUnificado(pool, cedula) {
       apellidos: registro.apellidos,
       telefono: telRow.rows[0] ? telRow.rows[0].telefono : null,
       roles: info.roles,
+      representantesHabilitado,
     },
   };
 }

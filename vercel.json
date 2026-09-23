@@ -1,0 +1,13 @@
+{
+  "rewrites": [
+    { "source": "/jugador", "destination": "/app_unificada.html" },
+    { "source": "/jugador/", "destination": "/app_unificada.html" },
+    { "source": "/jugador/:path*", "destination": "/app_unificada.html" },
+    { "source": "/representante", "destination": "/app_unificada.html" },
+    { "source": "/representante/", "destination": "/app_unificada.html" },
+    { "source": "/representante/:path*", "destination": "/app_unificada.html" },
+    { "source": "/entrenador", "destination": "/app_unificada.html" },
+    { "source": "/entrenador/", "destination": "/app_unificada.html" },
+    { "source": "/entrenador/:path*", "destination": "/app_unificada.html" }
+  ]
+}
