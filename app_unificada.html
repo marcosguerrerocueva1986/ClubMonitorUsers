@@ -91,6 +91,7 @@ if ('serviceWorker' in navigator) {
   .badge.finalizado{background:rgba(159,176,154,.15);color:var(--chalk-dim);border:1px solid var(--line);}
   .jugador-card,.grupo-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:10px;cursor:pointer;text-align:left;width:100%;}
   .ok-card{background:rgba(111,207,151,.12);border:1px solid rgba(111,207,151,.35);border-radius:14px;padding:14px;margin-bottom:12px;color:var(--green-ok);font-size:14px;}
+  .alert-card{background:rgba(232,93,76,.12);border:1px solid rgba(232,93,76,.35);border-radius:14px;padding:14px;margin-bottom:12px;color:var(--red);font-size:14px;}
   .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
   .tabbar-scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
   .tabbar-scroll::-webkit-scrollbar{display:none;}
@@ -3167,6 +3168,7 @@ async function abrirDetalleMensualidadFin(jugadorId, nombre){
   if(data===null) return;
   const html = `
     <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.sinMontoConfigurado ? `<div class="alert-card">⚠️ El rubro "Mensualidad" no tiene un monto configurado — ve al Catálogo de rubros y ponle un valor mensual para que los montos se calculen bien.</div>` : ''}
     <div class="card">
       <div class="card-title"><h3>Adeudado: $${data.totalAdeudado.toFixed(2)}</h3></div>
       <div class="meta">${data.mesesAtraso} mes(es) sin cubrir · Mensualidad: $${data.montoMensualidad.toFixed(2)}/mes</div>

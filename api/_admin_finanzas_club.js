@@ -125,6 +125,31 @@ async function calcularMensualidadJugador(pool, jugadorId) {
   const rubro = await pool.query(`SELECT monto_sugerido FROM sport_control.rubros_club WHERE nombre = 'Mensualidad' LIMIT 1`);
   const montoMensualidad = Number((rubro.rows[0] && rubro.rows[0].monto_sugerido) || 0);
 
+  const mesesLista = generarMesesDesde(fechaInicio);
+
+  // Si el rubro "Mensualidad" no tiene un monto configurado (0 o vacio),
+  // el chequeo "saldoDisponible >= montoMensualidad" da TRUE siempre
+  // (cualquier saldo, hasta 0, "cubre" un monto de 0) y marcaba cada mes
+  // como pagado sin serlo -- por eso se veia "al dia" sin importar los
+  // pagos reales. Se corta aqui con una senal clara en vez de ese
+  // resultado enganoso.
+  if (montoMensualidad <= 0) {
+    const pagos = await pool.query(
+      `SELECT COALESCE(SUM(m.monto), 0) AS total FROM sport_control.movimientos_club m
+       JOIN sport_control.rubros_club rc ON rc.id = m.rubro_id
+       WHERE rc.nombre = 'Mensualidad' AND m.jugador_id = $1`,
+      [jugadorId]
+    );
+    return {
+      meses: mesesLista.map(periodo => ({ periodo, monto: 0, montoPagado: 0, estado: 'pendiente' })),
+      montoMensualidad: 0,
+      totalPagado: Number(pagos.rows[0].total),
+      totalAdeudado: 0,
+      mesesAtraso: mesesLista.length,
+      sinMontoConfigurado: true,
+    };
+  }
+
   const pagos = await pool.query(
     `SELECT COALESCE(SUM(m.monto), 0) AS total FROM sport_control.movimientos_club m
      JOIN sport_control.rubros_club rc ON rc.id = m.rubro_id
@@ -134,7 +159,6 @@ async function calcularMensualidadJugador(pool, jugadorId) {
   let saldoDisponible = Number(pagos.rows[0].total);
   const totalPagado = saldoDisponible;
 
-  const mesesLista = generarMesesDesde(fechaInicio);
   const meses = mesesLista.map(periodo => {
     let estado, montoPagadoMes;
     if (saldoDisponible >= montoMensualidad) {
