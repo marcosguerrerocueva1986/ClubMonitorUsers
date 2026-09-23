@@ -38,17 +38,35 @@ if ('serviceWorker' in navigator) {
   :root{
     --pitch-0:#0E1712; --pitch-1:#14231A; --pitch-2:#1C2E20; --pitch-3:#28402F;
     --line:#33502F; --chalk:#E9EEE3; --chalk-dim:#9FB09A; --gold:#FFD23F; --gold-dim:#8C7A2A;
-    --red:#E85D4C; --green-ok:#6FCF97; --radius:14px;
+    --red:#E85D4C; --green-ok:#6FCF97; --radius:14px; --glow:#1A2C1F; --on-accent:#1A2A1D;
   }
   [data-theme="light"]{
     --pitch-0:#F7F9F5; --pitch-1:#FFFFFF; --pitch-2:#EEF2EA; --pitch-3:#E0E8DA;
     --line:#C9D6C2; --chalk:#16241A; --chalk-dim:#5A6B54; --gold:#C9971F; --gold-dim:#8C7A2A;
-    --red:#C0392B; --green-ok:#2E9E5B;
+    --red:#C0392B; --green-ok:#2E9E5B; --glow:#E8ECE2; --on-accent:#FFFFFF;
+  }
+  /* Estilos del club (logo: azul, rojo, negro, blanco dominante) --
+     se reutilizan las MISMAS variables de siempre (--gold sigue siendo
+     "el color de acento"), solo cambia que color llevan en cada uno. */
+  [data-theme="club-oscuro"]{
+    --pitch-0:#0A0E18; --pitch-1:#10162A; --pitch-2:#171F38; --pitch-3:#212C4A;
+    --line:#2E3B5C; --chalk:#F5F6FA; --chalk-dim:#A7AFC7; --gold:#D93A2E; --gold-dim:#8C2A22;
+    --red:#E8453C; --green-ok:#4FBE82; --glow:#1C2748; --on-accent:#FFFFFF;
+  }
+  [data-theme="club-claro"]{
+    --pitch-0:#FFFFFF; --pitch-1:#FFFFFF; --pitch-2:#F2F4F9; --pitch-3:#E4E9F4;
+    --line:#CCD5E8; --chalk:#0E1730; --chalk-dim:#556085; --gold:#1B3F8B; --gold-dim:#122b60;
+    --red:#C0392B; --green-ok:#2E9E5B; --glow:#E4E9F4; --on-accent:#FFFFFF;
+  }
+  [data-theme="club-contraste"]{
+    --pitch-0:#0A0E18; --pitch-1:#10162A; --pitch-2:#171F38; --pitch-3:#212C4A;
+    --line:#2E3B5C; --chalk:#F5F6FA; --chalk-dim:#A7AFC7; --gold:#2F5FD6; --gold-dim:#1E3E8C;
+    --red:#E8453C; --green-ok:#4FBE82; --glow:#1C2748; --on-accent:#FFFFFF;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
   body{
-    margin:0; background:radial-gradient(1200px 600px at 50% -10%, #1A2C1F 0%, var(--pitch-1) 55%), var(--pitch-1);
+    margin:0; background:radial-gradient(1200px 600px at 50% -10%, var(--glow) 0%, var(--pitch-1) 55%), var(--pitch-1);
     color:var(--chalk); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;
     height:100vh; height:100dvh; overflow:hidden;
   }
@@ -79,10 +97,10 @@ if ('serviceWorker' in navigator) {
   .tabbar-scroll button{flex-shrink:0;}
   button{font-family:inherit;cursor:pointer;}
   button.block{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-weight:600;font-size:14px;}
-  button.primary{background:var(--gold);border-color:var(--gold);color:#1A2A1D;}
+  button.primary{background:var(--gold);border-color:var(--gold);color:var(--on-accent);}
   button.danger{background:rgba(232,93,76,.12);border-color:rgba(232,93,76,.35);color:var(--red);}
   button.sm{padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-size:13px;font-weight:600;flex-shrink:0;}
-  button.sm.primary{background:var(--gold);border-color:var(--gold);color:#1A2A1D;}
+  button.sm.primary{background:var(--gold);border-color:var(--gold);color:var(--on-accent);}
   input,select{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-size:15px;margin-bottom:12px;font-family:inherit;}
   label{display:block;font-size:12px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;font-weight:600;}
   nav.tabs{ flex-shrink:0; display:flex; background:var(--pitch-1); border-top:1px solid var(--line); padding:8px 6px calc(8px + env(safe-area-inset-bottom)); position:fixed; bottom:0; left:0; right:0; }
@@ -795,10 +813,19 @@ function cerrarSesionApp(){
 
 function abrirSelectorTema(){
   const actual = safeGet('temaApp') || 'dark';
+  const opciones = [
+    ['dark', '🌙 Oscuro (verde cancha)'],
+    ['light', '☀️ Claro (verde cancha)'],
+    ['club-oscuro', '⚫ Club Oscuro (rojo)'],
+    ['club-claro', '⚪ Club Claro (azul)'],
+    ['club-contraste', '🔵 Club Contraste (azul sobre oscuro)'],
+  ];
   const html = `
     <div class="sheet-head"><h2>Estilo de la app</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaApp('dark')"><div class="fl-value">🌙 Oscuro</div>${actual==='dark'?'<span class="badge" style="background:rgba(111,207,151,.15);color:var(--green-ok)">Activo</span>':''}</div>
-    <div class="field-line" style="cursor:pointer" onclick="cambiarTemaApp('light')"><div class="fl-value">☀️ Claro</div>${actual==='light'?'<span class="badge" style="background:rgba(111,207,151,.15);color:var(--green-ok)">Activo</span>':''}</div>
+    <p style="color:var(--chalk-dim);font-size:12px;margin-top:-6px">Los 3 primeros son de prueba. Toca cualquiera para verlo al instante.</p>
+    ${opciones.map(([clave,nombre])=>`
+      <div class="field-line" style="cursor:pointer" onclick="cambiarTemaApp('${clave}')"><div class="fl-value">${nombre}</div>${actual===clave?'<span class="badge" style="background:rgba(111,207,151,.15);color:var(--green-ok)">Activo</span>':''}</div>
+    `).join('')}
   `;
   abrirSheet(html);
 }
