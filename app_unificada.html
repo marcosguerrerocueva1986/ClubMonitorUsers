@@ -3180,7 +3180,7 @@ async function abrirDetalleMensualidadFin(jugadorId, nombre){
   if(data===null) return;
   const html = `
     <div class="sheet-head"><h2>${esc(nombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    ${data.sinMontoConfigurado ? `<div class="alert-card">⚠️ El rubro "Mensualidad" no tiene un monto configurado — ve al Catálogo de rubros y ponle un valor mensual para que los montos se calculen bien.</div>` : ''}
+    ${data.sinMontoConfigurado ? `<div class="alert-card">⚠️ La "Cuota mensual" no está configurada — ve a Admin → Parámetros → Generales y ponle un valor para que los montos se calculen bien.</div>` : ''}
     <div class="card">
       <div class="card-title"><h3>Adeudado: $${data.totalAdeudado.toFixed(2)}</h3></div>
       <div class="meta">${data.mesesAtraso} mes(es) sin cubrir · Mensualidad: $${data.montoMensualidad.toFixed(2)}/mes</div>
