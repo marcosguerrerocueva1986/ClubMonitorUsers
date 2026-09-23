@@ -291,10 +291,18 @@ async function verMisPartidos(pool, jugadorId) {
             COALESCE(cp.estado, 'sin_confirmar') AS "miEstado",
             (SELECT COUNT(*) FROM sport_control.invitados_asistencia ia WHERE ia.partido_id = p.id AND ia.jugador_anfitrion_id = $1 AND ia.estado = 'confirmado') AS "cantidadInvitados",
             d.icono AS "disciplinaIcono",
+            ev.nombre AS "eventoNombre",
+            (SELECT string_agg(DISTINCT (e.nombres || ' ' || e.apellidos), ', ')
+               FROM sport_control.confirmaciones_partido cp2
+               JOIN sport_control.jugadores j2 ON j2.id = cp2.jugador_id
+               JOIN sport_control.entrenador_grupo eg ON eg.grupo_id = j2.grupo_id
+               JOIN sport_control.entrenadores e ON e.id = eg.entrenador_id
+               WHERE cp2.partido_id = p.id AND cp2.estado = 'confirmado') AS "profesores",
             (p.marcador_propio IS NOT NULL OR EXISTS(SELECT 1 FROM sport_control.partido_estadisticas pe WHERE pe.partido_id = p.id)) AS "tieneEstadisticas"
      FROM sport_control.partidos p
      LEFT JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.jugador_id = $1
      LEFT JOIN sport_control.disciplinas d ON d.id = p.disciplina_id
+     LEFT JOIN sport_control.eventos ev ON ev.id = p.evento_id
      WHERE p.estado IN ('confirmando', 'cerrado', 'en_juego', 'finalizado')
      ORDER BY (p.estado = 'finalizado') ASC,
               CASE WHEN p.estado != 'finalizado' THEN p.fecha END ASC,

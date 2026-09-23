@@ -187,9 +187,66 @@ async function obtenerOCrearSesionDia(pool, entrenadorId, body) {
   return { success: true, data: { sesion: sesion.rows[0], jugadores: jugadores.rows } };
 }
 
+async function enviarPushAsistencia(pool, jugadorId, asistio, sesionInfo) {
+  try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
+
+    const jugador = await pool.query(`SELECT nombres FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
+    const nombreJugador = jugador.rows[0] ? jugador.rows[0].nombres : 'Tu representado';
+
+    const representantes = await pool.query(
+      `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
+      [jugadorId]
+    );
+    if (representantes.rows.length === 0) return;
+
+    const filters = [];
+    representantes.rows.forEach((r, i) => {
+      if (i > 0) filters.push({ operator: 'OR' });
+      filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
+    });
+
+    // Los push no permiten controlar el color del texto (eso lo decide
+    // el sistema operativo, no quien envia) -- se usa un emoji como
+    // "icono" en el titulo para diferenciar de un vistazo.
+    const titulo = asistio ? '✅ Llegó al entrenamiento' : '❌ Faltó al entrenamiento';
+    const fechaHoraCorta = sesionInfo.fecha
+      ? new Date(sesionInfo.fecha).toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) + (sesionInfo.hora ? ' · ' + sesionInfo.hora.slice(0, 5) : '')
+      : '';
+    const cuerpo = `${nombreJugador}${sesionInfo.grupo ? ' (' + sesionInfo.grupo + ')' : ''}${fechaHoraCorta ? ' · ' + fechaHoraCorta : ''}`;
+
+    await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify({
+        app_id: c.onesignal_app_id,
+        filters,
+        target_channel: 'push',
+        headings: { en: titulo },
+        contents: { en: cuerpo },
+        url: c.sitio_url_representante || '',
+      }),
+    });
+  } catch (e) {
+    console.error('Push de asistencia falló (no bloquea el registro):', e);
+  }
+}
+
 async function guardarSesionEntrenamiento(pool, body) {
   const { sesionId, rutina, notas, asistencias } = body;
   await pool.query(`UPDATE sport_control.sesiones_entrenamiento SET rutina = $1, notas = $2 WHERE id = $3`, [rutina || null, notas || null, sesionId]);
+
+  const sesion = await pool.query(
+    `SELECT se.fecha, se.hora_inicio AS hora, g.nombre AS grupo FROM sport_control.sesiones_entrenamiento se
+     JOIN sport_control.grupos g ON g.id = se.grupo_id WHERE se.id = $1`,
+    [sesionId]
+  );
+  const sesionInfo = sesion.rows[0] || {};
 
   for (const a of (asistencias || [])) {
     await pool.query(
@@ -198,6 +255,7 @@ async function guardarSesionEntrenamiento(pool, body) {
        ON CONFLICT (sesion_id, jugador_id) DO UPDATE SET asistio = EXCLUDED.asistio, justificacion = EXCLUDED.justificacion`,
       [sesionId, a.jugadorId, !!a.asistio, a.justificacion || null]
     );
+    await enviarPushAsistencia(pool, a.jugadorId, !!a.asistio, sesionInfo);
   }
   return { success: true };
 }
