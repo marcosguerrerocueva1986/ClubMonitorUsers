@@ -207,7 +207,7 @@ if ('serviceWorker' in navigator) {
 
 <div id="loginScreen">
   <div class="login-card">
-    <div class="mark">🏟️</div>
+    <img src="/api/logo" alt="" style="width:64px;height:64px;border-radius:14px;margin-bottom:10px" onerror="this.outerHTML='<div class=&quot;mark&quot;>🏟️</div>'">
     <h1>Mi Club</h1>
     <div id="loginCardContent">
       <p id="loginSubtitle">Ingresa tu cédula</p>
@@ -291,6 +291,107 @@ function fileToBase64(file){
 // Version minima -- para comprobantes que solo son respaldo (no se
 // necesita calidad de foto, solo que los numeros se puedan leer si
 // hace falta revisar despues).
+/* ---------- Foto tipo carnet: captura + recorte, sin librerias externas ----------
+   El input file con accept="image/*" capture="user" ya abre la camara
+   frontal directo en el celular (nativo del navegador) y cae a la
+   galeria/selector de archivos en desktop -- sin necesitar ninguna
+   libreria ni permiso especial aparte del que ya pide el navegador. */
+let _fotoCarnetImg = null;
+let _fotoCarnetOffset = { x: 0, y: 0 };
+let _fotoCarnetZoom = 1;
+let _fotoCarnetCallback = null;
+const FOTO_CARNET_W = 240, FOTO_CARNET_H = 300;
+
+function abrirEditorFotoCarnet(onGuardar){
+  _fotoCarnetCallback = onGuardar;
+  _fotoCarnetImg = null;
+  const html = `
+    <div class="sheet-head"><h2>Foto del jugador</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:12px;margin-top:-6px">Toma una foto o elige una de la galería. Luego arrastra para ubicarla dentro del marco.</p>
+    <input type="file" id="fotoCarnetInput" accept="image/*" capture="user" onchange="cargarFotoCarnetSeleccionada(this)" style="margin-bottom:12px">
+    <div style="display:flex;justify-content:center">
+      <canvas id="fotoCarnetCanvas" width="${FOTO_CARNET_W}" height="${FOTO_CARNET_H}" style="border:2px solid var(--line);border-radius:10px;touch-action:none;background:var(--pitch-3)"></canvas>
+    </div>
+    <label style="margin-top:12px">Zoom</label>
+    <input type="range" id="fotoCarnetZoomSlider" min="100" max="300" value="100" style="width:100%" oninput="ajustarZoomFotoCarnet(this.value)" disabled>
+    <button class="primary block" style="margin-top:12px" id="fotoCarnetGuardarBtn" disabled onclick="confirmarFotoCarnet()">Usar esta foto</button>
+  `;
+  abrirSheet(html);
+  configurarArrastreFotoCarnet();
+}
+
+function cargarFotoCarnetSeleccionada(input){
+  const file = input.files[0];
+  if(!file) return;
+  const img = new Image();
+  const reader = new FileReader();
+  reader.onload = (e)=>{ img.src = e.target.result; };
+  img.onload = ()=>{
+    _fotoCarnetImg = img;
+    _fotoCarnetZoom = 1;
+    // Centra la imagen y la escala para que cubra todo el marco desde el inicio.
+    const escalaCubrir = Math.max(FOTO_CARNET_W / img.width, FOTO_CARNET_H / img.height);
+    _fotoCarnetImg._escalaBase = escalaCubrir;
+    _fotoCarnetOffset = { x: (FOTO_CARNET_W - img.width*escalaCubrir)/2, y: (FOTO_CARNET_H - img.height*escalaCubrir)/2 };
+    document.getElementById('fotoCarnetZoomSlider').disabled = false;
+    document.getElementById('fotoCarnetZoomSlider').value = 100;
+    document.getElementById('fotoCarnetGuardarBtn').disabled = false;
+    dibujarFotoCarnet();
+  };
+  reader.readAsDataURL(file);
+}
+
+function dibujarFotoCarnet(){
+  const canvas = document.getElementById('fotoCarnetCanvas');
+  if(!canvas || !_fotoCarnetImg) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,FOTO_CARNET_W,FOTO_CARNET_H);
+  const escala = _fotoCarnetImg._escalaBase * _fotoCarnetZoom;
+  const w = _fotoCarnetImg.width * escala, h = _fotoCarnetImg.height * escala;
+  ctx.drawImage(_fotoCarnetImg, _fotoCarnetOffset.x, _fotoCarnetOffset.y, w, h);
+}
+
+function ajustarZoomFotoCarnet(valorSlider){
+  const nuevoZoom = valorSlider / 100;
+  // Al hacer zoom, se mantiene el centro del marco fijo en su lugar.
+  const cx = FOTO_CARNET_W/2, cy = FOTO_CARNET_H/2;
+  const factor = nuevoZoom / _fotoCarnetZoom;
+  _fotoCarnetOffset.x = cx - (cx - _fotoCarnetOffset.x) * factor;
+  _fotoCarnetOffset.y = cy - (cy - _fotoCarnetOffset.y) * factor;
+  _fotoCarnetZoom = nuevoZoom;
+  dibujarFotoCarnet();
+}
+
+function configurarArrastreFotoCarnet(){
+  const canvas = document.getElementById('fotoCarnetCanvas');
+  let arrastrando = false, ultimoX = 0, ultimoY = 0;
+  const iniciar = (x,y)=>{ if(!_fotoCarnetImg) return; arrastrando = true; ultimoX = x; ultimoY = y; };
+  const mover = (x,y)=>{
+    if(!arrastrando) return;
+    _fotoCarnetOffset.x += (x - ultimoX);
+    _fotoCarnetOffset.y += (y - ultimoY);
+    ultimoX = x; ultimoY = y;
+    dibujarFotoCarnet();
+  };
+  const soltar = ()=>{ arrastrando = false; };
+  canvas.onmousedown = (e)=>iniciar(e.offsetX, e.offsetY);
+  canvas.onmousemove = (e)=>mover(e.offsetX, e.offsetY);
+  canvas.onmouseup = soltar;
+  canvas.onmouseleave = soltar;
+  canvas.ontouchstart = (e)=>{ const r=canvas.getBoundingClientRect(); const t=e.touches[0]; iniciar(t.clientX-r.left, t.clientY-r.top); };
+  canvas.ontouchmove = (e)=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); const t=e.touches[0]; mover(t.clientX-r.left, t.clientY-r.top); };
+  canvas.ontouchend = soltar;
+}
+
+function confirmarFotoCarnet(){
+  const canvas = document.getElementById('fotoCarnetCanvas');
+  // Se exporta en baja calidad a proposito -- es solo una foto tipo
+  // carnet de referencia, no una foto de galeria.
+  const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+  cerrarSheet();
+  if(_fotoCarnetCallback) _fotoCarnetCallback(base64);
+}
+
 function fileToBase64Minimo(file){
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2090,7 +2191,11 @@ async function cargarPantallaEditarRepresentado(cont){
   cont.innerHTML = `
     <div class="card">
       <div class="card-title"><h3>Datos de ${esc(JUGADOR_ACTUAL.nombres)}</h3></div>
-      <label>Nombres</label>
+      <div style="display:flex;justify-content:center;margin-bottom:10px">
+        ${perfil.foto_carnet ? `<img src="data:image/jpeg;base64,${perfil.foto_carnet}" style="width:100px;height:125px;object-fit:cover;border-radius:10px;border:2px solid var(--line)">` : `<div style="width:100px;height:125px;border-radius:10px;border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--chalk-dim);font-size:32px">👤</div>`}
+      </div>
+      <button class="sm block" onclick="abrirEditorFotoCarnet(guardarFotoCarnetRep)">📷 ${perfil.foto_carnet?'Cambiar':'Agregar'} foto</button>
+      <label style="margin-top:10px">Nombres</label>
       <input id="editJugRepNombres" value="${esc(perfil.nombres||'')}" autocomplete="off">
       <label>Apellidos</label>
       <input id="editJugRepApellidos" value="${esc(perfil.apellidos||'')}" autocomplete="off">
@@ -2106,6 +2211,20 @@ async function cargarPantallaEditarRepresentado(cont){
     </div>
     <button class="block" onclick="abrirHistorialTorneosRep()">🏆 Historial de torneos</button>
   `;
+}
+
+async function guardarFotoCarnetRep(base64){
+  const res = await apiRep('actualizar_datos_jugador_representante', {
+    nombres: JUGADOR_ACTUAL.nombres, apellidos: document.getElementById('editJugRepApellidos').value.trim(),
+    alias: document.getElementById('editJugRepAlias').value.trim(),
+    fechaNacimiento: document.getElementById('editJugRepFechaNacimiento').value,
+    cedula: document.getElementById('editJugRepCedula').value.trim(),
+    correo: document.getElementById('editJugRepCorreo').value.trim(),
+    fotoCarnet: base64,
+  });
+  if(res===null) return;
+  toast('Foto actualizada');
+  cambiarPantalla('editar_representado_representante');
 }
 
 async function guardarEditarRepresentado(){

@@ -190,7 +190,7 @@ async function registrarJugadorPwa(pool, body) {
 
 async function obtenerMiPerfil(pool, jugadorId) {
   const r = await pool.query(
-    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo, j.alias, j.fecha_nacimiento,
+    `SELECT j.id AS jugador_id, j.nombres, j.apellidos, j.telefono, j.cedula, j.correo, j.alias, j.fecha_nacimiento, j.foto_carnet,
             (SELECT eventos_habilitado_jugador FROM sport_control.configuracion_club WHERE id = 1) AS eventos_habilitado,
             (SELECT whatsapp_checkin_numero FROM sport_control.configuracion_club WHERE id = 1) AS whatsapp_checkin_numero,
             (SELECT representantes_habilitado FROM sport_control.configuracion_club WHERE id = 1) AS representantes_habilitado,
@@ -390,6 +390,9 @@ async function verMiQr(pool, jugadorId, partidoId) {
 }
 
 async function actualizarMisDatos(pool, jugadorId, body) {
+  if (body.fotoCarnet !== undefined) {
+    await pool.query(`UPDATE sport_control.jugadores SET foto_carnet = $1 WHERE id = $2`, [body.fotoCarnet || null, jugadorId]);
+  }
   await pool.query(
     `UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2, cedula = $3, correo = $4, alias = $5, fecha_nacimiento = $6 WHERE id = $7`,
     [body.nombres, body.apellidos, body.cedula, body.correo, body.alias || null, body.fechaNacimiento || null, jugadorId]
