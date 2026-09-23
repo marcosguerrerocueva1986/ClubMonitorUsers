@@ -1329,12 +1329,12 @@ async function cargarPantallaPartidosRep(cont){
     <div class="card">
       <div class="card-title">
         <h3>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${p.alias ? esc(p.alias) : 'Partido'}</h3>
+        ${p.eventoNombre ? '<span style="color:var(--chalk-dim);font-size:12px;font-weight:600">🎒 '+esc(p.eventoNombre)+'</span>' : ''}
         <span class="badge ${p.estado==='finalizado' ? 'finalizado' : p.miEstado}">${p.estado==='finalizado' ? 'Finalizado' : (p.miEstado==='confirmado' ? 'Va' : (p.miEstado==='cancelado' ? 'No va' : 'Sin confirmar'))}</span>
       </div>
       <div class="meta">
         📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
         📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
-        ${p.eventoNombre ? '<br>🎒 '+esc(p.eventoNombre) : ''}
         ${p.profesores ? '<br>🧑‍🏫 '+esc(p.profesores) : ''}
       </div>
       <div class="row-actions">
@@ -2140,12 +2140,12 @@ async function cargarPantallaPartidosJug(cont){
     <div class="card">
       <div class="card-title">
         <h3>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${p.alias ? esc(p.alias) : 'Partido'}</h3>
+        ${p.eventoNombre ? '<span style="color:var(--chalk-dim);font-size:12px;font-weight:600">🎒 '+esc(p.eventoNombre)+'</span>' : ''}
         <span class="badge ${p.estado==='finalizado' ? 'finalizado' : p.miEstado}">${p.estado==='finalizado' ? 'Finalizado' : (p.miEstado==='confirmado' ? 'Voy' : (p.miEstado==='cancelado' ? 'No voy' : 'Sin confirmar'))}</span>
       </div>
       <div class="meta">
         📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
         📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
-        ${p.eventoNombre ? '<br>🎒 '+esc(p.eventoNombre) : ''}
         ${p.profesores ? '<br>🧑‍🏫 '+esc(p.profesores) : ''}
       </div>
       <div class="row-actions">
