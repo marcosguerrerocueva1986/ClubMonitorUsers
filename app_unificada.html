@@ -108,6 +108,7 @@ if ('serviceWorker' in navigator) {
   button.block{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-weight:600;font-size:14px;}
   button.primary{background:var(--gold);border-color:var(--gold);color:var(--on-accent);}
   button.danger{background:rgba(232,93,76,.12);border-color:rgba(232,93,76,.35);color:var(--red);}
+  button.danger-solido{background:var(--red);border-color:var(--red);color:#fff;}
   button.sm{padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-size:13px;font-weight:600;flex-shrink:0;}
   button.sm.primary{background:var(--gold);border-color:var(--gold);color:var(--on-accent);}
   input,select{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--pitch-2);color:var(--chalk);font-size:15px;margin-bottom:12px;font-family:inherit;}
@@ -978,7 +979,7 @@ function mostrarTomarAsistencia(jugadores){
           <div class="fl-value">${esc(j.nombres)} ${esc(j.apellidos)}</div>
           <div style="display:flex;gap:6px">
             <button class="sm ${j.asistio===true?'primary':''}" data-jugador="${j.id}" data-valor="true" onclick="marcarAsistencia(${j.id}, true, this)">✓ Vino</button>
-            <button class="sm ${j.asistio===false?'danger':''}" data-jugador="${j.id}" data-valor="false" onclick="marcarAsistencia(${j.id}, false, this)">✕ Faltó</button>
+            <button class="sm ${j.asistio===false?'danger-solido':''}" data-jugador="${j.id}" data-valor="false" onclick="marcarAsistencia(${j.id}, false, this)">✕ Faltó</button>
           </div>
         </div>
       `).join('')}
@@ -996,12 +997,17 @@ function mostrarTomarAsistencia(jugadores){
 
 function marcarAsistencia(jugadorId, valor, btnEl){
   window._asistenciaTemp[jugadorId] = window._asistenciaTemp[jugadorId] || {};
-  window._asistenciaTemp[jugadorId].asistio = valor;
+  const actual = window._asistenciaTemp[jugadorId].asistio;
+  // Tocar el mismo boton que ya estaba marcado lo desmarca (por si hace
+  // falta dar mas tiempo de llegada, o corregir una seleccion sin
+  // tener que forzar la otra opcion).
+  const nuevoValor = (actual === valor) ? null : valor;
+  window._asistenciaTemp[jugadorId].asistio = nuevoValor;
   const fila = btnEl.parentElement;
   fila.querySelectorAll('button').forEach(b=>{
-    b.classList.remove('primary','danger');
-    if(b.dataset.valor==='true' && valor===true) b.classList.add('primary');
-    if(b.dataset.valor==='false' && valor===false) b.classList.add('danger');
+    b.classList.remove('primary','danger-solido');
+    if(b.dataset.valor==='true' && nuevoValor===true) b.classList.add('primary');
+    if(b.dataset.valor==='false' && nuevoValor===false) b.classList.add('danger-solido');
   });
 }
 
@@ -1017,9 +1023,11 @@ async function guardarAsistenciaYRutina(){
   btn.textContent = 'Guardando...';
   const rutina = document.getElementById('sesionRutina').value.trim();
   const notas = document.getElementById('sesionNotas').value.trim();
-  const asistencias = Object.entries(window._asistenciaTemp).map(([jugadorId, v])=>({
-    jugadorId: parseInt(jugadorId), asistio: !!v.asistio, justificacion: v.justificacion || null,
-  }));
+  const asistencias = Object.entries(window._asistenciaTemp)
+    .filter(([jugadorId, v]) => v.asistio === true || v.asistio === false)
+    .map(([jugadorId, v])=>({
+      jugadorId: parseInt(jugadorId), asistio: v.asistio, justificacion: v.justificacion || null,
+    }));
   const res = await apiEnt('guardar_sesion_entrenamiento_entrenador', {sesionId: sesionActual.id, rutina, notas, asistencias});
   if(res===null){ btn.disabled = false; btn.textContent = 'Guardar'; return; }
   toast('Asistencia guardada');
