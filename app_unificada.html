@@ -614,7 +614,6 @@ async function cargarPantallaPerfil(cont){
       <div class="card-title"><h3>🔔 Notificaciones</h3></div>
       <p class="meta" id="pushEstadoTextoApp">Revisando el estado...</p>
       <button class="primary block" id="pushBtnApp" style="margin-top:10px;display:none" onclick="activarNotificacionesApp()">Activar notificaciones</button>
-      <button class="sm" style="margin-top:8px" onclick="diagnosticoOneSignalApp()">🔍 Diagnóstico avanzado</button>
     </div>
     <button class="block" onclick="abrirSelectorTema()">🎨 Estilo de la app</button>
     <button class="block" onclick="abrirCambiarClave()">🔒 Cambiar mi clave de seguridad</button>
@@ -833,13 +832,13 @@ function cerrarSesionApp(){
 }
 
 function abrirSelectorTema(){
-  const actual = safeGet('temaApp') || 'dark';
+  const actual = safeGet('temaApp') || 'club-claro';
   const opciones = [
+    ['club-claro', '⚪ Club Claro (azul)'],
+    ['club-oscuro', '⚫ Club Oscuro (rojo)'],
+    ['club-contraste', '🔵 Club Contraste (azul sobre oscuro)'],
     ['dark', '🌙 Oscuro (verde cancha)'],
     ['light', '☀️ Claro (verde cancha)'],
-    ['club-oscuro', '⚫ Club Oscuro (rojo)'],
-    ['club-claro', '⚪ Club Claro (azul)'],
-    ['club-contraste', '🔵 Club Contraste (azul sobre oscuro)'],
   ];
   const html = `
     <div class="sheet-head"><h2>Estilo de la app</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
@@ -856,7 +855,7 @@ function cambiarTemaApp(tema){
   cerrarSheet();
 }
 (function aplicarTemaGuardado(){
-  document.documentElement.setAttribute('data-theme', safeGet('temaApp') || 'dark');
+  document.documentElement.setAttribute('data-theme', safeGet('temaApp') || 'club-claro');
 })();
 
 /* ---------- Entrenador: Mi Grupo + Indicadores (portado de entrenador/index.html) ---------- */
