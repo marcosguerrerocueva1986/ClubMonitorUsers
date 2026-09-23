@@ -242,7 +242,11 @@ async function guardarSesionEntrenamiento(pool, body) {
   await pool.query(`UPDATE sport_control.sesiones_entrenamiento SET rutina = $1, notas = $2 WHERE id = $3`, [rutina || null, notas || null, sesionId]);
 
   const sesion = await pool.query(
-    `SELECT se.fecha, se.hora_inicio AS hora, g.nombre AS grupo FROM sport_control.sesiones_entrenamiento se
+    `SELECT se.fecha, g.nombre AS grupo,
+       (SELECT h.hora_inicio FROM sport_control.horarios_grupo h
+        WHERE h.grupo_id = se.grupo_id AND h.dia_semana = EXTRACT(DOW FROM se.fecha)::int AND h.activo = true
+        LIMIT 1) AS hora
+     FROM sport_control.sesiones_entrenamiento se
      JOIN sport_control.grupos g ON g.id = se.grupo_id WHERE se.id = $1`,
     [sesionId]
   );
