@@ -673,8 +673,15 @@ async function activarNotificacionesApp(){
     try{
       const tags = tagsDeMisRoles();
       for(const k of Object.keys(tags)) await OneSignal.User.addTag(k, tags[k]);
-      const yaSuscrito = await yaHaySuscripcionRealApp(OneSignal);
-      if(!yaSuscrito) await OneSignal.User.PushSubscription.optIn();
+      // A diferencia del registro automatico al entrar, aqui la persona
+      // pidio activar explicitamente -- se fuerza optIn() siempre, sin
+      // preguntar antes si "ya hay suscripcion", porque justo en la
+      // transicion navegador->PWA instalada el navegador puede reportar
+      // una suscripcion vieja que OneSignal ya invalido de su lado,
+      // haciendo que el chequeo previo diera un falso positivo y nunca
+      // se llamara a optIn() de verdad. optIn() no hace dano si ya
+      // estaba suscrito, asi que aqui siempre se llama.
+      await OneSignal.User.PushSubscription.optIn();
       toast('¡Notificaciones activadas correctamente!');
       actualizarEstadoPushApp();
     }catch(e){
