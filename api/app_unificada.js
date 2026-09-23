@@ -243,6 +243,8 @@ async function obtenerSesionYMenu(pool, cedula) {
       jugadorId: info.jugador ? info.jugador.id : null,
       representanteId: info.representante ? info.representante.id : null,
       entrenadorId: info.entrenador ? info.entrenador.id : null,
+      planilleroId: info.planillero ? info.planillero.id : null,
+      financieroId: info.financiero ? info.financiero.id : null,
       jugadorToken, representanteToken, entrenadorToken,
       nombres: info.nombres,
       menu: menu.data,

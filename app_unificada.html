@@ -435,12 +435,10 @@ async function entrarApp(nombresLogin, sesionPrecargada){
         if(data.jugadorId) tags.jugador_id = String(data.jugadorId);
         if(data.representanteId) tags.representante_id = String(data.representanteId);
         if(data.entrenadorId) tags.entrenador_id = String(data.entrenadorId);
-        if(Object.keys(tags).length>0) await OneSignal.User.addTag(Object.keys(tags)[0], tags[Object.keys(tags)[0]]);
+        if(data.planilleroId) tags.planillero_id = String(data.planilleroId);
+        if(data.financieroId) tags.financiero_id = String(data.financieroId);
         for(const k of Object.keys(tags)) await OneSignal.User.addTag(k, tags[k]);
-        const yaSuscrito = await (async()=>{
-          try{ if(OneSignal.User.PushSubscription.optedIn===true) return true; }catch(e){}
-          try{ const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); return !!sub; }catch(e){ return false; }
-        })();
+        const yaSuscrito = await yaHaySuscripcionRealApp(OneSignal);
         if(!yaSuscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted'){
           await OneSignal.User.PushSubscription.optIn();
         }
@@ -572,10 +570,160 @@ async function cargarPantallaPerfil(cont){
       <div class="card-title"><h3>Tus roles en el club</h3></div>
       <div class="meta">${perfil.roles.map(r=>ETIQUETAS_ROL_HEADER[r]||r).join(' · ')}</div>
     </div>
+    <div class="card" id="pushCardApp">
+      <div class="card-title"><h3>🔔 Notificaciones</h3></div>
+      <p class="meta" id="pushEstadoTextoApp">Revisando el estado...</p>
+      <button class="primary block" id="pushBtnApp" style="margin-top:10px;display:none" onclick="activarNotificacionesApp()">Activar notificaciones</button>
+      <button class="sm" style="margin-top:8px" onclick="diagnosticoOneSignalApp()">🔍 Diagnóstico avanzado</button>
+    </div>
     <button class="block" onclick="abrirSelectorTema()">🎨 Estilo de la app</button>
     <button class="block" onclick="abrirCambiarClave()">🔒 Cambiar mi clave de seguridad</button>
     <button class="block danger" onclick="cerrarSesionApp()">Cerrar sesión en este dispositivo</button>
   `;
+  actualizarEstadoPushApp();
+}
+
+/* ---------- Notificaciones push (OneSignal) -- portado de las apps originales ---------- */
+function esInstaladaComoAppUnif(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function esIOSUnif(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+async function yaHaySuscripcionRealApp(OneSignal){
+  try{ if(OneSignal.User.PushSubscription.optedIn === true) return true; }catch(e){}
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return !!sub;
+  }catch(e){ return false; }
+}
+
+function tagsDeMisRoles(){
+  const tags = {};
+  if(SESION.jugadorId) tags.jugador_id = String(SESION.jugadorId);
+  if(SESION.representanteId) tags.representante_id = String(SESION.representanteId);
+  if(SESION.entrenadorId) tags.entrenador_id = String(SESION.entrenadorId);
+  if(SESION.planilleroId) tags.planillero_id = String(SESION.planilleroId);
+  if(SESION.financieroId) tags.financiero_id = String(SESION.financieroId);
+  return tags;
+}
+
+async function actualizarEstadoPushApp(){
+  const textoEl = document.getElementById('pushEstadoTextoApp');
+  const btnEl = document.getElementById('pushBtnApp');
+  if(!textoEl) return;
+
+  if(esIOSUnif() && !esInstaladaComoAppUnif()){
+    textoEl.innerHTML = '📲 En iPhone, primero debes agregar esta página a tu pantalla de inicio para poder recibir notificaciones: toca el botón <b>Compartir</b> en Safari y luego <b>"Agregar a inicio"</b>. Después, abre la app desde ese ícono y vuelve aquí.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(!('Notification' in window)){
+    textoEl.textContent = 'Tu navegador no soporta notificaciones push.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(Notification.permission === 'denied'){
+    textoEl.textContent = '🚫 Bloqueaste las notificaciones para esta app. Para activarlas, entra a la configuración de tu navegador para este sitio y permite las notificaciones.';
+    btnEl.style.display = 'none';
+    return;
+  }
+  if(Notification.permission !== 'granted'){
+    textoEl.textContent = 'Activa las notificaciones para enterarte al instante de pagos, novedades y confirmaciones, sin tener que estar revisando la app.';
+    btnEl.style.display = 'block';
+    btnEl.textContent = 'Activar notificaciones';
+    return;
+  }
+  if(window.OneSignalDeferred){
+    OneSignalDeferred.push(async function(OneSignal){
+      if(!OneSignal.User){
+        textoEl.textContent = '⚠️ No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club.';
+        btnEl.style.display = 'none';
+        return;
+      }
+      const optedIn = await yaHaySuscripcionRealApp(OneSignal);
+      if(optedIn){
+        textoEl.textContent = '✓ Las notificaciones están activadas.';
+        btnEl.style.display = 'none';
+      } else {
+        textoEl.textContent = '⚠️ Tu navegador permite notificaciones, pero la suscripción todavía no quedó activa del lado del servidor. Toca el botón para completarla.';
+        btnEl.style.display = 'block';
+        btnEl.textContent = 'Reactivar notificaciones';
+      }
+    });
+  }
+}
+
+async function activarNotificacionesApp(){
+  if(typeof Notification === 'undefined'){ toast('Tu navegador no soporta notificaciones', true); return; }
+  const permiso = await Notification.requestPermission();
+  if(permiso !== 'granted'){
+    toast('Permiso denegado por el navegador', true);
+    actualizarEstadoPushApp();
+    return;
+  }
+  if(!window.OneSignalDeferred){ toast('No se pudo cargar el sistema', true); return; }
+  OneSignalDeferred.push(async function(OneSignal){
+    if(!OneSignal.User){
+      toast('No se pudo conectar con el sistema de notificaciones. Avísale al administrador del club.', true);
+      return;
+    }
+    try{
+      const tags = tagsDeMisRoles();
+      for(const k of Object.keys(tags)) await OneSignal.User.addTag(k, tags[k]);
+      const yaSuscrito = await yaHaySuscripcionRealApp(OneSignal);
+      if(!yaSuscrito) await OneSignal.User.PushSubscription.optIn();
+      toast('¡Notificaciones activadas correctamente!');
+      actualizarEstadoPushApp();
+    }catch(e){
+      console.error('Detalle completo del error:', e);
+      toast('No se pudo completar. Avísale al administrador del club.', true);
+      actualizarEstadoPushApp();
+    }
+  });
+}
+
+async function diagnosticoOneSignalApp(){
+  const lineas = [];
+  lineas.push('Notification.permission: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'API no disponible'));
+  try{
+    const regs = await navigator.serviceWorker.getRegistrations();
+    lineas.push('Service Workers registrados: ' + regs.length);
+    regs.forEach((r,i)=>{ lineas.push(`  [${i}] scope=${r.scope} script=${r.active ? r.active.scriptURL : '(sin worker activo)'}`); });
+  }catch(e){ lineas.push('Error leyendo Service Workers: ' + e.message); }
+
+  if(!window.OneSignalDeferred){
+    lineas.push('window.OneSignalDeferred NO existe (el script de OneSignal no cargó).');
+    mostrarDiagnosticoApp(lineas);
+    return;
+  }
+  OneSignalDeferred.push(async function(OneSignal){
+    lineas.push('OneSignal.User existe: ' + (!!OneSignal.User));
+    if(OneSignal.User){
+      try{ lineas.push('OneSignal.User.onesignalId: ' + OneSignal.User.onesignalId); }catch(e){ lineas.push('onesignalId: error ' + e.message); }
+      try{ lineas.push('OneSignal.User.externalId: ' + (OneSignal.User.externalId || '(vacío)')); }catch(e){ lineas.push('externalId: error ' + e.message); }
+      try{ lineas.push('PushSubscription.id: ' + (OneSignal.User.PushSubscription.id || '(sin ID)')); }catch(e){ lineas.push('Subscription.id: error ' + e.message); }
+      try{ lineas.push('PushSubscription.token: ' + (OneSignal.User.PushSubscription.token ? 'presente (' + OneSignal.User.PushSubscription.token.slice(0,20) + '...)' : '(sin token)')); }catch(e){ lineas.push('Subscription.token: error ' + e.message); }
+      try{ lineas.push('PushSubscription.optedIn: ' + OneSignal.User.PushSubscription.optedIn); }catch(e){ lineas.push('optedIn: error ' + e.message); }
+    }
+    lineas.push('Tags esperados por mis roles: ' + JSON.stringify(tagsDeMisRoles()));
+    mostrarDiagnosticoApp(lineas);
+  });
+}
+
+function mostrarDiagnosticoApp(lineas){
+  const html = `
+    <div class="sheet-head"><h2>Diagnóstico OneSignal</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;white-space:pre-wrap;background:var(--pitch-2);border-radius:10px;padding:12px;line-height:1.6">${esc(lineas.join('\n'))}</div>
+    <button class="block" style="margin-top:12px" onclick="copiarDiagnosticoApp(this)">📋 Copiar todo</button>
+  `;
+  abrirSheet(html);
+  window._diagnosticoTextoApp = lineas.join('\n');
+}
+
+function copiarDiagnosticoApp(btn){
+  navigator.clipboard.writeText(window._diagnosticoTextoApp || '').then(()=>{ btn.textContent = '✓ Copiado'; }).catch(()=>{ toast('No se pudo copiar', true); });
 }
 
 async function guardarPerfil(){
