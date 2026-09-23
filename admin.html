@@ -2223,15 +2223,20 @@ async function cargarParametros(){
       <p class="meta">${p.movimientos_evento_solo_propios ? 'Cada jugador ve SOLO sus propios movimientos.' : 'Transparencia total: cada jugador ve los movimientos de todos (el representante siempre ve todo, esto no lo afecta).'}</p>
       <button class="block ${p.movimientos_evento_solo_propios ? 'danger' : 'primary'}" style="margin-top:10px" onclick="toggleMovimientosSoloPropios(${!p.movimientos_evento_solo_propios})">${p.movimientos_evento_solo_propios ? 'Volver a mostrar todos' : 'Restringir a solo propios'}</button>
     </div>
-    <div class="card">` + campos.map(c=>`
+    <div class="card">` + campos.map(c=>{
+    const tipoCobro = c.key==='cuota_mensual' ? 'mensualidad' : (c.key==='costo_invitado' ? 'invitado' : null);
+    const boton = tipoCobro
+      ? `<button class="sm" onclick="abrirVigenciasCobro('${tipoCobro}','${esc(c.label)}')">Ver historial</button>`
+      : `<button class="sm" onclick="editarParametro('${c.key}','${esc(c.label)}','${esc(c.val ?? '')}')">Editar</button>`;
+    return `
     <div class="field-line">
       <div>
         <div class="fl-label">${c.label}</div>
         <div class="fl-value">${c.prefix}${esc(c.val ?? '—')}</div>
       </div>
-      <button class="sm" onclick="editarParametro('${c.key}','${esc(c.label)}','${esc(c.val ?? '')}')">Editar</button>
+      ${boton}
     </div>
-  `).join('') + '</div>';
+  `;}).join('') + '</div>';
   el.innerHTML += '<button class="block" style="margin-top:10px" onclick="verDiagnosticoCatalogoCobros()">🔍 Ver tabla catalogo_cobros (diagnóstico)</button>';
   actualizarEstadoPushAdmin();
 }
@@ -2251,6 +2256,59 @@ async function verDiagnosticoCatalogoCobros(){
     `).join('')}
   `;
   abrirSheet(html);
+}
+
+async function abrirVigenciasCobro(tipo, label){
+  const data = await api('listar_vigencias_cobro_admin', {tipo});
+  if(data===null) return;
+  mostrarVigenciasCobro(tipo, label, data.vigencias);
+}
+
+function mostrarVigenciasCobro(tipo, label, vigencias){
+  const html = `
+    <div class="sheet-head"><h2>${esc(label)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Cada cambio de valor queda guardado con la fecha desde la que rige. Los meses anteriores a esa fecha siguen calculándose con el valor que tenían antes.</p>
+    ${vigencias.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Todavía no hay ninguna vigencia registrada.</p>' : vigencias.map((v,i)=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">$${v.valor} ${i===0?'<span class="badge confirmando">Vigente</span>':''}</div>
+          <div class="fl-label">Desde ${v.vigenteDesde}</div>
+        </div>
+        ${i!==0 ? `<button class="sm danger" onclick="eliminarVigenciaCobroAccion(${v.id}, '${tipo}', '${esc(label)}')">Quitar</button>` : ''}
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:12px" onclick="abrirNuevaVigenciaCobro('${tipo}','${esc(label)}')">+ Nueva vigencia</button>
+  `;
+  abrirSheet(html);
+}
+
+function abrirNuevaVigenciaCobro(tipo, label){
+  const html = `
+    <div class="sheet-head"><h2>Nueva vigencia — ${esc(label)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nuevo valor</label>
+    <input id="nuevaVigenciaValor" type="number" step="0.01" placeholder="0.00">
+    <label>Rige desde (DD/MM/AAAA)</label>
+    <input id="nuevaVigenciaFecha" placeholder="Ej: 01/01/2027">
+    <button class="primary block" style="margin-top:16px" onclick="guardarNuevaVigenciaCobro('${tipo}','${esc(label)}')">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarNuevaVigenciaCobro(tipo, label){
+  const valor = document.getElementById('nuevaVigenciaValor').value;
+  const vigenteDesde = document.getElementById('nuevaVigenciaFecha').value.trim();
+  const res = await api('agregar_vigencia_cobro_admin', {tipo, valor, vigenteDesde});
+  if(res===null) return;
+  toast('Vigencia agregada');
+  abrirVigenciasCobro(tipo, label);
+}
+
+async function eliminarVigenciaCobroAccion(vigenciaId, tipo, label){
+  if(!confirm('¿Quitar esta vigencia del historial?')) return;
+  const res = await api('eliminar_vigencia_cobro_admin', {vigenciaId});
+  if(res===null) return;
+  toast('Vigencia eliminada');
+  abrirVigenciasCobro(tipo, label);
 }
 
 async function toggleEventosJugador(habilitado){

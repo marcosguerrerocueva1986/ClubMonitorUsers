@@ -67,6 +67,60 @@ async function diagnosticoCatalogoCobros(pool) {
   return { success: true, data: r.rows };
 }
 
+// Historial de vigencias -- en vez de sobreescribir el valor de un
+// cobro, se agrega una fila nueva con la fecha desde la que rige.
+// Los meses anteriores a esa fecha siguen calculandose con el valor
+// que tenian antes; nada se pierde ni se recalcula mal.
+async function listarVigenciasCobro(pool, body) {
+  const { tipo } = body; // 'mensualidad' | 'invitado'
+  const cobro = await pool.query(`SELECT id, valor FROM sport_control.catalogo_cobros WHERE tipo = $1 AND activo = true ORDER BY prioridad ASC LIMIT 1`, [tipo]);
+  if (!cobro.rows[0]) return { success: true, data: { catalogoCobroId: null, vigencias: [] } };
+  const vigencias = await pool.query(
+    `SELECT id, valor, to_char(vigente_desde, 'DD/MM/YYYY') AS "vigenteDesde" FROM sport_control.catalogo_cobros_historial
+     WHERE catalogo_cobro_id = $1 ORDER BY vigente_desde DESC`,
+    [cobro.rows[0].id]
+  );
+  return { success: true, data: { catalogoCobroId: cobro.rows[0].id, vigencias: vigencias.rows } };
+}
+
+async function agregarVigenciaCobro(pool, body) {
+  const { tipo, valor, vigenteDesde } = body;
+  const partes = String(vigenteDesde || '').trim().split('/');
+  if (partes.length !== 3) return { success: false, error: 'Usa el formato DD/MM/AAAA para la fecha.' };
+  const iso = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+  if (!valor || Number(valor) <= 0) return { success: false, error: 'Escribe un valor válido.' };
+
+  let cobro = await pool.query(`SELECT id FROM sport_control.catalogo_cobros WHERE tipo = $1 AND activo = true ORDER BY prioridad ASC LIMIT 1`, [tipo]);
+  let catalogoCobroId;
+  if (cobro.rows[0]) {
+    catalogoCobroId = cobro.rows[0].id;
+  } else {
+    const nuevo = await pool.query(`INSERT INTO sport_control.catalogo_cobros (tipo, valor, activo, prioridad) VALUES ($1, $2, true, 1) RETURNING id`, [tipo, valor]);
+    catalogoCobroId = nuevo.rows[0].id;
+  }
+
+  await pool.query(
+    `INSERT INTO sport_control.catalogo_cobros_historial (catalogo_cobro_id, valor, vigente_desde) VALUES ($1, $2, $3::date)`,
+    [catalogoCobroId, valor, iso]
+  );
+
+  // catalogo_cobros.valor se mantiene como un "cache" del valor MAS
+  // RECIENTE, para no tener que tocar los otros lugares del sistema
+  // que todavia lo leen directo de ahi.
+  const masReciente = await pool.query(
+    `SELECT valor FROM sport_control.catalogo_cobros_historial WHERE catalogo_cobro_id = $1 ORDER BY vigente_desde DESC LIMIT 1`,
+    [catalogoCobroId]
+  );
+  await pool.query(`UPDATE sport_control.catalogo_cobros SET valor = $1 WHERE id = $2`, [masReciente.rows[0].valor, catalogoCobroId]);
+
+  return { success: true };
+}
+
+async function eliminarVigenciaCobro(pool, body) {
+  await pool.query(`DELETE FROM sport_control.catalogo_cobros_historial WHERE id = $1`, [body.vigenciaId]);
+  return { success: true };
+}
+
 async function reenviarQrJugador(pool, config, body) {
   const r = await pool.query(
     `SELECT ca.token, j.telefono, j.nombres, j.apellidos FROM sport_control.codigos_asistencia ca JOIN sport_control.jugadores j ON j.id = ca.jugador_id
@@ -248,4 +302,5 @@ module.exports = {
   toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub,
   toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios,
   listarPermisosPantallas, togglePermisoPantalla, diagnosticoCatalogoCobros,
+  listarVigenciasCobro, agregarVigenciaCobro, eliminarVigenciaCobro,
 };

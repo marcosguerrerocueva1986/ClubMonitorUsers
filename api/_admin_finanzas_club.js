@@ -126,18 +126,38 @@ async function calcularMensualidadJugador(pool, jugadorId) {
   // lugar que ya se edita desde Admin > Parametros > Generales >
   // "Cuota mensual". No se duplica en rubros_club para evitar que
   // existan 2 valores distintos guardados en 2 lugares.
-  const cobro = await pool.query(`SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1`);
-  const montoMensualidad = Number((cobro.rows[0] && cobro.rows[0].valor) || 0);
+  const cobro = await pool.query(`SELECT id, valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1`);
+  const catalogoCobroId = cobro.rows[0] && cobro.rows[0].id;
+  const montoMensualidadActual = Number((cobro.rows[0] && cobro.rows[0].valor) || 0);
 
   const mesesLista = generarMesesDesde(fechaInicio);
 
-  // Si el rubro "Mensualidad" no tiene un monto configurado (0 o vacio),
-  // el chequeo "saldoDisponible >= montoMensualidad" da TRUE siempre
-  // (cualquier saldo, hasta 0, "cubre" un monto de 0) y marcaba cada mes
-  // como pagado sin serlo -- por eso se veia "al dia" sin importar los
-  // pagos reales. Se corta aqui con una senal clara en vez de ese
-  // resultado enganoso.
-  if (montoMensualidad <= 0) {
+  // Historial de vigencias: cada cambio de precio queda guardado con
+  // la fecha desde la que rige, para que un mes de 2026 siga usando
+  // el precio de 2026 aunque hoy ya rija un precio distinto.
+  const historial = catalogoCobroId
+    ? (await pool.query(
+        `SELECT valor, vigente_desde AS "vigenteDesde" FROM sport_control.catalogo_cobros_historial
+         WHERE catalogo_cobro_id = $1 ORDER BY vigente_desde ASC`,
+        [catalogoCobroId]
+      )).rows
+    : [];
+
+  // Para un mes dado, el valor vigente es el de la ultima vigencia
+  // cuya fecha ya haya llegado para ese mes (la mas reciente que no
+  // sea posterior al primer dia de ese mes).
+  function valorVigenteParaMes(periodo) {
+    const primerDiaMes = new Date(periodo + '-01T00:00:00Z');
+    let valor = null;
+    for (const v of historial) {
+      if (new Date(v.vigenteDesde) <= primerDiaMes) valor = Number(v.valor);
+      else break;
+    }
+    return valor;
+  }
+
+  const sinHistorial = historial.length === 0;
+  if (sinHistorial && montoMensualidadActual <= 0) {
     const pagos = await pool.query(
       `SELECT COALESCE(SUM(m.monto), 0) AS total FROM sport_control.movimientos_club m
        JOIN sport_control.rubros_club rc ON rc.id = m.rubro_id
@@ -163,22 +183,26 @@ async function calcularMensualidadJugador(pool, jugadorId) {
   let saldoDisponible = Number(pagos.rows[0].total);
   const totalPagado = saldoDisponible;
 
+  // Si un mes no tiene ninguna vigencia que ya haya empezado (por
+  // ejemplo, la primera vigencia es posterior a ese mes), se usa el
+  // valor actual como respaldo -- mejor eso que dejarlo en $0.
   const meses = mesesLista.map(periodo => {
+    const montoDelMes = sinHistorial ? montoMensualidadActual : (valorVigenteParaMes(periodo) ?? montoMensualidadActual);
     let estado, montoPagadoMes;
-    if (saldoDisponible >= montoMensualidad) {
-      estado = 'pagado'; montoPagadoMes = montoMensualidad; saldoDisponible -= montoMensualidad;
+    if (saldoDisponible >= montoDelMes) {
+      estado = 'pagado'; montoPagadoMes = montoDelMes; saldoDisponible -= montoDelMes;
     } else if (saldoDisponible > 0) {
       estado = 'parcial'; montoPagadoMes = saldoDisponible; saldoDisponible = 0;
     } else {
       estado = 'pendiente'; montoPagadoMes = 0;
     }
-    return { periodo, monto: montoMensualidad, montoPagado: montoPagadoMes, estado };
+    return { periodo, monto: montoDelMes, montoPagado: montoPagadoMes, estado };
   });
 
   const mesesAtraso = meses.filter(m => m.estado !== 'pagado').length;
   const totalAdeudado = meses.reduce((acc, m) => acc + (m.monto - m.montoPagado), 0);
 
-  return { meses, montoMensualidad, totalPagado, totalAdeudado, mesesAtraso };
+  return { meses, montoMensualidad: montoMensualidadActual, totalPagado, totalAdeudado, mesesAtraso };
 }
 
 async function verMensualidadJugadorAdmin(pool, body) {
