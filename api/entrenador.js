@@ -417,9 +417,10 @@ async function listarCalendarioMes(pool, entrenadorId, body) {
   const partidos = await pool.query(
     `SELECT DISTINCT p.fecha, p.alias, 'partido' AS tipo, p.lugar AS detalle, p.hora
      FROM sport_control.partidos p
-     JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.estado = 'confirmado'
+     JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id
      JOIN sport_control.jugadores j ON j.id = cp.jugador_id
-     WHERE j.grupo_id = ANY($1::int[]) AND EXTRACT(YEAR FROM p.fecha) = $2 AND EXTRACT(MONTH FROM p.fecha) = $3`,
+     WHERE j.grupo_id = ANY($1::int[]) AND p.estado != 'cancelado'
+       AND EXTRACT(YEAR FROM p.fecha) = $2 AND EXTRACT(MONTH FROM p.fecha) = $3`,
     [grupoIds, anio, mes]
   );
 

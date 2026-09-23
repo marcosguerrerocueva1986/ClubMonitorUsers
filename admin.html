@@ -2232,7 +2232,25 @@ async function cargarParametros(){
       <button class="sm" onclick="editarParametro('${c.key}','${esc(c.label)}','${esc(c.val ?? '')}')">Editar</button>
     </div>
   `).join('') + '</div>';
+  el.innerHTML += '<button class="block" style="margin-top:10px" onclick="verDiagnosticoCatalogoCobros()">🔍 Ver tabla catalogo_cobros (diagnóstico)</button>';
   actualizarEstadoPushAdmin();
+}
+
+async function verDiagnosticoCatalogoCobros(){
+  const data = await api('diagnostico_catalogo_cobros_admin');
+  if(data===null) return;
+  const html = `
+    <div class="sheet-head"><h2>catalogo_cobros</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length===0 ? '<p style="color:var(--chalk-dim)">La tabla está completamente vacía.</p>' : data.map(r=>`
+      <div class="field-line">
+        <div>
+          <div class="fl-value">id=${r.id} · tipo="${esc(r.tipo)}"</div>
+          <div class="fl-label">valor=${r.valor} · activo=${r.activo} · prioridad=${r.prioridad}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+  abrirSheet(html);
 }
 
 async function toggleEventosJugador(habilitado){

@@ -16,9 +16,32 @@ async function obtenerParametros(pool) {
 
 async function actualizarParametro(pool, body) {
   const { campo, valor } = body;
+
+  // cuota_mensual y costo_invitado dependen de que YA exista una fila
+  // activa con ese "tipo" en catalogo_cobros -- si no existe, el UPDATE
+  // no actualiza nada (0 filas) SIN avisar, y el admin cree que quedo
+  // guardado cuando en realidad nunca se toco nada. Aqui se detecta ese
+  // caso y se crea la fila si hace falta, en vez de fallar en silencio.
+  if (campo === 'cuota_mensual' || campo === 'costo_invitado') {
+    const tipo = campo === 'cuota_mensual' ? 'mensualidad' : 'invitado';
+    const upd = await pool.query(
+      `UPDATE sport_control.catalogo_cobros SET valor = $1 WHERE tipo = $2 AND activo = true`,
+      [valor, tipo]
+    );
+    if (upd.rowCount === 0) {
+      try {
+        await pool.query(
+          `INSERT INTO sport_control.catalogo_cobros (tipo, valor, activo, prioridad) VALUES ($1, $2, true, 1)`,
+          [tipo, valor]
+        );
+      } catch (err) {
+        return { success: false, error: `No existía una fila activa de tipo "${tipo}" en catalogo_cobros y no se pudo crear una nueva (${err.message}). Revisa esa tabla directamente.` };
+      }
+    }
+    return { success: true };
+  }
+
   const map = {
-    cuota_mensual: { sql: `UPDATE sport_control.catalogo_cobros SET valor = $1 WHERE tipo = 'mensualidad' AND activo = true`, val: valor },
-    costo_invitado: { sql: `UPDATE sport_control.catalogo_cobros SET valor = $1 WHERE tipo = 'invitado' AND activo = true`, val: valor },
     multa_inasistencia: { sql: `UPDATE sport_control.configuracion_club SET valor_multa_inasistencia = $1 WHERE id = 1`, val: valor },
     multa_invitado_no_show: { sql: `UPDATE sport_control.configuracion_club SET valor_multa_invitado_no_show = $1 WHERE id = 1`, val: valor },
     meses_maximo_atraso: { sql: `UPDATE sport_control.configuracion_club SET meses_maximo_atraso = $1 WHERE id = 1`, val: valor },
@@ -37,6 +60,11 @@ async function actualizarParametro(pool, body) {
   if (!entry) return { success: false, error: 'Campo de parametro no reconocido.' };
   await pool.query(entry.sql, [entry.val]);
   return { success: true };
+}
+
+async function diagnosticoCatalogoCobros(pool) {
+  const r = await pool.query(`SELECT id, tipo, valor, activo, prioridad FROM sport_control.catalogo_cobros ORDER BY tipo, prioridad`);
+  return { success: true, data: r.rows };
 }
 
 async function reenviarQrJugador(pool, config, body) {
@@ -219,5 +247,5 @@ module.exports = {
   toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada,
   toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub,
   toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios,
-  listarPermisosPantallas, togglePermisoPantalla,
+  listarPermisosPantallas, togglePermisoPantalla, diagnosticoCatalogoCobros,
 };

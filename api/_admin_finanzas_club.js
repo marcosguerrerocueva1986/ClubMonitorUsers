@@ -122,8 +122,12 @@ async function calcularMensualidadJugador(pool, jugadorId) {
   const fechaInicio = cfg.rows[0] && (cfg.rows[0].propia || cfg.rows[0].club);
   if (!fechaInicio) return { meses: [], montoMensualidad: 0, totalPagado: 0, totalAdeudado: 0, mesesAtraso: 0 };
 
-  const rubro = await pool.query(`SELECT monto_sugerido FROM sport_control.rubros_club WHERE nombre = 'Mensualidad' LIMIT 1`);
-  const montoMensualidad = Number((rubro.rows[0] && rubro.rows[0].monto_sugerido) || 0);
+  // El monto de la mensualidad se lee de catalogo_cobros -- el MISMO
+  // lugar que ya se edita desde Admin > Parametros > Generales >
+  // "Cuota mensual". No se duplica en rubros_club para evitar que
+  // existan 2 valores distintos guardados en 2 lugares.
+  const cobro = await pool.query(`SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1`);
+  const montoMensualidad = Number((cobro.rows[0] && cobro.rows[0].valor) || 0);
 
   const mesesLista = generarMesesDesde(fechaInicio);
 

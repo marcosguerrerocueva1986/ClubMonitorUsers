@@ -3353,11 +3353,53 @@ async function cargarPantallaRubrosFinanciero(cont){
           <span class="badge ${r.activo?'confirmando':'cancelado'}">${r.activo?'Activo':'Inactivo'}</span>
         </div>
         <div class="meta">${r.tipo==='ingreso'?'Ingreso':'Egreso'} · ${r.aplicaA==='jugador'?'A jugadores':'Del club'} · ${r.recurrencia}${r.montoSugerido ? ' · $'+Number(r.montoSugerido).toFixed(2) : ''}</div>
-        <button class="sm ${r.activo?'danger':'primary'}" style="margin-top:8px" onclick="toggleRubroFinAccion(${r.id}, ${!r.activo})">${r.activo?'Desactivar':'Activar'}</button>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="sm" onclick='abrirEditarRubroFin(${JSON.stringify(r).replace(/"/g,"&quot;")})'>Editar</button>
+          <button class="sm ${r.activo?'danger':'primary'}" onclick="toggleRubroFinAccion(${r.id}, ${!r.activo})">${r.activo?'Desactivar':'Activar'}</button>
+        </div>
       </div>
     `).join('')}
     <button class="primary block" style="margin-top:10px" onclick="abrirNuevoRubroFin()">+ Agregar rubro</button>
   `;
+}
+
+function abrirEditarRubroFin(r){
+  const html = `
+    <div class="sheet-head"><h2>Editar rubro</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombre</label>
+    <input id="editRubroNombreFin" value="${esc(r.nombre)}">
+    <select id="editRubroTipoFin" style="margin-top:8px">
+      <option value="ingreso" ${r.tipo==='ingreso'?'selected':''}>Ingreso</option>
+      <option value="egreso" ${r.tipo==='egreso'?'selected':''}>Egreso</option>
+    </select>
+    <select id="editRubroAplicaAFin" style="margin-top:8px">
+      <option value="jugador" ${r.aplicaA==='jugador'?'selected':''}>Se cobra a jugadores</option>
+      <option value="club" ${r.aplicaA==='club'?'selected':''}>Del club (servicios, auspicios)</option>
+    </select>
+    <select id="editRubroRecurrenciaFin" style="margin-top:8px">
+      <option value="unico" ${r.recurrencia==='unico'?'selected':''}>Único</option>
+      <option value="mensual" ${r.recurrencia==='mensual'?'selected':''}>Mensual</option>
+      <option value="anual" ${r.recurrencia==='anual'?'selected':''}>Anual</option>
+    </select>
+    <label style="margin-top:8px">Monto sugerido (opcional)</label>
+    <input id="editRubroMontoFin" type="number" step="0.01" value="${r.montoSugerido||''}" placeholder="0.00">
+    <button class="primary block" style="margin-top:12px" onclick="guardarEditarRubroFin(${r.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarEditarRubroFin(rubroId){
+  const nombre = document.getElementById('editRubroNombreFin').value.trim();
+  const tipo = document.getElementById('editRubroTipoFin').value;
+  const aplicaA = document.getElementById('editRubroAplicaAFin').value;
+  const recurrencia = document.getElementById('editRubroRecurrenciaFin').value;
+  const montoSugerido = document.getElementById('editRubroMontoFin').value;
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await apiFin('editar_rubro_club_financiero', {rubroId, nombre, tipo, aplicaA, recurrencia, montoSugerido});
+  if(res===null) return;
+  toast('Rubro actualizado');
+  cerrarSheet();
+  cambiarPantalla('rubros_financiero');
 }
 
 function abrirNuevoRubroFin(){
@@ -3464,10 +3506,11 @@ async function cargarMesCalendarioEnt(cont){
 
 function renderCalendarioEntrenador(cont){
   const data = window._calendarioEntData;
-  const diasConActividad = new Set();
-  data.sesiones.forEach(s=>diasConActividad.add(new Date(s.fecha).getUTCDate()));
-  data.partidos.forEach(p=>diasConActividad.add(new Date(p.fecha).getUTCDate()));
-  (data.horarios||[]).forEach(h=>diasConActividad.add(new Date(h.fecha).getUTCDate()));
+  const diasConPartido = new Set();
+  const diasConEntreno = new Set();
+  data.sesiones.forEach(s=>diasConEntreno.add(new Date(s.fecha).getUTCDate()));
+  data.partidos.forEach(p=>diasConPartido.add(new Date(p.fecha).getUTCDate()));
+  (data.horarios||[]).forEach(h=>diasConEntreno.add(new Date(h.fecha).getUTCDate()));
 
   const primerDia = new Date(Date.UTC(CALENDARIO_ENT_ANIO, CALENDARIO_ENT_MES-1, 1));
   const diasEnMes = new Date(Date.UTC(CALENDARIO_ENT_ANIO, CALENDARIO_ENT_MES, 0)).getUTCDate();
@@ -3477,10 +3520,16 @@ function renderCalendarioEntrenador(cont){
   let celdas = '';
   for(let i=0;i<offsetInicio;i++) celdas += '<div></div>';
   for(let d=1; d<=diasEnMes; d++){
-    const activo = diasConActividad.has(d);
+    const tienePartido = diasConPartido.has(d);
+    const tieneEntreno = diasConEntreno.has(d);
     const seleccionado = d===CALENDARIO_ENT_DIA_SEL;
-    celdas += `<div onclick="seleccionarDiaCalendarioEnt(${d})" style="text-align:center;padding:8px 2px;border-radius:8px;cursor:pointer;${seleccionado?'background:var(--gold);color:#000;font-weight:700;':''}">
-      ${d}${activo && !seleccionado ? '<div style="width:5px;height:5px;border-radius:50%;background:var(--gold);margin:2px auto 0"></div>' : ''}
+    let punto = '';
+    if(!seleccionado){
+      if(tienePartido) punto = '<div style="width:7px;height:7px;border-radius:50%;background:var(--red);margin:2px auto 0;box-shadow:0 0 4px var(--red)"></div>';
+      else if(tieneEntreno) punto = '<div style="width:5px;height:5px;border-radius:50%;background:var(--gold);margin:2px auto 0"></div>';
+    }
+    celdas += `<div onclick="seleccionarDiaCalendarioEnt(${d})" style="text-align:center;padding:8px 2px;border-radius:8px;cursor:pointer;${seleccionado?'background:var(--gold);color:var(--on-accent);font-weight:700;':''}">
+      ${d}${punto}
     </div>`;
   }
 
@@ -3493,6 +3542,10 @@ function renderCalendarioEntrenador(cont){
     <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:13px">
       ${DIAS_CORTO_ENT.map(d=>`<div style="text-align:center;color:var(--chalk-dim);font-size:11px">${d}</div>`).join('')}
       ${celdas}
+    </div>
+    <div style="display:flex;gap:14px;justify-content:center;margin-top:8px;font-size:11px;color:var(--chalk-dim)">
+      <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:4px"></span>Partido</span>
+      <span><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--gold);margin-right:4px"></span>Entreno</span>
     </div>
     <div id="calendarioEntDetalle" style="margin-top:14px">${renderDetalleDiaCalendarioEnt()}</div>
   `;
