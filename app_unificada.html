@@ -92,6 +92,14 @@ if ('serviceWorker' in navigator) {
   .jugador-card,.grupo-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:10px;cursor:pointer;text-align:left;width:100%;}
   .ok-card{background:rgba(111,207,151,.12);border:1px solid rgba(111,207,151,.35);border-radius:14px;padding:14px;margin-bottom:12px;color:var(--green-ok);font-size:14px;}
   .alert-card{background:rgba(232,93,76,.12);border:1px solid rgba(232,93,76,.35);border-radius:14px;padding:14px;margin-bottom:12px;color:var(--red);font-size:14px;}
+  .mens-card{border-radius:16px;padding:16px;margin-bottom:12px;border-width:2px;border-style:solid;}
+  .mens-card .mens-icono{font-size:26px;line-height:1;}
+  .mens-card .mens-titulo{font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin:4px 0 2px;}
+  .mens-card .mens-detalle{font-size:13px;opacity:.9;}
+  .mens-verde{background:rgba(79,190,130,.16);border-color:var(--green-ok);color:var(--green-ok);}
+  .mens-amarilla{background:rgba(255,196,0,.16);border-color:#FFC400;color:#B58900;}
+  [data-theme="dark"] .mens-amarilla, [data-theme="club-oscuro"] .mens-amarilla, [data-theme="club-contraste"] .mens-amarilla{color:#FFD54A;}
+  .mens-roja{background:rgba(232,93,76,.18);border-color:var(--red);color:var(--red);}
   .row-actions{display:flex;gap:8px;flex-wrap:wrap;}
   .tabbar-scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}
   .tabbar-scroll::-webkit-scrollbar{display:none;}
@@ -238,6 +246,18 @@ function toast(msg, isErr){
   setTimeout(()=>{ t.className='toast'; }, 2600);
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Tarjeta de estado de mensualidad, mas dramatica segun el atraso:
+// verde al dia, amarillo con 1 mes, rojo con 2 o mas.
+function renderTarjetaMensualidad(mesesAtraso, deuda){
+  if(mesesAtraso <= 0){
+    return `<div class="mens-card mens-verde"><div class="mens-icono">✓</div><div class="mens-titulo">Al día</div><div class="mens-detalle">Tu mensualidad está al día.</div></div>`;
+  }
+  if(mesesAtraso === 1){
+    return `<div class="mens-card mens-amarilla"><div class="mens-icono">⚠️</div><div class="mens-titulo">1 mes de atraso</div><div class="mens-detalle">Debes $${Number(deuda).toFixed(2)} de mensualidad.</div></div>`;
+  }
+  return `<div class="mens-card mens-roja"><div class="mens-icono">🚨</div><div class="mens-titulo">${mesesAtraso} meses de atraso</div><div class="mens-detalle">Debes $${Number(deuda).toFixed(2)} de mensualidad.</div></div>`;
+}
 function fechaCorta(f){
   const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   const d = new Date(f);
@@ -1396,11 +1416,7 @@ async function cargarPantallaCuentaRep(cont){
     `;
   }
 
-  if(p.meses_atraso >= 1){
-    html += `<div class="alert-card">⚠️ ${p.meses_atraso} mes(es) de mensualidad atrasada — $${p.deuda_mensualidad}</div>`;
-  } else {
-    html += `<div class="ok-card">✓ Mensualidad al día.</div>`;
-  }
+  html += renderTarjetaMensualidad(p.meses_atraso, p.deuda_mensualidad);
   if((p.multas_propias||[]).length>0){
     html += `<div class="alert-card">⚠️ ${p.multas_propias.length} multa(s) propia(s) — $${p.total_multas_propias}</div>`;
   }
@@ -2423,11 +2439,7 @@ async function cargarPantallaCuentaJug(cont){
     `;
   }
 
-  if(p.meses_atraso >= 1){
-    html += `<div class="alert-card">⚠️ Tienes ${p.meses_atraso} mes(es) de mensualidad atrasada — debes $${p.deuda_mensualidad}</div>`;
-  } else {
-    html += `<div class="ok-card">✓ Tu mensualidad está al día.</div>`;
-  }
+  html += renderTarjetaMensualidad(p.meses_atraso, p.deuda_mensualidad);
   if((p.multas_propias||[]).length>0){
     html += `<div class="alert-card">⚠️ Tienes ${p.multas_propias.length} multa(s) propia(s) pendiente(s) — $${p.total_multas_propias}</div>`;
   }
