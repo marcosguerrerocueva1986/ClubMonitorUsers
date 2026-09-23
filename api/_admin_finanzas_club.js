@@ -183,5 +183,5 @@ async function dashboardMorososMensualidad(pool) {
 module.exports = {
   listarRubros, crearRubro, editarRubro, toggleRubro,
   listarMovimientosClub, registrarMovimientoClub, eliminarMovimientoClub,
-  verMensualidadJugadorAdmin, dashboardMorososMensualidad,
+  verMensualidadJugadorAdmin, dashboardMorososMensualidad, calcularMensualidadJugador,
 };

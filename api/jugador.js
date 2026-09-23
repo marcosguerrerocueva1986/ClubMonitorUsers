@@ -13,6 +13,7 @@
 
 const { getPool } = require('./_db');
 const { verFotoPartidoAdmin } = require('./_admin_partido_estadisticas');
+const { calcularMensualidadJugador } = require('./_admin_finanzas_club');
 
 // ============================================================
 // Helper: normaliza y valida el telefono (0983309625 -> 593983309625)
@@ -345,6 +346,14 @@ async function verPendientesPago(pool, jugadorId) {
   );
   const row = r.rows[0];
   const pendientes = row.pendientes;
+
+  // La mensualidad ahora se calcula con el sistema nuevo (rubro "Mensualidad"
+  // del club + fecha_inicio_mensualidades) -- se sobreescriben aqui estos 2
+  // valores especificos que vienen de la funcion vieja pendientes_jugador(),
+  // dejando todo lo demas de ese objeto (invitados, multas) intacto.
+  const mensualidadDinamica = await calcularMensualidadJugador(pool, jugadorId);
+  pendientes.meses_atraso = mensualidadDinamica.mesesAtraso;
+  pendientes.deuda_mensualidad = mensualidadDinamica.totalAdeudado;
 
   // Cuotas de eventos pendientes -- se calculan aparte (tabla independiente,
   // evento_cuota_jugador/evento_movimientos, nada que ver con pendientes_jugador())
