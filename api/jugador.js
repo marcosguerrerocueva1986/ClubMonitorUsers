@@ -300,6 +300,7 @@ async function verMisPartidos(pool, jugadorId) {
             COALESCE(cp.estado, 'sin_confirmar') AS "miEstado",
             (SELECT COUNT(*) FROM sport_control.invitados_asistencia ia WHERE ia.partido_id = p.id AND ia.jugador_anfitrion_id = $1 AND ia.estado = 'confirmado') AS "cantidadInvitados",
             d.icono AS "disciplinaIcono",
+            lg.latitud AS "lugarLat", lg.longitud AS "lugarLng",
             ev.nombre AS "eventoNombre",
             (SELECT json_agg(DISTINCT COALESCE(e.alias, e.nombres))
                FROM sport_control.confirmaciones_partido cp2
@@ -312,6 +313,7 @@ async function verMisPartidos(pool, jugadorId) {
      LEFT JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.jugador_id = $1
      LEFT JOIN sport_control.disciplinas d ON d.id = p.disciplina_id
      LEFT JOIN sport_control.eventos ev ON ev.id = p.evento_id
+     LEFT JOIN sport_control.lugares lg ON lg.id = p.lugar_id
      WHERE p.estado IN ('confirmando', 'cerrado', 'en_juego', 'finalizado')
      ORDER BY (p.estado = 'finalizado') ASC,
               CASE WHEN p.estado != 'finalizado' THEN p.fecha END ASC,

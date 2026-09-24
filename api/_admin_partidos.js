@@ -111,14 +111,34 @@ async function crearPartido(pool, config, body) {
   const alias = (body.alias || '').trim() || null;
   const costo = (body.costo !== undefined && body.costo !== null && body.costo !== '') ? body.costo : tipo.costo_default;
 
+  // Lugar: si viene un lugarId ya existente del catalogo, se usa ese.
+  // Si viene un nombre nuevo (creacion rapida sin coordenadas), se
+  // crea la fila en el catalogo al vuelo -- despues se le pueden
+  // completar las coordenadas desde el mantenimiento sin tener que
+  // tocar el partido de nuevo.
+  let lugarId = body.lugarId || null;
+  let lugarNombre = body.lugar || null;
+  if (!lugarId && lugarNombre) {
+    const existente = await pool.query(`SELECT id, nombre FROM sport_control.lugares WHERE nombre = $1 LIMIT 1`, [lugarNombre]);
+    if (existente.rows[0]) {
+      lugarId = existente.rows[0].id;
+    } else {
+      const nuevo = await pool.query(`INSERT INTO sport_control.lugares (nombre) VALUES ($1) RETURNING id`, [lugarNombre]);
+      lugarId = nuevo.rows[0].id;
+    }
+  } else if (lugarId) {
+    const l = await pool.query(`SELECT nombre FROM sport_control.lugares WHERE id = $1`, [lugarId]);
+    lugarNombre = l.rows[0] ? l.rows[0].nombre : lugarNombre;
+  }
+
   const [dd, mm, yyyy] = String(body.fecha).split('/');
   const fechaIso = `${yyyy}-${mm}-${dd}`;
 
   const ins = await pool.query(
-    `INSERT INTO sport_control.partidos (fecha, hora, lugar, alias, estado, tipo_partido_id, costo_inscripcion, requiere_pago_previo_qr, disciplina_id, evento_id, evento_fecha_id)
-     VALUES ($1::date, $2::time, $3, $4, 'confirmando', $5, $6, $7, $8, $9, $10)
+    `INSERT INTO sport_control.partidos (fecha, hora, lugar, lugar_id, alias, estado, tipo_partido_id, costo_inscripcion, requiere_pago_previo_qr, disciplina_id, evento_id, evento_fecha_id)
+     VALUES ($1::date, $2::time, $3, $4, $5, 'confirmando', $6, $7, $8, $9, $10, $11)
      RETURNING id, alias, fecha, hora, lugar, estado`,
-    [fechaIso, body.hora, body.lugar, alias, tipo.id, costo, tipo.requiere_pago_previo_qr, disciplinaId, body.eventoId || null, body.eventoFechaId || null]
+    [fechaIso, body.hora, lugarNombre, lugarId, alias, tipo.id, costo, tipo.requiere_pago_previo_qr, disciplinaId, body.eventoId || null, body.eventoFechaId || null]
   );
   const p = ins.rows[0];
   const titulo = p.alias ? p.alias : ('Partido #' + p.id);

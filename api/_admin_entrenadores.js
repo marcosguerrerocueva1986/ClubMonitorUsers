@@ -96,7 +96,7 @@ async function quitarEntrenadorGrupo(pool, body) {
 /* ---------- Entrenadores ---------- */
 async function listarEntrenadores(pool) {
   const r = await pool.query(
-    `SELECT e.id, e.nombres, e.apellidos, e.cedula, e.telefono, e.rol, e.activo, (e.clave_hash IS NOT NULL) AS "tieneClave",
+    `SELECT e.id, e.nombres, e.apellidos, e.cedula, e.telefono, e.rol, e.alias, e.activo, (e.clave_hash IS NOT NULL) AS "tieneClave",
        (SELECT STRING_AGG(g.nombre, ', ') FROM sport_control.entrenador_grupo eg JOIN sport_control.grupos g ON g.id = eg.grupo_id WHERE eg.entrenador_id = e.id) AS "gruposNombres"
      FROM sport_control.entrenadores e ORDER BY e.nombres`
   );
@@ -113,8 +113,8 @@ async function crearEntrenador(pool, body) {
   if (!['entrenador', 'director'].includes(rol)) return { success: false, error: 'Rol inválido.' };
   try {
     const r = await pool.query(
-      `INSERT INTO sport_control.entrenadores (cedula, nombres, apellidos, telefono, rol) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [cedula, nombres, apellidos, body.telefono || null, rol]
+      `INSERT INTO sport_control.entrenadores (cedula, nombres, apellidos, telefono, rol, alias) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [cedula, nombres, apellidos, body.telefono || null, rol, (body.alias || '').trim() || null]
     );
     return { success: true, data: { id: r.rows[0].id } };
   } catch (err) {
@@ -124,11 +124,11 @@ async function crearEntrenador(pool, body) {
 }
 
 async function editarEntrenador(pool, body) {
-  const { entrenadorId, nombres, apellidos, telefono, rol, cedula } = body;
+  const { entrenadorId, nombres, apellidos, telefono, rol, cedula, alias } = body;
   try {
     await pool.query(
-      `UPDATE sport_control.entrenadores SET nombres = $1, apellidos = $2, telefono = $3, rol = $4, cedula = $5 WHERE id = $6`,
-      [nombres, apellidos, telefono || null, rol, cedula, entrenadorId]
+      `UPDATE sport_control.entrenadores SET nombres = $1, apellidos = $2, telefono = $3, rol = $4, cedula = $5, alias = $6 WHERE id = $7`,
+      [nombres, apellidos, telefono || null, rol, cedula, (alias || '').trim() || null, entrenadorId]
     );
     return { success: true };
   } catch (err) {

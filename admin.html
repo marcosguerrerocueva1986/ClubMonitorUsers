@@ -973,6 +973,7 @@ async function abrirMenuMas(){
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="abrirMenuPorRol()">🧩 Menú por Rol (app unificada)</button>
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionPlanilleros()">🔴 Planilleros</button>
     <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionFinancieros()">💵 Financieros</button>
+    <button class="block" style="text-align:left;margin-bottom:8px" onclick="cerrarSheet(); abrirGestionLugares()">📍 Lugares</button>
   `;
   abrirSheet(html);
 }
@@ -1092,31 +1093,41 @@ async function cargarPartidos(){
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+function calcularEdad(fechaNacimiento){
+  if(!fechaNacimiento) return 'Sin fecha de nacimiento';
+  const hoy = new Date();
+  const nac = new Date(fechaNacimiento);
+  let edad = hoy.getUTCFullYear() - nac.getUTCFullYear();
+  const noHaCumplidoAun = (hoy.getUTCMonth() < nac.getUTCMonth()) || (hoy.getUTCMonth()===nac.getUTCMonth() && hoy.getUTCDate() < nac.getUTCDate());
+  if(noHaCumplidoAun) edad--;
+  return edad + ' años';
+}
+
 /* ---------- Telefono internacional: selector de pais con busqueda nativa (datalist), sin librerias ----------
    Se guarda SIEMPRE como codigo_pais + numero_local_sin_cero_inicial
    (ej: "593983309625"), listo para usar tal cual en herramientas como
    Evolution API sin tener que arreglar el numero despues. */
 const PAISES_TELEFONO = [
-  {codigo:'593', nombre:'Ecuador', bandera:'\ud83c\udde8\ud83c\uddee'},
-  {codigo:'57', nombre:'Colombia', bandera:'\ud83c\udde8\ud83c\uddf4'},
-  {codigo:'51', nombre:'Per\u00fa', bandera:'\ud83c\uddf5\ud83c\uddea'},
-  {codigo:'52', nombre:'M\u00e9xico', bandera:'\ud83c\uddf2\ud83c\uddfd'},
-  {codigo:'1', nombre:'Estados Unidos / Canad\u00e1', bandera:'\ud83c\uddfa\ud83c\uddf8'},
-  {codigo:'34', nombre:'Espa\u00f1a', bandera:'\ud83c\uddea\ud83c\uddf8'},
-  {codigo:'54', nombre:'Argentina', bandera:'\ud83c\udde6\ud83c\uddf7'},
-  {codigo:'56', nombre:'Chile', bandera:'\ud83c\udde8\ud83c\uddf1'},
-  {codigo:'58', nombre:'Venezuela', bandera:'\ud83c\uddfb\ud83c\uddea'},
-  {codigo:'591', nombre:'Bolivia', bandera:'\ud83c\udde7\ud83c\uddf4'},
-  {codigo:'507', nombre:'Panam\u00e1', bandera:'\ud83c\uddf5\ud83c\udde6'},
-  {codigo:'506', nombre:'Costa Rica', bandera:'\ud83c\udde8\ud83c\uddf7'},
-  {codigo:'502', nombre:'Guatemala', bandera:'\ud83c\uddec\ud83c\uddf9'},
-  {codigo:'503', nombre:'El Salvador', bandera:'\ud83c\uddf8\ud83c\uddfb'},
-  {codigo:'504', nombre:'Honduras', bandera:'\ud83c\udded\ud83c\uddf3'},
-  {codigo:'505', nombre:'Nicaragua', bandera:'\ud83c\uddf3\ud83c\uddee'},
-  {codigo:'595', nombre:'Paraguay', bandera:'\ud83c\uddf5\ud83c\uddfe'},
-  {codigo:'598', nombre:'Uruguay', bandera:'\ud83c\uddfa\ud83c\uddfe'},
-  {codigo:'1809', nombre:'Rep. Dominicana', bandera:'\ud83c\udde9\ud83c\uddf4'},
-  {codigo:'53', nombre:'Cuba', bandera:'\ud83c\udde8\ud83c\uddfa'},
+  {codigo:'593', nombre:'Ecuador', bandera:'🇪🇨'},
+  {codigo:'57', nombre:'Colombia', bandera:'🇨🇴'},
+  {codigo:'51', nombre:'Perú', bandera:'🇵🇪'},
+  {codigo:'52', nombre:'México', bandera:'🇲🇽'},
+  {codigo:'1', nombre:'Estados Unidos / Canadá', bandera:'🇺🇸'},
+  {codigo:'34', nombre:'España', bandera:'🇪🇸'},
+  {codigo:'54', nombre:'Argentina', bandera:'🇦🇷'},
+  {codigo:'56', nombre:'Chile', bandera:'🇨🇱'},
+  {codigo:'58', nombre:'Venezuela', bandera:'🇻🇪'},
+  {codigo:'591', nombre:'Bolivia', bandera:'🇧🇴'},
+  {codigo:'507', nombre:'Panamá', bandera:'🇵🇦'},
+  {codigo:'506', nombre:'Costa Rica', bandera:'🇨🇷'},
+  {codigo:'502', nombre:'Guatemala', bandera:'🇬🇹'},
+  {codigo:'503', nombre:'El Salvador', bandera:'🇸🇻'},
+  {codigo:'504', nombre:'Honduras', bandera:'🇭🇳'},
+  {codigo:'505', nombre:'Nicaragua', bandera:'🇳🇮'},
+  {codigo:'595', nombre:'Paraguay', bandera:'🇵🇾'},
+  {codigo:'598', nombre:'Uruguay', bandera:'🇺🇾'},
+  {codigo:'1809', nombre:'Rep. Dominicana', bandera:'🇩🇴'},
+  {codigo:'53', nombre:'Cuba', bandera:'🇨🇺'},
 ];
 let _codigoPaisDefaultAdmin = '593';
 if(window._configClubPromise) window._configClubPromise.then(cfg=>{ if(cfg.codigoPaisDefault) _codigoPaisDefaultAdmin = cfg.codigoPaisDefault; });
@@ -1367,6 +1378,8 @@ async function abrirCrearPartido(){
   if(disciplinas===null) return;
   const eventosDisponibles = await api('listar_eventos_selector_app');
   if(eventosDisponibles===null) return;
+  const lugares = await api('listar_lugares_activos_admin');
+  if(lugares===null) return;
   const opts = tiposCache.map(t=>`<option value="${esc(t.nombre)}">${esc(t.nombre)}${t.costo_default ? ' ($'+t.costo_default+')' : ''}</option>`).join('');
   const selectorDisciplina = disciplinas.length > 1 ? `
     <label>Tipo de encuentro</label>
@@ -1380,11 +1393,17 @@ async function abrirCrearPartido(){
     <label>Tipo</label>
     <select id="nuevoTipo">${opts}</select>
     <label>Fecha</label>
-    <input id="nuevoFecha" placeholder="25/08/2026">
+    <input id="nuevoFecha" type="date">
     <label>Hora</label>
-    <input id="nuevoHora" placeholder="10:00">
+    <input id="nuevoHora" type="time">
     <label>Lugar</label>
-    <input id="nuevoLugar" placeholder="Cancha UE Atenas">
+    <select id="nuevoLugarSelect" onchange="document.getElementById('nuevoLugarNuevoWrap').style.display = this.value==='__nuevo__' ? 'block' : 'none'">
+      ${lugares.map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}
+      <option value="__nuevo__">+ Escribir un lugar nuevo</option>
+    </select>
+    <div id="nuevoLugarNuevoWrap" style="display:${lugares.length===0?'block':'none'}">
+      <input id="nuevoLugarNuevo" placeholder="Ej: Cancha UE Atenas" style="margin-top:6px">
+    </div>
     <label>Alias (opcional)</label>
     <input id="nuevoAlias" placeholder="Clásico de agosto">
     <label>Costo de inscripción (opcional, deja vacío para usar el default del tipo)</label>
@@ -1416,13 +1435,21 @@ async function actualizarSelectorFechaNuevoPartido(){
 }
 
 async function guardarCrearPartido(){
+  const fechaIso = document.getElementById('nuevoFecha').value;
+  if(!fechaIso){ toast('Escoge la fecha', true); return; }
+  const [anio, mes, dia] = fechaIso.split('-');
+  const lugarSelect = document.getElementById('nuevoLugarSelect').value;
   const body = {
     tipo: document.getElementById('nuevoTipo').value,
-    fecha: document.getElementById('nuevoFecha').value.trim(),
+    fecha: `${dia}/${mes}/${anio}`,
     hora: document.getElementById('nuevoHora').value.trim(),
-    lugar: document.getElementById('nuevoLugar').value.trim(),
     alias: document.getElementById('nuevoAlias').value.trim(),
   };
+  if(lugarSelect === '__nuevo__'){
+    body.lugar = document.getElementById('nuevoLugarNuevo').value.trim();
+  } else {
+    body.lugarId = parseInt(lugarSelect);
+  }
   const costo = document.getElementById('nuevoCosto').value.trim();
   if(costo) body.costo = costo;
   const selectorDisciplina = document.getElementById('nuevoDisciplinaId');
@@ -1431,7 +1458,7 @@ async function guardarCrearPartido(){
   if(eventoIdVal) body.eventoId = parseInt(eventoIdVal);
   const eventoFechaSelect = document.getElementById('nuevoEventoFechaId');
   if(eventoFechaSelect && eventoFechaSelect.value) body.eventoFechaId = parseInt(eventoFechaSelect.value);
-  if(!body.fecha || !body.hora || !body.lugar){ toast('Completa fecha, hora y lugar', true); return; }
+  if(!body.hora || (!body.lugarId && !body.lugar)){ toast('Completa hora y lugar', true); return; }
   const res = await api('crear_partido', body);
   if(res!==null){ toast('Partido creado y anunciado al grupo'); cerrarSheet(); cargarPartidos(); }
 }
@@ -1458,7 +1485,8 @@ async function cargarJugadores(){
         <h3>${esc(j.nombres)} ${esc(j.apellidos)}</h3>
         <span class="badge ${j.estado==='activo'?'confirmando':'cancelado'}">${esc(j.estado)}</span>
       </div>
-      <div class="meta">📱 ${esc(j.telefono)}</div>
+      <div class="meta">🎂 ${calcularEdad(j.fecha_nacimiento)}</div>
+      <div class="meta">🏋️ ${esc(j.grupoNombre || 'Sin grupo asignado')}</div>
       <div class="row-actions">
         ${j.es_admin ? '<span class="badge admin">Admin</span>' : ''}
         ${j.es_controlador ? '<span class="badge controlador">Controlador</span>' : ''}
@@ -2265,6 +2293,7 @@ async function cargarParametros(){
     {key:'numero_admin', label:'Número del admin', val:p.numero_admin, prefix:''},
     {key:'fecha_inicio_recaudacion', label:'Inicio de recaudación (DD/MM/AAAA)', val:p.fecha_inicio_recaudacion, prefix:''},
     {key:'fecha_inicio_mensualidades', label:'Fecha base de mensualidades del club (DD/MM/AAAA)', val:p.fecha_inicio_mensualidades, prefix:''},
+    {key:'google_maps_api_key', label:'Google Maps API Key (para el mapa de lugares)', val:p.google_maps_api_key, prefix:''},
     {key:'meses_retener_codigos', label:'Meses para conservar códigos QR usados', val:p.meses_retener_codigos, prefix:''},
     {key:'icono_deporte', label:'Ícono del deporte (emoji, ej: ⚽ 🏀 🏐 🎾)', val:p.icono_deporte, prefix:''},
   ];
@@ -2393,6 +2422,163 @@ async function eliminarVigenciaCobroAccion(vigenciaId, tipo, label){
   if(res===null) return;
   toast('Vigencia eliminada');
   abrirVigenciasCobro(tipo, label);
+}
+
+/* ---------- Lugares (canchas, coliseos, estadios) ---------- */
+async function abrirGestionLugares(){
+  const data = await api('listar_lugares_admin');
+  if(data===null) return;
+  mostrarGestionLugares(data);
+}
+
+function mostrarGestionLugares(data){
+  const html = `
+    <div class="sheet-head"><h2>📍 Lugares</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Canchas, coliseos, estadios donde se juegan los partidos. Las coordenadas son opcionales -- se pueden completar después.</p>
+    ${data.length===0 ? '<div class="empty"><span class="ic">📍</span>Sin lugares todavía.</div>' : data.map(l=>`
+      <div class="card">
+        <div class="card-title">
+          <h3>${esc(l.nombre)}</h3>
+          <span class="badge ${l.activo?'confirmando':'cancelado'}">${l.activo?'Activo':'Inactivo'}</span>
+        </div>
+        <div class="meta">${esc(l.detalle||'Sin detalle')} ${l.latitud ? '· 📍 Con coordenadas' : '· ⚠️ Sin coordenadas'}</div>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="sm" onclick='abrirEditarLugar(${JSON.stringify(l).replace(/"/g,"&quot;")})'>Editar</button>
+          <button class="sm ${l.activo?'danger':'primary'}" onclick="toggleLugarAccion(${l.id}, ${!l.activo})">${l.activo?'Desactivar':'Activar'}</button>
+        </div>
+      </div>
+    `).join('')}
+    <button class="primary block" style="margin-top:10px" onclick="abrirCrearLugar()">+ Agregar lugar</button>
+  `;
+  abrirSheet(html);
+}
+
+function abrirCrearLugar(){
+  const html = `
+    <div class="sheet-head"><h2>Nuevo lugar</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Creación rápida -- las coordenadas se pueden agregar después desde "Editar".</p>
+    <label>Nombre</label>
+    <input id="nuevoLugarNombre" placeholder="Ej: Coliseo Municipal">
+    <label>Detalle (opcional)</label>
+    <input id="nuevoLugarDetalle" placeholder="Ej: Entrada por la calle Sucre">
+    <button class="primary block" style="margin-top:16px" onclick="guardarCrearLugar()">Agregar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarCrearLugar(){
+  const nombre = document.getElementById('nuevoLugarNombre').value.trim();
+  const detalle = document.getElementById('nuevoLugarDetalle').value.trim();
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('crear_lugar_admin', {nombre, detalle});
+  if(res===null) return;
+  toast('Lugar agregado');
+  abrirGestionLugares();
+}
+
+async function toggleLugarAccion(lugarId, activo){
+  const res = await api('toggle_lugar_admin', {lugarId, activo});
+  if(res===null) return;
+  abrirGestionLugares();
+}
+
+let _mapaLugarInstancia = null;
+let _mapaLugarMarcador = null;
+
+async function abrirEditarLugar(l){
+  const html = `
+    <div class="sheet-head"><h2>Editar lugar</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <label>Nombre</label>
+    <input id="editLugarNombre" value="${esc(l.nombre)}">
+    <label>Detalle (opcional)</label>
+    <input id="editLugarDetalle" value="${esc(l.detalle||'')}">
+    <div id="mapaLugarContenedor">
+      <p style="color:var(--chalk-dim);font-size:13px">Cargando mapa...</p>
+    </div>
+    <label style="margin-top:8px">Latitud</label>
+    <input id="editLugarLat" type="number" step="0.000001" value="${l.latitud||''}">
+    <label>Longitud</label>
+    <input id="editLugarLng" type="number" step="0.000001" value="${l.longitud||''}">
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarLugar(${l.id})">Guardar cambios</button>
+  `;
+  abrirSheet(html);
+  await inicializarMapaLugar(l.latitud, l.longitud);
+}
+
+async function inicializarMapaLugar(latInicial, lngInicial){
+  const cont = document.getElementById('mapaLugarContenedor');
+  if(!cont) return;
+
+  const keyRes = await api('obtener_google_maps_api_key_admin');
+  if(keyRes===null || !keyRes.apiKey){
+    cont.innerHTML = '<p style="color:var(--chalk-dim);font-size:12px">Sin Google Maps API Key configurada (Parámetros → Generales) -- ingresa las coordenadas manualmente abajo, o pégalas desde Google Maps (clic derecho sobre el punto → copiar coordenadas).</p>';
+    return;
+  }
+
+  cont.innerHTML = `
+    <label>Buscar dirección o lugar</label>
+    <input id="mapaLugarBusqueda" placeholder="Escribe para buscar...">
+    <div id="mapaLugarDiv" style="width:100%;height:280px;border-radius:10px;margin-top:8px;background:var(--pitch-3)"></div>
+  `;
+
+  await cargarScriptGoogleMaps(keyRes.apiKey);
+
+  const centro = { lat: latInicial ? Number(latInicial) : -0.1807, lng: lngInicial ? Number(lngInicial) : -78.4678 };
+  _mapaLugarInstancia = new google.maps.Map(document.getElementById('mapaLugarDiv'), { center: centro, zoom: latInicial ? 16 : 12 });
+  _mapaLugarMarcador = new google.maps.Marker({ position: centro, map: _mapaLugarInstancia, draggable: true });
+
+  const actualizarCamposDesdeMarcador = () => {
+    const pos = _mapaLugarMarcador.getPosition();
+    document.getElementById('editLugarLat').value = pos.lat().toFixed(6);
+    document.getElementById('editLugarLng').value = pos.lng().toFixed(6);
+  };
+  _mapaLugarMarcador.addListener('dragend', actualizarCamposDesdeMarcador);
+  _mapaLugarInstancia.addListener('click', (e) => {
+    _mapaLugarMarcador.setPosition(e.latLng);
+    actualizarCamposDesdeMarcador();
+  });
+
+  const inputBusqueda = document.getElementById('mapaLugarBusqueda');
+  const autocomplete = new google.maps.places.Autocomplete(inputBusqueda);
+  autocomplete.bindTo('bounds', _mapaLugarInstancia);
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if(!place.geometry) return;
+    _mapaLugarInstancia.setCenter(place.geometry.location);
+    _mapaLugarInstancia.setZoom(16);
+    _mapaLugarMarcador.setPosition(place.geometry.location);
+    actualizarCamposDesdeMarcador();
+  });
+
+  if(latInicial) actualizarCamposDesdeMarcador();
+}
+
+function cargarScriptGoogleMaps(apiKey){
+  return new Promise((resolve, reject) => {
+    if(window.google && window.google.maps){ resolve(); return; }
+    if(document.getElementById('googleMapsScript')){
+      document.getElementById('googleMapsScript').addEventListener('load', resolve);
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'googleMapsScript';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function guardarEditarLugar(lugarId){
+  const nombre = document.getElementById('editLugarNombre').value.trim();
+  const detalle = document.getElementById('editLugarDetalle').value.trim();
+  const latitud = document.getElementById('editLugarLat').value;
+  const longitud = document.getElementById('editLugarLng').value;
+  if(!nombre){ toast('Escribe un nombre', true); return; }
+  const res = await api('editar_lugar_admin', {lugarId, nombre, detalle, latitud, longitud});
+  if(res===null) return;
+  toast('Lugar actualizado');
+  abrirGestionLugares();
 }
 
 async function toggleEventosJugador(habilitado){
@@ -4088,6 +4274,8 @@ function abrirCrearEntrenador(){
     <input id="entApellidos" placeholder="Apellidos">
     <label>Cédula</label>
     <input id="entCedula" placeholder="Obligatoria" inputmode="numeric">
+    <label>Alias (nombre corto para tarjetas de partido)</label>
+    <input id="entAlias" placeholder="Ej: Prof. Juan">
     <label>Teléfono</label>
     ${renderTelefonoInternacional('entTelefono', '')}
     <label>Rol</label>
@@ -4104,11 +4292,12 @@ async function guardarCrearEntrenador(){
   const nombres = document.getElementById('entNombres').value.trim();
   const apellidos = document.getElementById('entApellidos').value.trim();
   const cedula = document.getElementById('entCedula').value.trim();
+  const alias = document.getElementById('entAlias').value.trim();
   const telefono = obtenerTelefonoInternacional('entTelefono');
   const rol = document.getElementById('entRol').value;
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
   if(!cedula){ toast('La cédula es obligatoria', true); return; }
-  const res = await api('crear_entrenador_admin', {nombres, apellidos, cedula, telefono, rol});
+  const res = await api('crear_entrenador_admin', {nombres, apellidos, cedula, alias, telefono, rol});
   if(res===null) return;
   toast('Entrenador agregado');
   cerrarSheet();
@@ -4124,8 +4313,10 @@ function abrirEditarEntrenador(e){
     <input id="entEditApellidos" value="${esc(e.apellidos)}">
     <label>Cédula</label>
     <input id="entEditCedula" value="${esc(e.cedula)}" inputmode="numeric">
+    <label>Alias (nombre corto para tarjetas de partido)</label>
+    <input id="entEditAlias" value="${esc(e.alias||'')}" placeholder="Ej: Prof. Juan">
     <label>Teléfono</label>
-    <input id="entEditTelefono" value="${esc(e.telefono||'')}" type="tel">
+    ${renderTelefonoInternacional('entEditTelefono', e.telefono)}
     <label>Rol</label>
     <select id="entEditRol">
       <option value="entrenador" ${e.rol==='entrenador'?'selected':''}>Entrenador (ve solo sus grupos)</option>
@@ -4140,9 +4331,10 @@ async function guardarEditarEntrenador(entrenadorId){
   const nombres = document.getElementById('entEditNombres').value.trim();
   const apellidos = document.getElementById('entEditApellidos').value.trim();
   const cedula = document.getElementById('entEditCedula').value.trim();
-  const telefono = document.getElementById('entEditTelefono').value.trim();
+  const alias = document.getElementById('entEditAlias').value.trim();
+  const telefono = obtenerTelefonoInternacional('entEditTelefono');
   const rol = document.getElementById('entEditRol').value;
-  const res = await api('editar_entrenador_admin', {entrenadorId, nombres, apellidos, cedula, telefono, rol});
+  const res = await api('editar_entrenador_admin', {entrenadorId, nombres, apellidos, cedula, alias, telefono, rol});
   if(res===null) return;
   toast('Entrenador actualizado');
   cerrarSheet();

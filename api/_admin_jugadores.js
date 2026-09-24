@@ -5,12 +5,14 @@ async function listarJugadores(pool, body) {
   const r = await pool.query(
     `SELECT COALESCE(json_agg(json_build_object(
        'id', j.id, 'nombres', j.nombres, 'apellidos', j.apellidos, 'telefono', j.telefono, 'cedula', j.cedula, 'correo', j.correo, 'alias', j.alias, 'fecha_nacimiento', j.fecha_nacimiento,
+       'grupoNombre', g.nombre,
        'estado', j.estado, 'es_admin', j.es_admin, 'es_controlador', j.es_controlador, 'autorizado_excepcion_pago', j.autorizado_excepcion_pago,
        'tieneDeuda', ((NOT j.autorizado_excepcion_pago AND sport_control.meses_atraso(j.id) > 0)
          OR EXISTS(SELECT 1 FROM sport_control.multas m JOIN sport_control.partidos p2 ON p2.id = m.partido_id WHERE m.jugador_id = j.id AND m.estado IN ('pendiente_aprobacion', 'aprobada') AND COALESCE(m.pagada, false) = false AND p2.estado = 'finalizado' AND p2.fecha >= (SELECT fecha_inicio_recaudacion FROM sport_control.configuracion_club WHERE id = 1))
          OR EXISTS(SELECT 1 FROM sport_control.invitados_asistencia ia JOIN sport_control.partidos p3 ON p3.id = ia.partido_id WHERE ia.jugador_anfitrion_id = j.id AND ia.estado = 'confirmado' AND COALESCE(ia.pagado, false) = false AND p3.estado = 'finalizado' AND p3.fecha >= (SELECT fecha_inicio_recaudacion FROM sport_control.configuracion_club WHERE id = 1)))
      ) ORDER BY j.nombres), '[]'::json) AS jugadores
      FROM sport_control.jugadores j
+     LEFT JOIN sport_control.grupos g ON g.id = j.grupo_id
      WHERE ($1 = '' OR j.nombres ILIKE '%' || $1 || '%' OR j.apellidos ILIKE '%' || $1 || '%' OR j.telefono ILIKE '%' || $1 || '%')`,
     [busqueda]
   );

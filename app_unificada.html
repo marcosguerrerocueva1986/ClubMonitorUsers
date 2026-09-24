@@ -345,6 +345,14 @@ function renderProfesoresPartido(profesores){
   ).join('');
 }
 
+// Nombre del lugar + brujula que abre Google Maps, solo si el lugar
+// tiene coordenadas guardadas en el catalogo.
+function renderLugarConMapa(nombreLugar, lat, lng){
+  const texto = esc(nombreLugar||'—');
+  if(lat==null || lng==null) return texto;
+  return `${texto} <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" onclick="event.stopPropagation()" style="text-decoration:none">🧭</a>`;
+}
+
 // Tarjeta de estado de mensualidad, mas dramatica segun el atraso:
 // verde al dia, amarillo con 1 mes, rojo con 2 o mas.
 function renderTarjetaMensualidad(mesesAtraso, deuda){
@@ -1551,7 +1559,7 @@ async function cargarPantallaPartidosRep(cont){
       </div>
       <div class="meta">
         📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
-        📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
+        📍 ${renderLugarConMapa(p.lugar, p.lugarLat, p.lugarLng)}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
         ${renderProfesoresPartido(p.profesores)}
       </div>
       <div class="row-actions">
@@ -2380,7 +2388,7 @@ async function cargarPantallaPartidosJug(cont){
       </div>
       <div class="meta">
         📅 <b>${fechaCorta(p.fecha)}</b> &nbsp; 🕐 <b>${p.hora ? p.hora.slice(0,5) : ''}</b><br>
-        📍 ${esc(p.lugar||'')}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
+        📍 ${renderLugarConMapa(p.lugar, p.lugarLat, p.lugarLng)}${p.cantidadInvitados>0 ? ' · 🎟️ '+p.cantidadInvitados+' invitado(s)' : ''}
         ${renderProfesoresPartido(p.profesores)}
       </div>
       <div class="row-actions">

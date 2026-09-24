@@ -22,6 +22,7 @@ const {
 const { listarPantallasMenu, togglePantallaRol, toggleActivaPantalla } = require('./_admin_pantallas_menu');
 const { listarPlanilleros, crearPlanillero, editarPlanillero, togglePlanillero, resetearClavePlanilleroAdmin } = require('./_admin_planilleros');
 const { listarFinancieros, crearFinanciero, editarFinanciero, toggleFinanciero, resetearClaveFinancieroAdmin } = require('./_admin_financieros');
+const { listarLugares, listarLugaresAdmin, crearLugar, editarLugar, toggleLugar, obtenerGoogleMapsApiKey } = require('./_admin_lugares');
 const { listarRubros, crearRubro, editarRubro, toggleRubro, listarMovimientosClub, registrarMovimientoClub, eliminarMovimientoClub, verMensualidadJugadorAdmin, dashboardMorososMensualidad } = require('./_admin_finanzas_club');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin, resetearClaveRepresentanteAdmin } = require('./_admin_jugadores');
 const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios, listarPermisosPantallas, togglePermisoPantalla, diagnosticoCatalogoCobros, listarVigenciasCobro, agregarVigenciaCobro, eliminarVigenciaCobro } = require('./_admin_operaciones');
@@ -116,6 +117,12 @@ module.exports = async (req, res) => {
       case 'editar_financiero_admin': return res.status(200).json(await editarFinanciero(pool, body));
       case 'toggle_financiero_admin': return res.status(200).json(await toggleFinanciero(pool, body));
       case 'resetear_clave_financiero_admin': return res.status(200).json(await resetearClaveFinancieroAdmin(pool, body));
+      case 'listar_lugares_admin': return res.status(200).json(await listarLugaresAdmin(pool));
+      case 'listar_lugares_activos_admin': return res.status(200).json(await listarLugares(pool));
+      case 'crear_lugar_admin': return res.status(200).json(await crearLugar(pool, body));
+      case 'editar_lugar_admin': return res.status(200).json(await editarLugar(pool, body));
+      case 'toggle_lugar_admin': return res.status(200).json(await toggleLugar(pool, body));
+      case 'obtener_google_maps_api_key_admin': return res.status(200).json(await obtenerGoogleMapsApiKey(pool));
       case 'listar_rubros_club_admin': return res.status(200).json(await listarRubros(pool));
       case 'crear_rubro_club_admin': return res.status(200).json(await crearRubro(pool, body));
       case 'editar_rubro_club_admin': return res.status(200).json(await editarRubro(pool, body));

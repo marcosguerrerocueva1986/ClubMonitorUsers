@@ -8,7 +8,8 @@ async function obtenerParametros(pool) {
             to_char(fecha_inicio_recaudacion, 'DD/MM/YYYY') AS fecha_inicio_recaudacion, meses_retener_codigos,
             to_char(fecha_inicio_mensualidades, 'DD/MM/YYYY') AS fecha_inicio_mensualidades,
             eventos_habilitado_jugador, representantes_habilitado, icono_deporte,
-            mis_exentos_habilitado_jugador, mi_cuenta_habilitado_jugador, movimientos_evento_solo_propios
+            mis_exentos_habilitado_jugador, mi_cuenta_habilitado_jugador, movimientos_evento_solo_propios,
+            google_maps_api_key
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return { success: true, data: r.rows[0] };
@@ -48,6 +49,7 @@ async function actualizarParametro(pool, body) {
     numero_admin: { sql: `UPDATE sport_control.configuracion_club SET numero_admin = $1 WHERE id = 1`, val: valor },
     meses_retener_codigos: { sql: `UPDATE sport_control.configuracion_club SET meses_retener_codigos = $1 WHERE id = 1`, val: valor },
     icono_deporte: { sql: `UPDATE sport_control.configuracion_club SET icono_deporte = $1 WHERE id = 1`, val: valor },
+    google_maps_api_key: { sql: `UPDATE sport_control.configuracion_club SET google_maps_api_key = $1 WHERE id = 1`, val: valor },
   };
   if (campo === 'fecha_inicio_recaudacion' || campo === 'fecha_inicio_mensualidades') {
     const partes = String(valor).trim().split('/');
