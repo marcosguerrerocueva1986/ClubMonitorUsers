@@ -301,7 +301,7 @@ async function verMisPartidos(pool, jugadorId) {
             (SELECT COUNT(*) FROM sport_control.invitados_asistencia ia WHERE ia.partido_id = p.id AND ia.jugador_anfitrion_id = $1 AND ia.estado = 'confirmado') AS "cantidadInvitados",
             d.icono AS "disciplinaIcono",
             ev.nombre AS "eventoNombre",
-            (SELECT string_agg(DISTINCT (e.nombres || ' ' || e.apellidos), ', ')
+            (SELECT json_agg(DISTINCT COALESCE(e.alias, e.nombres))
                FROM sport_control.confirmaciones_partido cp2
                JOIN sport_control.jugadores j2 ON j2.id = cp2.jugador_id
                JOIN sport_control.entrenador_grupo eg ON eg.grupo_id = j2.grupo_id

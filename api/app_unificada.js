@@ -51,7 +51,7 @@ async function detectarRoles(pool, cedula) {
     [cedula]
   );
   const entrenador = await pool.query(
-    `SELECT id, nombres, apellidos, rol, clave_hash, debe_cambiar_clave, clave_reset_expira, intentos_fallidos, bloqueado_hasta
+    `SELECT id, nombres, apellidos, rol, alias, clave_hash, debe_cambiar_clave, clave_reset_expira, intentos_fallidos, bloqueado_hasta
      FROM sport_control.entrenadores WHERE cedula = $1 AND activo = true`,
     [cedula]
   );
@@ -278,16 +278,17 @@ async function obtenerPerfilUnificado(pool, cedula) {
       telefono: telRow.rows[0] ? telRow.rows[0].telefono : null,
       roles: info.roles,
       representantesHabilitado,
+      aliasEntrenador: info.entrenador ? info.entrenador.alias : null,
     },
   };
 }
 
 async function actualizarPerfilUnificado(pool, cedula, body) {
-  const { nombres, apellidos, telefono } = body;
+  const { nombres, apellidos, telefono, aliasEntrenador } = body;
   const info = await detectarRoles(pool, cedula);
   if (info.jugador) await pool.query(`UPDATE sport_control.jugadores SET nombres = $1, apellidos = $2 WHERE id = $3`, [nombres, apellidos, info.jugador.id]);
   if (info.representante) await pool.query(`UPDATE sport_control.representantes SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.representante.id]);
-  if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.entrenador.id]);
+  if (info.entrenador) await pool.query(`UPDATE sport_control.entrenadores SET nombres = $1, apellidos = $2, telefono = $3, alias = $4 WHERE id = $5`, [nombres, apellidos, telefono || null, aliasEntrenador || null, info.entrenador.id]);
   if (info.planillero) await pool.query(`UPDATE sport_control.planilleros SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.planillero.id]);
   if (info.financiero) await pool.query(`UPDATE sport_control.financieros SET nombres = $1, apellidos = $2, telefono = $3 WHERE id = $4`, [nombres, apellidos, telefono || null, info.financiero.id]);
   return { success: true };

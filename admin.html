@@ -527,7 +527,7 @@ function abrirCrearPlanillero(){
     <label>Cédula</label>
     <input id="planCedula" placeholder="Obligatoria" inputmode="numeric">
     <label>Teléfono</label>
-    <input id="planTelefono" placeholder="Opcional" type="tel">
+    ${renderTelefonoInternacional('planTelefono', '')}
     <button class="primary block" style="margin-top:16px" onclick="guardarCrearPlanillero()">Agregar</button>
   `;
   abrirSheet(html);
@@ -537,7 +537,7 @@ async function guardarCrearPlanillero(){
   const nombres = document.getElementById('planNombres').value.trim();
   const apellidos = document.getElementById('planApellidos').value.trim();
   const cedula = document.getElementById('planCedula').value.trim();
-  const telefono = document.getElementById('planTelefono').value.trim();
+  const telefono = obtenerTelefonoInternacional('planTelefono');
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
   if(!cedula){ toast('La cédula es obligatoria', true); return; }
   const res = await api('crear_planillero_admin', {nombres, apellidos, cedula, telefono});
@@ -637,7 +637,7 @@ function abrirCrearFinanciero(){
     <label>Cédula</label>
     <input id="finCedula" placeholder="Obligatoria" inputmode="numeric">
     <label>Teléfono</label>
-    <input id="finTelefono" placeholder="Opcional" type="tel">
+    ${renderTelefonoInternacional('finTelefono', '')}
     <button class="primary block" style="margin-top:16px" onclick="guardarCrearFinanciero()">Agregar</button>
   `;
   abrirSheet(html);
@@ -647,7 +647,7 @@ async function guardarCrearFinanciero(){
   const nombres = document.getElementById('finNombres').value.trim();
   const apellidos = document.getElementById('finApellidos').value.trim();
   const cedula = document.getElementById('finCedula').value.trim();
-  const telefono = document.getElementById('finTelefono').value.trim();
+  const telefono = obtenerTelefonoInternacional('finTelefono');
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
   if(!cedula){ toast('La cédula es obligatoria', true); return; }
   const res = await api('crear_financiero_admin', {nombres, apellidos, cedula, telefono});
@@ -1092,6 +1092,88 @@ async function cargarPartidos(){
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+/* ---------- Telefono internacional: selector de pais con busqueda nativa (datalist), sin librerias ----------
+   Se guarda SIEMPRE como codigo_pais + numero_local_sin_cero_inicial
+   (ej: "593983309625"), listo para usar tal cual en herramientas como
+   Evolution API sin tener que arreglar el numero despues. */
+const PAISES_TELEFONO = [
+  {codigo:'593', nombre:'Ecuador', bandera:'\ud83c\udde8\ud83c\uddee'},
+  {codigo:'57', nombre:'Colombia', bandera:'\ud83c\udde8\ud83c\uddf4'},
+  {codigo:'51', nombre:'Per\u00fa', bandera:'\ud83c\uddf5\ud83c\uddea'},
+  {codigo:'52', nombre:'M\u00e9xico', bandera:'\ud83c\uddf2\ud83c\uddfd'},
+  {codigo:'1', nombre:'Estados Unidos / Canad\u00e1', bandera:'\ud83c\uddfa\ud83c\uddf8'},
+  {codigo:'34', nombre:'Espa\u00f1a', bandera:'\ud83c\uddea\ud83c\uddf8'},
+  {codigo:'54', nombre:'Argentina', bandera:'\ud83c\udde6\ud83c\uddf7'},
+  {codigo:'56', nombre:'Chile', bandera:'\ud83c\udde8\ud83c\uddf1'},
+  {codigo:'58', nombre:'Venezuela', bandera:'\ud83c\uddfb\ud83c\uddea'},
+  {codigo:'591', nombre:'Bolivia', bandera:'\ud83c\udde7\ud83c\uddf4'},
+  {codigo:'507', nombre:'Panam\u00e1', bandera:'\ud83c\uddf5\ud83c\udde6'},
+  {codigo:'506', nombre:'Costa Rica', bandera:'\ud83c\udde8\ud83c\uddf7'},
+  {codigo:'502', nombre:'Guatemala', bandera:'\ud83c\uddec\ud83c\uddf9'},
+  {codigo:'503', nombre:'El Salvador', bandera:'\ud83c\uddf8\ud83c\uddfb'},
+  {codigo:'504', nombre:'Honduras', bandera:'\ud83c\udded\ud83c\uddf3'},
+  {codigo:'505', nombre:'Nicaragua', bandera:'\ud83c\uddf3\ud83c\uddee'},
+  {codigo:'595', nombre:'Paraguay', bandera:'\ud83c\uddf5\ud83c\uddfe'},
+  {codigo:'598', nombre:'Uruguay', bandera:'\ud83c\uddfa\ud83c\uddfe'},
+  {codigo:'1809', nombre:'Rep. Dominicana', bandera:'\ud83c\udde9\ud83c\uddf4'},
+  {codigo:'53', nombre:'Cuba', bandera:'\ud83c\udde8\ud83c\uddfa'},
+];
+let _codigoPaisDefaultAdmin = '593';
+if(window._configClubPromise) window._configClubPromise.then(cfg=>{ if(cfg.codigoPaisDefault) _codigoPaisDefaultAdmin = cfg.codigoPaisDefault; });
+(function llenarDatalistPaisesAdmin(){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    let dl = document.getElementById('listaPaisesTelefono');
+    if(!dl){ dl = document.createElement('datalist'); dl.id='listaPaisesTelefono'; document.body.appendChild(dl); }
+    dl.innerHTML = PAISES_TELEFONO.map(p=>`<option value="${p.bandera} ${p.nombre} (+${p.codigo})">`).join('');
+  });
+})();
+
+function textoPais(p){ return p.bandera+' '+p.nombre+' (+'+p.codigo+')'; }
+
+function separarTelefonoInternacional(valorGuardado){
+  if(!valorGuardado) return { codigo: _codigoPaisDefaultAdmin, numero: '' };
+  const soloDigitos = String(valorGuardado).replace(/\D/g,'');
+  const ordenados = [...PAISES_TELEFONO].sort((a,b)=>b.codigo.length-a.codigo.length);
+  for(const p of ordenados){
+    if(soloDigitos.startsWith(p.codigo) && soloDigitos.length > p.codigo.length) {
+      return { codigo: p.codigo, numero: soloDigitos.slice(p.codigo.length) };
+    }
+  }
+  return { codigo: _codigoPaisDefaultAdmin, numero: soloDigitos.replace(/^0+/,'') };
+}
+
+function renderTelefonoInternacional(idBase, valorGuardado){
+  const { codigo, numero } = separarTelefonoInternacional(valorGuardado);
+  const paisActual = PAISES_TELEFONO.find(p=>p.codigo===codigo) || PAISES_TELEFONO[0];
+  return `
+    <div style="display:flex;gap:6px">
+      <div style="flex:0 0 150px">
+        <input list="listaPaisesTelefono" id="${idBase}_pais" value="${esc(textoPais(paisActual))}" oninput="actualizarCodigoPaisTelefono('${idBase}')" autocomplete="off">
+        <input type="hidden" id="${idBase}_codigo" value="${codigo}">
+      </div>
+      <input type="tel" id="${idBase}_numero" value="${esc(numero)}" placeholder="Ej: 983309625" inputmode="numeric" style="flex:1" oninput="this.value=this.value.replace(/\D/g,'')">
+    </div>
+    <div style="font-size:11px;color:var(--chalk-dim);margin-top:4px">Ejemplo: si el número es 0983309625, elige el país e ingresa 983309625 (sin el 0 inicial)</div>
+  `;
+}
+
+function actualizarCodigoPaisTelefono(idBase){
+  const texto = document.getElementById(idBase+'_pais').value;
+  const match = PAISES_TELEFONO.find(p => texto === textoPais(p));
+  if(match) document.getElementById(idBase+'_codigo').value = match.codigo;
+}
+
+function obtenerTelefonoInternacional(idBase){
+  const codigoEl = document.getElementById(idBase+'_codigo');
+  const numeroEl = document.getElementById(idBase+'_numero');
+  if(!codigoEl || !numeroEl) return '';
+  const numero = numeroEl.value.replace(/\D/g,'').replace(/^0+/,'');
+  if(!numero) return '';
+  return codigoEl.value + numero;
+}
+
+
+
 /* ---------- Estadisticas del partido (pantalla generica) ---------- */
 let estadisticasPartidoActual = null;
 
@@ -1409,7 +1491,7 @@ function abrirCrearJugadorManual(){
     <label>Correo</label>
     <input id="jmCorreo" placeholder="juan@correo.com" type="email">
     <label>Teléfono (con el que escribirá al bot)</label>
-    <input id="jmTelefono" placeholder="0991234567" inputmode="tel">
+    ${renderTelefonoInternacional('jmTelefono', '')}
     <button class="primary block" style="margin-top:18px" onclick="guardarJugadorManual()">Crear jugador</button>
   `;
   abrirSheet(html);
@@ -1421,7 +1503,7 @@ async function guardarJugadorManual(){
     apellidos: document.getElementById('jmApellidos').value.trim(),
     cedula: document.getElementById('jmCedula').value.trim(),
     correo: document.getElementById('jmCorreo').value.trim(),
-    telefono: document.getElementById('jmTelefono').value.trim(),
+    telefono: obtenerTelefonoInternacional('jmTelefono'),
   };
   if(!body.nombres || !body.apellidos){ toast('Completa nombres y apellidos', true); return; }
   if(!body.telefono){ toast('Completa el teléfono', true); return; }
@@ -1657,7 +1739,7 @@ function abrirEditarJugador(j){
     <label>Correo</label>
     <input id="editCorreo" value="${esc(j.correo || '')}">
     <label>Teléfono</label>
-    <input id="editTelefono" value="${esc(j.telefono)}">
+    ${renderTelefonoInternacional('editTelefono', j.telefono)}
     <label>Estado</label>
     <select id="editEstado">
       <option value="activo" ${j.estado==='activo'?'selected':''}>Activo</option>
@@ -1689,7 +1771,7 @@ async function guardarEditarJugador(id){
     fechaNacimiento: document.getElementById('editFechaNacimiento').value,
     cedula: document.getElementById('editCedula').value.trim(),
     correo: document.getElementById('editCorreo').value.trim(),
-    telefono: document.getElementById('editTelefono').value.trim(),
+    telefono: obtenerTelefonoInternacional('editTelefono'),
     estado: document.getElementById('editEstado').value,
     es_admin: document.getElementById('editAdmin').checked,
     es_controlador: document.getElementById('editControlador').checked,
@@ -1792,7 +1874,7 @@ function abrirEditarRepresentanteAdmin(r){
     <label>Cédula</label>
     <input id="repAdminEditCedula" value="${esc(r.cedula||'')}" inputmode="numeric">
     <label>Teléfono</label>
-    <input id="repAdminEditTelefono" value="${esc(r.telefono||'')}" type="tel">
+    ${renderTelefonoInternacional('repAdminEditTelefono', r.telefono)}
     <label>Descripción</label>
     <input id="repAdminEditDescripcion" value="${esc(r.descripcion||'')}">
     <button class="primary block" style="margin-top:16px" onclick="guardarEditarRepresentanteAdmin(${r.id})">Guardar cambios</button>
@@ -1804,7 +1886,7 @@ async function guardarEditarRepresentanteAdmin(linkId){
   const nombres = document.getElementById('repAdminEditNombres').value.trim();
   const apellidos = document.getElementById('repAdminEditApellidos').value.trim();
   const cedula = document.getElementById('repAdminEditCedula').value.trim();
-  const telefono = document.getElementById('repAdminEditTelefono').value.trim();
+  const telefono = obtenerTelefonoInternacional('repAdminEditTelefono');
   const descripcion = document.getElementById('repAdminEditDescripcion').value.trim();
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
   const res = await api('editar_representante_admin', { linkId, nombres, apellidos, cedula, telefono, descripcion });
@@ -2286,8 +2368,8 @@ function abrirNuevaVigenciaCobro(tipo, label){
     <div class="sheet-head"><h2>Nueva vigencia — ${esc(label)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     <label>Nuevo valor</label>
     <input id="nuevaVigenciaValor" type="number" step="0.01" placeholder="0.00">
-    <label>Rige desde (DD/MM/AAAA)</label>
-    <input id="nuevaVigenciaFecha" placeholder="Ej: 01/01/2027">
+    <label>Rige desde</label>
+    <input id="nuevaVigenciaFecha" type="date">
     <button class="primary block" style="margin-top:16px" onclick="guardarNuevaVigenciaCobro('${tipo}','${esc(label)}')">Guardar</button>
   `;
   abrirSheet(html);
@@ -2295,7 +2377,10 @@ function abrirNuevaVigenciaCobro(tipo, label){
 
 async function guardarNuevaVigenciaCobro(tipo, label){
   const valor = document.getElementById('nuevaVigenciaValor').value;
-  const vigenteDesde = document.getElementById('nuevaVigenciaFecha').value.trim();
+  const fechaIso = document.getElementById('nuevaVigenciaFecha').value;
+  if(!fechaIso){ toast('Escoge la fecha', true); return; }
+  const [anio, mes, dia] = fechaIso.split('-');
+  const vigenteDesde = `${dia}/${mes}/${anio}`;
   const res = await api('agregar_vigencia_cobro_admin', {tipo, valor, vigenteDesde});
   if(res===null) return;
   toast('Vigencia agregada');
@@ -4004,7 +4089,7 @@ function abrirCrearEntrenador(){
     <label>Cédula</label>
     <input id="entCedula" placeholder="Obligatoria" inputmode="numeric">
     <label>Teléfono</label>
-    <input id="entTelefono" placeholder="Opcional" type="tel">
+    ${renderTelefonoInternacional('entTelefono', '')}
     <label>Rol</label>
     <select id="entRol">
       <option value="entrenador">Entrenador (ve solo sus grupos)</option>
@@ -4019,7 +4104,7 @@ async function guardarCrearEntrenador(){
   const nombres = document.getElementById('entNombres').value.trim();
   const apellidos = document.getElementById('entApellidos').value.trim();
   const cedula = document.getElementById('entCedula').value.trim();
-  const telefono = document.getElementById('entTelefono').value.trim();
+  const telefono = obtenerTelefonoInternacional('entTelefono');
   const rol = document.getElementById('entRol').value;
   if(!nombres || !apellidos){ toast('Completa nombres y apellidos', true); return; }
   if(!cedula){ toast('La cédula es obligatoria', true); return; }
