@@ -392,7 +392,12 @@ async function listarPartidosGrupo(pool, body) {
      JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.estado = 'confirmado'
      JOIN sport_control.jugadores j ON j.id = cp.jugador_id
      WHERE j.grupo_id = $1
-     ORDER BY p.fecha DESC LIMIT 20`,
+     ORDER BY (p.estado = 'finalizado') ASC,
+              CASE WHEN p.estado != 'finalizado' THEN p.fecha END ASC,
+              CASE WHEN p.estado != 'finalizado' THEN p.hora END ASC,
+              CASE WHEN p.estado = 'finalizado' THEN p.fecha END DESC,
+              CASE WHEN p.estado = 'finalizado' THEN p.hora END DESC
+     LIMIT 20`,
     [grupoId]
   );
   return { success: true, data: r.rows };

@@ -306,7 +306,9 @@ async function verMisPartidos(pool, jugadorId) {
      WHERE p.estado IN ('confirmando', 'cerrado', 'en_juego', 'finalizado')
      ORDER BY (p.estado = 'finalizado') ASC,
               CASE WHEN p.estado != 'finalizado' THEN p.fecha END ASC,
-              CASE WHEN p.estado = 'finalizado' THEN p.fecha END DESC
+              CASE WHEN p.estado != 'finalizado' THEN p.hora END ASC,
+              CASE WHEN p.estado = 'finalizado' THEN p.fecha END DESC,
+              CASE WHEN p.estado = 'finalizado' THEN p.hora END DESC
      LIMIT 30`,
     [jugadorId]
   );
