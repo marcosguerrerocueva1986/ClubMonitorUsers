@@ -163,6 +163,54 @@ async function eliminarPartido(pool, body) {
   return { success: true };
 }
 
+async function obtenerDetallePartidoParaEditar(pool, body) {
+  const r = await pool.query(
+    `SELECT p.id, p.alias, to_char(p.fecha,'YYYY-MM-DD') AS fecha, p.hora, p.lugar_id AS "lugarId", p.lugar, p.costo_inscripcion AS costo,
+       p.disciplina_id AS "disciplinaId", p.evento_id AS "eventoId", p.evento_fecha_id AS "eventoFechaId",
+       tp.nombre AS tipo
+     FROM sport_control.partidos p
+     LEFT JOIN sport_control.tipos_partido tp ON tp.id = p.tipo_partido_id
+     WHERE p.id = $1`,
+    [body.id]
+  );
+  if (!r.rows[0]) return { success: false, error: 'Partido no encontrado.' };
+  return { success: true, data: r.rows[0] };
+}
+
+async function editarPartidoCompleto(pool, body) {
+  const { id, tipo, fecha, hora, alias, costo, disciplinaId, eventoId, eventoFechaId } = body;
+
+  let lugarId = body.lugarId || null;
+  let lugarNombre = body.lugar || null;
+  if (!lugarId && lugarNombre) {
+    const existente = await pool.query(`SELECT id FROM sport_control.lugares WHERE nombre = $1 LIMIT 1`, [lugarNombre]);
+    if (existente.rows[0]) lugarId = existente.rows[0].id;
+    else {
+      const nuevo = await pool.query(`INSERT INTO sport_control.lugares (nombre) VALUES ($1) RETURNING id`, [lugarNombre]);
+      lugarId = nuevo.rows[0].id;
+    }
+  } else if (lugarId) {
+    const l = await pool.query(`SELECT nombre FROM sport_control.lugares WHERE id = $1`, [lugarId]);
+    lugarNombre = l.rows[0] ? l.rows[0].nombre : lugarNombre;
+  }
+
+  let tipoPartidoId = null;
+  if (tipo) {
+    const t = await pool.query(`SELECT id FROM sport_control.tipos_partido WHERE UPPER(nombre) = UPPER($1) LIMIT 1`, [tipo]);
+    tipoPartidoId = t.rows[0] ? t.rows[0].id : null;
+  }
+
+  const sets = ['fecha = $1::date', 'hora = $2::time', 'lugar = $3', 'lugar_id = $4', 'alias = $5', 'disciplina_id = $6', 'evento_id = $7', 'evento_fecha_id = $8'];
+  const vals = [fecha, hora, lugarNombre, lugarId, (alias || '').trim() || null, disciplinaId || null, eventoId || null, eventoFechaId || null];
+  let i = vals.length + 1;
+  if (tipoPartidoId) { sets.push(`tipo_partido_id = $${i++}`); vals.push(tipoPartidoId); }
+  if (costo !== undefined && costo !== null && costo !== '') { sets.push(`costo_inscripcion = $${i++}`); vals.push(costo); }
+  vals.push(id);
+
+  await pool.query(`UPDATE sport_control.partidos SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+  return { success: true };
+}
+
 async function editarPartido(pool, config, body) {
   const campo = (body.campo || '').toUpperCase();
   const valor = body.valor || '';
@@ -239,5 +287,5 @@ module.exports = {
   getPool, cargarConfig, fechaCorta, enviarWhatsAppGrupo, enviarWhatsAppPrivado, enviarWhatsAppMedia,
   listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido,
   marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido,
-  verVinculoEventoPartido, vincularPartidoEvento,
+  verVinculoEventoPartido, vincularPartidoEvento, obtenerDetallePartidoParaEditar, editarPartidoCompleto,
 };

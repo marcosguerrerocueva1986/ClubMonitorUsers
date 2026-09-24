@@ -1078,7 +1078,7 @@ async function cargarPartidos(){
         <button class="sm" onclick="abrirDetallesPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')}, '${p.estado}')">Detalles</button>
         <button class="sm" onclick="abrirEstadisticasPartido(${p.id})">📊 Estadísticas</button>
 
-        <button class="sm" onclick="abrirEditarPartido(${p.id}, ${JSON.stringify(p.alias||'').replace(/"/g,'&quot;')})">Editar</button>
+        <button class="sm" onclick="abrirEditarPartido(${p.id})">Editar</button>
 
         <button class="sm" onclick="abrirRevisionMultas(${p.id})">🧾 Multas</button>
         <button class="sm primary" onclick="confirmarFinalizar(${p.id})">Terminar</button>
@@ -1340,32 +1340,106 @@ async function confirmarAccionPartido(accion, id, label){
   if(res!==null){ toast('Listo'); cargarPartidos(); }
 }
 
-function abrirEditarPartido(id, aliasActual){
+async function abrirEditarPartido(id){
+  if(!tiposCache){
+    const t = await api('listar_tipos_partido');
+    if(t===null) return;
+    tiposCache = t;
+  }
+  const detalle = await api('obtener_detalle_partido_editar_admin', {id});
+  if(detalle===null) return;
+  const disciplinas = await api('listar_disciplinas_activas_admin');
+  if(disciplinas===null) return;
+  const eventosDisponibles = await api('listar_eventos_selector_app');
+  if(eventosDisponibles===null) return;
+  const lugares = await api('listar_lugares_activos_admin');
+  if(lugares===null) return;
+
+  const opts = tiposCache.map(t=>`<option value="${esc(t.nombre)}" ${t.nombre===detalle.tipo?'selected':''}>${esc(t.nombre)}${t.costo_default ? ' ($'+t.costo_default+')' : ''}</option>`).join('');
+  const selectorDisciplina = disciplinas.length > 1 ? `
+    <label>Tipo de encuentro</label>
+    <select id="editPartidoDisciplinaId">
+      ${disciplinas.map(d=>`<option value="${d.id}" ${d.id===detalle.disciplinaId?'selected':''}>${esc(d.icono)} ${esc(d.nombre)}</option>`).join('')}
+    </select>
+  ` : '';
   const html = `
     <div class="sheet-head"><h2>Editar partido</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
-    <label>Campo</label>
-    <select id="editCampo">
-      <option value="FECHA">Fecha</option>
-      <option value="HORA">Hora</option>
-      <option value="LUGAR">Lugar</option>
-      <option value="ALIAS">Alias</option>
+    ${selectorDisciplina}
+    <label>Tipo</label>
+    <select id="editPartidoTipo">${opts}</select>
+    <label>Fecha</label>
+    <input id="editPartidoFecha" type="date" value="${detalle.fecha}">
+    <label>Hora</label>
+    <input id="editPartidoHora" type="time" value="${detalle.hora ? detalle.hora.slice(0,5) : ''}">
+    <label>Lugar</label>
+    <select id="editPartidoLugarSelect" onchange="document.getElementById('editPartidoLugarNuevoWrap').style.display = this.value==='__nuevo__' ? 'block' : 'none'">
+      ${lugares.map(l=>`<option value="${l.id}" ${l.id===detalle.lugarId?'selected':''}>${esc(l.nombre)}</option>`).join('')}
+      <option value="__nuevo__">+ Escribir un lugar nuevo</option>
     </select>
-    <label id="editValorLabel">Nuevo valor (DD/MM/AAAA)</label>
-    <input id="editValor" placeholder="25/08/2026">
-    <button class="primary block" style="margin-top:20px" onclick="guardarEditarPartido(${id})">Guardar cambio</button>
+    <div id="editPartidoLugarNuevoWrap" style="display:${detalle.lugarId?'none':'block'}">
+      <input id="editPartidoLugarNuevo" placeholder="Ej: Cancha UE Atenas" value="${detalle.lugarId?'':esc(detalle.lugar||'')}" style="margin-top:6px">
+    </div>
+    <label>Alias (opcional)</label>
+    <input id="editPartidoAlias" value="${esc(detalle.alias||'')}">
+    <label>Costo de inscripción (opcional)</label>
+    <input id="editPartidoCosto" type="number" step="0.01" value="${detalle.costo||''}">
+    <label>Evento (opcional)</label>
+    <select id="editPartidoEventoId" onchange="actualizarFechasEventoEditPartido()">
+      <option value="">Ninguno</option>
+      ${eventosDisponibles.map(ev=>`<option value="${ev.id}" ${ev.id===detalle.eventoId?'selected':''}>${esc(ev.nombre)}</option>`).join('')}
+    </select>
+    <div id="editPartidoEventoFechaWrap"></div>
+    <button class="primary block" style="margin-top:16px" onclick="guardarEditarPartidoCompleto(${id})">Guardar cambios</button>
   `;
   abrirSheet(html);
-  document.getElementById('editCampo').addEventListener('change', e=>{
-    const hints = {FECHA:'Nuevo valor (DD/MM/AAAA)', HORA:'Nuevo valor (HH:MM)', LUGAR:'Nuevo lugar', ALIAS:'Nuevo alias (vacío para quitar)'};
-    document.getElementById('editValorLabel').textContent = hints[e.target.value];
-  });
+  window._eventosDisponiblesEditPartido = eventosDisponibles;
+  window._eventoFechaSeleccionadaEditPartido = detalle.eventoFechaId;
+  actualizarFechasEventoEditPartido();
 }
 
-async function guardarEditarPartido(id){
-  const campo = document.getElementById('editCampo').value;
-  const valor = document.getElementById('editValor').value.trim();
-  const res = await api('editar_partido', {id, campo, valor});
-  if(res!==null){ toast('Partido actualizado'); cerrarSheet(); cargarPartidos(); }
+async function actualizarFechasEventoEditPartido(){
+  const eventoId = document.getElementById('editPartidoEventoId').value;
+  const wrap = document.getElementById('editPartidoEventoFechaWrap');
+  if(!eventoId){ wrap.innerHTML = ''; return; }
+  const fechas = await api('listar_fechas_evento_selector_app', {eventoId});
+  if(fechas===null || fechas.length===0){ wrap.innerHTML = ''; return; }
+  const fechaSelId = window._eventoFechaSeleccionadaEditPartido;
+  wrap.innerHTML = `
+    <label>¿Fecha específica del evento? (opcional)</label>
+    <select id="editPartidoEventoFechaId">
+      <option value="">— General del evento —</option>
+      ${fechas.map(f=>`<option value="${f.id}" ${f.id===fechaSelId?'selected':''}>${esc(f.descripcion || fechaCorta(f.fecha))} — ${fechaCorta(f.fecha)}</option>`).join('')}
+    </select>
+  `;
+}
+
+async function guardarEditarPartidoCompleto(id){
+  const fechaIso = document.getElementById('editPartidoFecha').value;
+  if(!fechaIso){ toast('Escoge la fecha', true); return; }
+  const body = {
+    id,
+    tipo: document.getElementById('editPartidoTipo').value,
+    fecha: fechaIso,
+    hora: document.getElementById('editPartidoHora').value,
+    alias: document.getElementById('editPartidoAlias').value.trim(),
+  };
+  const lugarSelect = document.getElementById('editPartidoLugarSelect').value;
+  if(lugarSelect === '__nuevo__') body.lugar = document.getElementById('editPartidoLugarNuevo').value.trim();
+  else body.lugarId = parseInt(lugarSelect);
+  const costo = document.getElementById('editPartidoCosto').value.trim();
+  if(costo) body.costo = costo;
+  const selectorDisciplina = document.getElementById('editPartidoDisciplinaId');
+  if(selectorDisciplina) body.disciplinaId = parseInt(selectorDisciplina.value);
+  const eventoIdVal = document.getElementById('editPartidoEventoId').value;
+  if(eventoIdVal) body.eventoId = parseInt(eventoIdVal);
+  const eventoFechaSelect = document.getElementById('editPartidoEventoFechaId');
+  if(eventoFechaSelect && eventoFechaSelect.value) body.eventoFechaId = parseInt(eventoFechaSelect.value);
+  if(!body.hora || (!body.lugarId && !body.lugar)){ toast('Completa hora y lugar', true); return; }
+  const res = await api('editar_partido_completo_admin', body);
+  if(res===null) return;
+  toast('Partido actualizado');
+  cerrarSheet();
+  cargarPartidos();
 }
 
 async function abrirCrearPartido(){
