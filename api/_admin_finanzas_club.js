@@ -114,13 +114,19 @@ function generarMesesDesde(fechaInicio) {
 // quien registra el pago tenga que decir a que mes corresponde.
 async function calcularMensualidadJugador(pool, jugadorId) {
   const cfg = await pool.query(
-    `SELECT j.fecha_inicio_mensualidad_propia AS propia, c.fecha_inicio_mensualidades AS club
-     FROM sport_control.jugadores j, sport_control.configuracion_club c
-     WHERE j.id = $1 AND c.id = 1`,
+    `SELECT fecha_inscripcion, es_exento, exento_desde, exento_hasta FROM sport_control.jugadores WHERE id = $1`,
     [jugadorId]
   );
-  const fechaInicio = cfg.rows[0] && (cfg.rows[0].propia || cfg.rows[0].club);
-  if (!fechaInicio) return { meses: [], montoMensualidad: 0, totalPagado: 0, totalAdeudado: 0, mesesAtraso: 0 };
+  const j = cfg.rows[0];
+
+  // Sin fecha de inscripcion, este jugador no se toma en cuenta para
+  // NINGUN calculo financiero de deuda -- no aparece como moroso en
+  // ningun lado. La fecha_inscripcion es la UNICA fuente de este
+  // inicio, por encima de la fecha global del club.
+  if (!j || !j.fecha_inscripcion) {
+    return { meses: [], montoMensualidad: 0, totalPagado: 0, totalAdeudado: 0, mesesAtraso: 0, noAplica: true };
+  }
+  const fechaInicio = j.fecha_inscripcion;
 
   // El monto de la mensualidad se lee de catalogo_cobros -- el MISMO
   // lugar que ya se edita desde Admin > Parametros > Generales >
@@ -130,7 +136,16 @@ async function calcularMensualidadJugador(pool, jugadorId) {
   const catalogoCobroId = cobro.rows[0] && cobro.rows[0].id;
   const montoMensualidadActual = Number((cobro.rows[0] && cobro.rows[0].valor) || 0);
 
-  const mesesLista = generarMesesDesde(fechaInicio);
+  let mesesLista = generarMesesDesde(fechaInicio);
+
+  // Periodo de gracia/exencion: esos meses se saltan por completo del
+  // calculo -- ni suman deuda ni se piden como pagados. Si no tiene
+  // fecha de fin todavia, se salta hasta el mes actual.
+  if (j.es_exento && j.exento_desde) {
+    const desde = String(j.exento_desde).slice(0, 7);
+    const hasta = j.exento_hasta ? String(j.exento_hasta).slice(0, 7) : generarMesesDesde(j.exento_desde).slice(-1)[0];
+    mesesLista = mesesLista.filter(periodo => periodo < desde || periodo > hasta);
+  }
 
   // Historial de vigencias: cada cambio de precio queda guardado con
   // la fecha desde la que rige, para que un mes de 2026 siga usando
@@ -215,7 +230,9 @@ async function dashboardMorososMensualidad(pool) {
   const resultados = [];
   for (const j of jugadores.rows) {
     const calc = await calcularMensualidadJugador(pool, j.id);
-    if (calc.mesesAtraso > 0) {
+    // Sin fecha_inscripcion (noAplica) el jugador nunca debe aparecer
+    // aqui, aunque calc.mesesAtraso ya venga en 0 para ese caso.
+    if (!calc.noAplica && calc.mesesAtraso > 0) {
       resultados.push({ jugadorId: j.id, nombres: j.nombres, apellidos: j.apellidos, telefono: j.telefono, mesesAtraso: calc.mesesAtraso, totalAdeudado: calc.totalAdeudado });
     }
   }

@@ -1852,6 +1852,18 @@ function abrirEditarJugador(j){
     <input id="editAlias" value="${esc(j.alias || '')}" placeholder="Ej: PEPE">
     <label>Fecha de nacimiento</label>
     <input id="editFechaNacimiento" type="date" value="${esc(j.fecha_nacimiento ? String(j.fecha_nacimiento).slice(0,10) : '')}">
+    <label>Fecha de inscripción (define desde cuándo se le cuenta la mensualidad -- vacío = no se le hace seguimiento financiero)</label>
+    <input id="editFechaInscripcion" type="date" value="${esc(j.fecha_inscripcion ? String(j.fecha_inscripcion).slice(0,10) : '')}">
+    <label style="display:flex;align-items:center;gap:8px;flex-direction:row;text-transform:none;font-size:14px;margin-top:10px">
+      <input type="checkbox" id="editEsExento" ${j.es_exento?'checked':''} onchange="document.getElementById('editExencionFechasWrap').style.display = this.checked ? 'block' : 'none'" style="width:18px;height:18px">
+      Tiene un período de gracia (exento de mensualidad)
+    </label>
+    <div id="editExencionFechasWrap" style="display:${j.es_exento?'block':'none'}">
+      <label>Exento desde</label>
+      <input id="editExentoDesde" type="date" value="${esc(j.exento_desde ? String(j.exento_desde).slice(0,10) : '')}">
+      <label>Exento hasta (vacío = todavía sigue exento)</label>
+      <input id="editExentoHasta" type="date" value="${esc(j.exento_hasta ? String(j.exento_hasta).slice(0,10) : '')}">
+    </div>
     <label>Cédula</label>
     <input id="editCedula" value="${esc(j.cedula || '')}">
     <label>Correo</label>
@@ -1887,6 +1899,10 @@ async function guardarEditarJugador(id){
     apellidos: document.getElementById('editApellidos').value.trim(),
     alias: document.getElementById('editAlias').value.trim(),
     fechaNacimiento: document.getElementById('editFechaNacimiento').value,
+    fechaInscripcion: document.getElementById('editFechaInscripcion').value,
+    esExento: document.getElementById('editEsExento').checked,
+    exentoDesde: document.getElementById('editExentoDesde').value,
+    exentoHasta: document.getElementById('editExentoHasta').value,
     cedula: document.getElementById('editCedula').value.trim(),
     correo: document.getElementById('editCorreo').value.trim(),
     telefono: obtenerTelefonoInternacional('editTelefono'),
