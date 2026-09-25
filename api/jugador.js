@@ -302,12 +302,17 @@ async function verMisPartidos(pool, jugadorId) {
             d.icono AS "disciplinaIcono",
             lg.latitud AS "lugarLat", lg.longitud AS "lugarLng",
             ev.nombre AS "eventoNombre",
-            (SELECT json_agg(DISTINCT COALESCE(e.alias, e.nombres))
-               FROM sport_control.confirmaciones_partido cp2
-               JOIN sport_control.jugadores j2 ON j2.id = cp2.jugador_id
-               JOIN sport_control.entrenador_grupo eg ON eg.grupo_id = j2.grupo_id
-               JOIN sport_control.entrenadores e ON e.id = eg.entrenador_id
-               WHERE cp2.partido_id = p.id AND cp2.estado = 'confirmado') AS "profesores",
+            COALESCE(
+              (SELECT json_agg(DISTINCT COALESCE(e.alias, e.nombres))
+                 FROM sport_control.partido_entrenadores pe2 JOIN sport_control.entrenadores e ON e.id = pe2.entrenador_id
+                 WHERE pe2.partido_id = p.id),
+              (SELECT json_agg(DISTINCT COALESCE(e.alias, e.nombres))
+                 FROM sport_control.confirmaciones_partido cp2
+                 JOIN sport_control.jugadores j2 ON j2.id = cp2.jugador_id
+                 JOIN sport_control.entrenador_grupo eg ON eg.grupo_id = j2.grupo_id
+                 JOIN sport_control.entrenadores e ON e.id = eg.entrenador_id
+                 WHERE cp2.partido_id = p.id AND cp2.estado = 'confirmado')
+            ) AS "profesores",
             (p.marcador_propio IS NOT NULL OR EXISTS(SELECT 1 FROM sport_control.partido_estadisticas pe WHERE pe.partido_id = p.id)) AS "tieneEstadisticas"
      FROM sport_control.partidos p
      LEFT JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.jugador_id = $1

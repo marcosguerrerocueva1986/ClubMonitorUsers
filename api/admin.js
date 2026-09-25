@@ -9,7 +9,7 @@
 // body.clave contra configuracion_club.clave_admin_app en cada peticion,
 // igual que hacia n8n con el nodo 'Clave Correcta App'.
 
-const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido, verVinculoEventoPartido, vincularPartidoEvento, obtenerDetallePartidoParaEditar, editarPartidoCompleto } = require('./_admin_partidos');
+const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido, verVinculoEventoPartido, vincularPartidoEvento, obtenerDetallePartidoParaEditar, editarPartidoCompleto, listarEntrenadoresParaAsignar, obtenerProfesoresPartido, guardarProfesoresPartido } = require('./_admin_partidos');
 const { obtenerEstadisticasApps, listarUsuariosJugadoresAdmin, listarUsuariosRepresentantesAdmin } = require('./_admin_estadisticas');
 const { listarDisciplinas, listarDisciplinasActivas, crearDisciplina, editarDisciplina, toggleDisciplina, listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica, editarPuntosTipoEstadistica } = require('./_admin_disciplinas');
 const { verEstadisticasPartidoAdmin, guardarEstadisticasPartidoAdmin, verFotoPartidoAdmin } = require('./_admin_partido_estadisticas');
@@ -53,6 +53,9 @@ module.exports = async (req, res) => {
       case 'editar_partido': return res.status(200).json(await editarPartido(pool, config, body));
       case 'obtener_detalle_partido_editar_admin': return res.status(200).json(await obtenerDetallePartidoParaEditar(pool, body));
       case 'editar_partido_completo_admin': return res.status(200).json(await editarPartidoCompleto(pool, body));
+      case 'listar_entrenadores_para_asignar_admin': return res.status(200).json(await listarEntrenadoresParaAsignar(pool));
+      case 'obtener_profesores_partido_admin': return res.status(200).json(await obtenerProfesoresPartido(pool, body));
+      case 'guardar_profesores_partido_admin': return res.status(200).json(await guardarProfesoresPartido(pool, body));
       case 'listar_tipos_partido': return res.status(200).json(await listarTiposPartido(pool));
       case 'listar_jugadores': return res.status(200).json(await listarJugadores(pool, body));
       case 'actualizar_jugador': return res.status(200).json(await actualizarJugador(pool, body));

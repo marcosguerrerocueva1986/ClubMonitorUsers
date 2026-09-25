@@ -1354,6 +1354,10 @@ async function abrirEditarPartido(id){
   if(eventosDisponibles===null) return;
   const lugares = await api('listar_lugares_activos_admin');
   if(lugares===null) return;
+  const entrenadoresDisponibles = await api('listar_entrenadores_para_asignar_admin');
+  if(entrenadoresDisponibles===null) return;
+  const profesoresAsignados = await api('obtener_profesores_partido_admin', {id});
+  if(profesoresAsignados===null) return;
 
   const opts = tiposCache.map(t=>`<option value="${esc(t.nombre)}" ${t.nombre===detalle.tipo?'selected':''}>${esc(t.nombre)}${t.costo_default ? ' ($'+t.costo_default+')' : ''}</option>`).join('');
   const selectorDisciplina = disciplinas.length > 1 ? `
@@ -1389,6 +1393,15 @@ async function abrirEditarPartido(id){
       ${eventosDisponibles.map(ev=>`<option value="${ev.id}" ${ev.id===detalle.eventoId?'selected':''}>${esc(ev.nombre)}</option>`).join('')}
     </select>
     <div id="editPartidoEventoFechaWrap"></div>
+    <label style="margin-top:10px">Profesor(es) que dirigen este partido</label>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">
+      ${entrenadoresDisponibles.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">No hay entrenadores registrados todavía.</p>' : entrenadoresDisponibles.map(e=>`
+        <label style="display:flex;align-items:center;gap:6px;flex-direction:row;text-transform:none;font-size:14px;background:var(--pitch-3);padding:8px 12px;border-radius:8px;cursor:pointer">
+          <input type="checkbox" class="editPartidoProfesorCheck" value="${e.id}" ${profesoresAsignados.includes(e.id)?'checked':''} style="width:18px;height:18px">
+          ${esc(e.alias || (e.nombres+' '+e.apellidos))}
+        </label>
+      `).join('')}
+    </div>
     <button class="primary block" style="margin-top:16px" onclick="guardarEditarPartidoCompleto(${id})">Guardar cambios</button>
   `;
   abrirSheet(html);
@@ -1437,6 +1450,9 @@ async function guardarEditarPartidoCompleto(id){
   if(!body.hora || (!body.lugarId && !body.lugar)){ toast('Completa hora y lugar', true); return; }
   const res = await api('editar_partido_completo_admin', body);
   if(res===null) return;
+  const entrenadorIds = Array.from(document.querySelectorAll('.editPartidoProfesorCheck:checked')).map(c=>parseInt(c.value));
+  const resProf = await api('guardar_profesores_partido_admin', {id, entrenadorIds});
+  if(resProf===null) return;
   toast('Partido actualizado');
   cerrarSheet();
   cargarPartidos();

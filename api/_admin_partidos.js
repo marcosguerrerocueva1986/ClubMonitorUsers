@@ -163,6 +163,25 @@ async function eliminarPartido(pool, body) {
   return { success: true };
 }
 
+async function listarEntrenadoresParaAsignar(pool) {
+  const r = await pool.query(`SELECT id, nombres, apellidos, alias FROM sport_control.entrenadores WHERE activo = true ORDER BY nombres`);
+  return { success: true, data: r.rows };
+}
+
+async function obtenerProfesoresPartido(pool, body) {
+  const r = await pool.query(`SELECT entrenador_id AS "entrenadorId" FROM sport_control.partido_entrenadores WHERE partido_id = $1`, [body.id]);
+  return { success: true, data: r.rows.map(row => row.entrenadorId) };
+}
+
+async function guardarProfesoresPartido(pool, body) {
+  const { id, entrenadorIds } = body;
+  await pool.query(`DELETE FROM sport_control.partido_entrenadores WHERE partido_id = $1`, [id]);
+  for (const entrenadorId of (entrenadorIds || [])) {
+    await pool.query(`INSERT INTO sport_control.partido_entrenadores (partido_id, entrenador_id) VALUES ($1, $2)`, [id, entrenadorId]);
+  }
+  return { success: true };
+}
+
 async function obtenerDetallePartidoParaEditar(pool, body) {
   const r = await pool.query(
     `SELECT p.id, p.alias, to_char(p.fecha,'YYYY-MM-DD') AS fecha, p.hora, p.lugar_id AS "lugarId", p.lugar, p.costo_inscripcion AS costo,
@@ -288,4 +307,5 @@ module.exports = {
   listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido,
   marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido,
   verVinculoEventoPartido, vincularPartidoEvento, obtenerDetallePartidoParaEditar, editarPartidoCompleto,
+  listarEntrenadoresParaAsignar, obtenerProfesoresPartido, guardarProfesoresPartido,
 };
