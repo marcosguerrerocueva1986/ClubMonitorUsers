@@ -165,7 +165,8 @@ if ('serviceWorker' in navigator) {
   .cap-btn-rival button{background:rgba(232,93,76,.12);border:2px solid rgba(232,93,76,.35);color:var(--red);border-radius:8px;font-weight:700;font-size:13px;padding:10px 2px;}
 
   .cap-jugadoras{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
-  .cap-btn-jugadora{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;}
+  .cap-btn-jugadora{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;position:relative;}
+  .cap-badge-faltas{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 0 0 2px var(--pitch-1);}
   .cap-jugadoras.modo-edicion-activo{outline:2px dashed var(--gold);outline-offset:6px;border-radius:10px;}
   .cap-jugadoras.modo-edicion-activo .cap-btn-jugadora{border-color:var(--gold);}
   .cap-btn-jugadora .num{font-size:18px;font-weight:700;color:var(--gold);display:block;}
@@ -3262,6 +3263,7 @@ function renderCapturaPartido(cont){
         <div class="cap-jugadoras" id="capJugadorasGrid">
           ${d.jugadores.map(j=>`
             <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")}, ${JSON.stringify(j.nombreCorto).replace(/"/g,"&quot;")}, ${JSON.stringify(j.numeroCamiseta||'').replace(/"/g,"&quot;")})'>
+              <span class="cap-badge-faltas" id="faltas-${j.id}" style="display:none">0</span>
               <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombreCorto)}</span>
             </button>
           `).join('')}
@@ -3283,6 +3285,31 @@ function renderCapturaPartido(cont){
     const grid = document.getElementById('capJugadorasGrid');
     if(grid) grid.classList.add('modo-edicion-activo');
   }
+  actualizarBadgesFaltas();
+}
+
+// IDs de tipos de estadistica que cuentan como "falta" para este
+// partido (mismo criterio que ya se usa para el color rojo del boton).
+function idsTiposFaltaCaptura(){
+  return (CAPTURA_DATA.tipos||[]).filter(t=>/falta/i.test(t.nombre)).map(t=>t.id);
+}
+
+function actualizarBadgesFaltas(){
+  const idsFalta = idsTiposFaltaCaptura();
+  if(idsFalta.length===0) return;
+  const conteos = {};
+  (CAPTURA_DATA.log||[]).forEach(item=>{
+    if(!item.esRival && item.jugadorId && idsFalta.includes(item.tipoEstadisticaId)){
+      conteos[item.jugadorId] = (conteos[item.jugadorId]||0) + 1;
+    }
+  });
+  (CAPTURA_DATA.jugadores||[]).forEach(j=>{
+    const el = document.getElementById('faltas-'+j.id);
+    if(!el) return;
+    const n = conteos[j.id] || 0;
+    el.textContent = n;
+    el.style.display = n>0 ? 'flex' : 'none';
+  });
 }
 
 function renderLogCapturaHtml(log){
@@ -3330,6 +3357,7 @@ async function guardarEditarEventoCaptura(logId){
   CAPTURA_DATA.partido.marcador_propio = res.marcadorPropio;
   document.getElementById('capMarcadorPropio').textContent = res.marcadorPropio;
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  actualizarBadgesFaltas();
   cerrarSheet();
   toast('Registro corregido');
 }
@@ -3398,6 +3426,7 @@ async function registrarAccionJugadora(jugadorId, nombreJugadora, nombreCorto, n
     document.getElementById('capMarcadorPropio').textContent = CAPTURA_DATA.partido.marcador_propio;
   }
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  actualizarBadgesFaltas();
   document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('activa'));
   ACCION_SELECCIONADA = null;
 }
@@ -3411,6 +3440,7 @@ async function registrarPuntosRival(puntos){
   CAPTURA_DATA.partido.marcador_rival = (CAPTURA_DATA.partido.marcador_rival||0) + puntos;
   document.getElementById('capMarcadorRival').textContent = CAPTURA_DATA.partido.marcador_rival;
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  actualizarBadgesFaltas();
 }
 
 async function borrarEventoCaptura(logId){
@@ -3429,6 +3459,7 @@ async function borrarEventoCaptura(logId){
   }
   CAPTURA_DATA.log = CAPTURA_DATA.log.filter(l=>l.id!==logId);
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  actualizarBadgesFaltas();
   toast('Evento borrado');
 }
 
