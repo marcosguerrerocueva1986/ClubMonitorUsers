@@ -2151,6 +2151,7 @@ function renderResumenEventoRep(){
       <div class="field-line"><div class="fl-label">Recaudado</div><div class="fl-value" style="color:var(--green-ok)">$${d.totalRecaudado.toFixed(2)}</div></div>
       <div class="field-line"><div class="fl-label">Esperado</div><div class="fl-value">$${d.totalEsperadoCuotas.toFixed(2)}</div></div>
       <div class="field-line"><div class="fl-label">Gastado</div><div class="fl-value" style="color:var(--red)">$${totalGastos.toFixed(2)}</div></div>
+      <div class="field-line"><div class="fl-label">Saldo del evento</div><div class="fl-value" style="color:${(d.totalRecaudado-totalGastos)>=0?'var(--green-ok)':'var(--red)'};font-weight:700">$${(d.totalRecaudado-totalGastos).toFixed(2)} ${(d.totalRecaudado-totalGastos)>=0?'✓ A favor':'⚠️ En contra'}</div></div>
       <button class="sm" style="margin-top:8px" onclick="abrirDetalleFinancieroRep()">Ver detalle agrupado</button>
     </div>
   `;
@@ -2625,7 +2626,7 @@ function resumenNBADeStats(stats){
   let puntos = 0, asistencias = 0, rebotes = 0, faltas = 0;
   stats.forEach(s=>{
     const nombre = (s.nombre||'').toLowerCase();
-    const valor = Number(s.valor)||0;
+    const valor = Number(s.valor ?? s.total) || 0;
     if(s.puntos>0) puntos += valor * s.puntos;
     if(/asistencia/.test(nombre)) asistencias += valor;
     if(/rebote/.test(nombre)) rebotes += valor;
