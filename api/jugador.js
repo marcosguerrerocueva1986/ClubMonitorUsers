@@ -352,7 +352,7 @@ async function verDetallePartidoStatsJugador(pool, body) {
   if (!partido) return { success: false, error: 'Partido no encontrado.' };
 
   const valores = await pool.query(
-    `SELECT te.nombre, te.nivel, pe.valor, j.id AS "jugadorId", j.nombres || ' ' || j.apellidos AS jugador
+    `SELECT te.nombre, te.nivel, te.puntos, pe.valor, j.id AS "jugadorId", j.nombres || ' ' || j.apellidos AS jugador, COALESCE(j.alias, j.nombres) AS "nombreCorto", j.foto_carnet AS "fotoCarnet"
      FROM sport_control.partido_estadisticas pe
      JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
      LEFT JOIN sport_control.jugadores j ON j.id = pe.jugador_id
@@ -793,6 +793,8 @@ async function verEventoPublico(pool, jugadorId, body) {
   const evento = await pool.query(`SELECT id, nombre, descripcion, lugar, fecha_inicio, fecha_fin, estado FROM sport_control.eventos WHERE id = $1`, [eventoId]);
   if (!evento.rows[0]) return { success: false, error: 'Evento no encontrado.' };
 
+  const jugadorFoto = await pool.query(`SELECT foto_carnet AS "fotoCarnet" FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
+
   const miCuota = await pool.query(
     `SELECT monto_cuota AS "montoCuota" FROM sport_control.evento_cuota_jugador WHERE evento_id = $1 AND jugador_id = $2`,
     [eventoId, jugadorId]
@@ -844,14 +846,14 @@ async function verEventoPublico(pool, jugadorId, body) {
        JOIN partidos_evento pe ON pe.id = cp.partido_id
        WHERE cp.jugador_id = $2 AND cp.estado = 'confirmado'
      )
-     SELECT te.nombre, COALESCE(SUM(pes.valor), 0) AS total,
+     SELECT te.nombre, te.puntos, COALESCE(SUM(pes.valor), 0) AS total,
        CASE WHEN (SELECT total FROM confirmados) > 0 THEN COALESCE(SUM(pes.valor), 0)::numeric / (SELECT total FROM confirmados) ELSE 0 END AS promedio,
        (SELECT total FROM confirmados) AS "partidosConfirmados"
      FROM sport_control.tipos_estadistica te
      LEFT JOIN sport_control.partido_estadisticas pes ON pes.tipo_estadistica_id = te.id AND pes.jugador_id = $2
        AND pes.partido_id IN (SELECT id FROM partidos_evento)
      WHERE te.nivel = 'jugador' AND te.disciplina_id = (SELECT disciplina_id FROM sport_control.partidos WHERE evento_id = $1 LIMIT 1)
-     GROUP BY te.nombre, te.orden
+     GROUP BY te.nombre, te.puntos, te.orden
      ORDER BY te.orden`,
     [eventoId, jugadorId]
   );
@@ -863,6 +865,7 @@ async function verEventoPublico(pool, jugadorId, body) {
       fechas: fechas.rows,
       partidos: partidos.rows,
       estadisticasEvento: estadisticasEvento.rows,
+      fotoCarnet: jugadorFoto.rows[0] ? jugadorFoto.rows[0].fotoCarnet : null,
       miCuota: miCuota.rows[0] ? Number(miCuota.rows[0].montoCuota) : null,
       miPagado: Number(miPagado.rows[0].total),
       totalRecaudado: Number(totalRecaudado.rows[0].total),

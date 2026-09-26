@@ -191,6 +191,21 @@ if ('serviceWorker' in navigator) {
   .graf-mini-barra-fondo{flex:1;background:var(--pitch-3);border-radius:5px;height:7px;overflow:hidden;}
   .graf-mini-barra{background:var(--red);height:100%;border-radius:5px;}
   .graf-mini-valor{width:22px;text-align:right;font-size:11px;font-weight:700;flex-shrink:0;}
+
+  /* ---- Tarjetas NBA de estadisticas por jugador (aislado) ---- */
+  .nba-cards-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+  @media (min-width:600px){ .nba-cards-grid{grid-template-columns:1fr 1fr;} }
+  .nba-card{display:flex;align-items:center;gap:10px;background:var(--pitch-2);border:1px solid var(--line);border-radius:12px;padding:10px;}
+  .nba-card-foto{width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--pitch-3);display:flex;align-items:center;justify-content:center;}
+  .nba-card-foto img{width:100%;height:100%;object-fit:cover;}
+  .nba-card-foto-vacia{font-size:20px;color:var(--chalk-dim);}
+  .nba-card-info{flex:1;min-width:0;}
+  .nba-card-nombre{font-size:13px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nba-card-stats{display:flex;gap:10px;}
+  .nba-stat{text-align:center;}
+  .nba-stat-num{font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;color:var(--gold);line-height:1;}
+  .nba-stat-lbl{font-size:9px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.02em;}
+  .nba-card-btn{flex-shrink:0;}
   .cap-jugadoras.modo-edicion-activo{outline:2px dashed var(--gold);outline-offset:6px;border-radius:10px;}
   .cap-jugadoras.modo-edicion-activo .cap-btn-jugadora{border-color:var(--gold);}
   .cap-btn-jugadora .num{font-size:18px;font-weight:700;color:var(--gold);display:block;}
@@ -2019,7 +2034,7 @@ function cambiarSubtabEventoRep(sub){
 function renderSubtabEventoRepActual(){
   if(eventoRepSubtabActual==='resumen') document.getElementById('eventoRepSubtabContent').innerHTML = renderResumenEventoRep();
   if(eventoRepSubtabActual==='fechas') document.getElementById('eventoRepSubtabContent').innerHTML = renderFechasEventoRep();
-  if(eventoRepSubtabActual==='estadisticas') document.getElementById('eventoRepSubtabContent').innerHTML = renderEstadisticasEventoRep();
+  if(eventoRepSubtabActual==='estadisticas') cargarEstadisticasEventoRep();
   if(eventoRepSubtabActual==='movimientos') cargarMovimientosEventoRep();
 }
 
@@ -2060,18 +2075,52 @@ function renderFechasEventoRep(){
   return html || '<p style="color:var(--chalk-dim);font-size:13px">Sin partidos vinculados a este evento todavía.</p>';
 }
 
-function renderEstadisticasEventoRep(){
-  const d = eventoRepActualData;
-  const stats = d.estadisticasEvento || [];
-  const partidosConfirmados = stats.length>0 ? stats[0].partidosConfirmados : 0;
-  if(stats.length===0){
-    return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas disponibles para este evento.</p>';
+async function cargarEstadisticasEventoRep(){
+  const cont = document.getElementById('eventoRepSubtabContent');
+  cont.innerHTML = '<div class="spinner"></div>';
+
+  // Uno por cada jugador que este representante tiene en el club --
+  // si no esta inscrito en este evento, simplemente no traera datos y
+  // se descarta abajo. Se piden en paralelo para no hacerlo lento.
+  const resultados = await Promise.all(
+    (MIS_JUGADORES||[]).map(j => apiRep('ver_evento_publico_representante', {eventoId: eventoRepActualId, jugadorId: j.id}))
+  );
+
+  const tarjetas = [];
+  resultados.forEach((data, i) => {
+    if(!data) return;
+    const stats = data.estadisticasEvento || [];
+    const partidosConfirmados = stats.length>0 ? stats[0].partidosConfirmados : 0;
+    if(partidosConfirmados===0) return; // no participo de este evento, no se muestra
+    const j = MIS_JUGADORES[i];
+    const resumen = resumenNBADeStats(stats);
+    tarjetas.push({ nombreCorto: j.alias || j.nombres, fotoCarnet: data.fotoCarnet, resumen, jugadorId: j.id, stats, partidosConfirmados });
+  });
+
+  if(tarjetas.length===0){
+    cont.innerHTML = '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas disponibles para tus representados en este evento.</p>';
+    return;
   }
-  return `
-    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Basado en ${partidosConfirmados} partido(s) confirmado(s) por ${esc(JUGADOR_ACTUAL.nombres)} dentro de este evento.</p>
+
+  tarjetas.sort((a,b)=>a.nombreCorto.localeCompare(b.nombreCorto));
+  window._statsEventoRepTarjetas = tarjetas;
+
+  cont.innerHTML = `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Totales acumulados dentro de este evento.</p>
+    <div class="nba-cards-grid">
+      ${tarjetas.map((t,i)=>renderTarjetaEstadisticaNBA(t.nombreCorto, t.fotoCarnet, t.resumen, `abrirDetalleStatsEventoRep(${i})`)).join('')}
+    </div>
+  `;
+}
+
+function abrirDetalleStatsEventoRep(indice){
+  const t = (window._statsEventoRepTarjetas||[])[indice];
+  if(!t) return;
+  const html = `
+    <div class="sheet-head"><h2>${esc(t.nombreCorto)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Basado en ${t.partidosConfirmados} partido(s) confirmado(s) en este evento.</p>
     <div class="card">
-      <div class="card-title"><h3>Totales en el evento</h3></div>
-      ${stats.map(s=>`
+      ${t.stats.map(s=>`
         <div class="field-line">
           <div class="fl-label">${esc(s.nombre)}</div>
           <div class="fl-value">${s.total} <span style="color:var(--chalk-dim);font-size:12px">(prom. ${Number(s.promedio).toFixed(2)}/partido)</span></div>
@@ -2079,6 +2128,7 @@ function renderEstadisticasEventoRep(){
       `).join('')}
     </div>
   `;
+  abrirSheet(html);
 }
 
 function renderResumenEventoRep(){
@@ -2511,17 +2561,22 @@ function mostrarEstadisticasPartidoJugador(data, contexto){
   const p = data.partido;
   const grupos = {};
   const nombresPorId = {};
+  const infoPorId = {};
   data.valores.forEach(v => {
     const clave = v.jugadorId || '__equipo__';
     if(!grupos[clave]) grupos[clave] = [];
     grupos[clave].push(v);
-    if(v.jugadorId) nombresPorId[v.jugadorId] = v.jugador;
+    if(v.jugadorId){
+      nombresPorId[v.jugadorId] = v.jugador;
+      infoPorId[v.jugadorId] = { nombreCorto: v.nombreCorto || v.jugador, fotoCarnet: v.fotoCarnet };
+    }
   });
   const equipoStats = grupos['__equipo__'] || [];
   const idsRepresentados = new Set((typeof MIS_JUGADORES !== 'undefined' ? MIS_JUGADORES : []).map(j=>j.id));
 
   window._statsPartidoGrupos = grupos;
   window._statsPartidoNombresPorId = nombresPorId;
+  window._statsPartidoInfoPorId = infoPorId;
   window._statsPartidoIdsRepresentados = idsRepresentados;
 
   const mostrarSoloRepresentados = contexto==='representante';
@@ -2563,9 +2618,50 @@ function mostrarEstadisticasPartidoJugador(data, contexto){
   abrirSheet(html);
 }
 
+// Extrae puntos/asistencias/rebotes/faltas de una lista cruda de
+// estadisticas -- generico, busca por nombre asi que funciona con
+// cualquier catalogo (no depende de nombres exactos fijos en el codigo).
+function resumenNBADeStats(stats){
+  let puntos = 0, asistencias = 0, rebotes = 0, faltas = 0;
+  stats.forEach(s=>{
+    const nombre = (s.nombre||'').toLowerCase();
+    const valor = Number(s.valor)||0;
+    if(s.puntos>0) puntos += valor * s.puntos;
+    if(/asistencia/.test(nombre)) asistencias += valor;
+    if(/rebote/.test(nombre)) rebotes += valor;
+    if(/falta/.test(nombre)) faltas += valor;
+  });
+  return {puntos, asistencias, rebotes, faltas};
+}
+
+// Tarjeta estilo "tarjeta de jugador" (foto + numeros grandes) --
+// reutilizable en cualquier pantalla que quiera mostrar estadisticas
+// resumidas de un jugador de forma visual, con un boton para ver el
+// detalle completo de estadisticas.
+function renderTarjetaEstadisticaNBA(nombreCorto, fotoCarnet, resumen, onDetalle){
+  return `
+    <div class="nba-card">
+      <div class="nba-card-foto">
+        ${fotoCarnet ? `<img src="data:image/jpeg;base64,${fotoCarnet}">` : '<div class="nba-card-foto-vacia">👤</div>'}
+      </div>
+      <div class="nba-card-info">
+        <div class="nba-card-nombre">${esc(nombreCorto)}</div>
+        <div class="nba-card-stats">
+          <div class="nba-stat"><div class="nba-stat-num">${resumen.puntos}</div><div class="nba-stat-lbl">PTS</div></div>
+          <div class="nba-stat"><div class="nba-stat-num">${resumen.asistencias}</div><div class="nba-stat-lbl">AST</div></div>
+          <div class="nba-stat"><div class="nba-stat-num">${resumen.rebotes}</div><div class="nba-stat-lbl">REB</div></div>
+          <div class="nba-stat"><div class="nba-stat-num">${resumen.faltas}</div><div class="nba-stat-lbl">PF</div></div>
+        </div>
+      </div>
+      <button class="sm nba-card-btn" onclick="${onDetalle}">Detalles</button>
+    </div>
+  `;
+}
+
 function renderStatsPorJugadorHtml(soloRepresentados){
   const grupos = window._statsPartidoGrupos || {};
   const nombresPorId = window._statsPartidoNombresPorId || {};
+  const infoPorId = window._statsPartidoInfoPorId || {};
   const idsRepresentados = window._statsPartidoIdsRepresentados || new Set();
 
   let entradas = Object.entries(grupos).filter(([k])=>k!=='__equipo__');
@@ -2579,17 +2675,39 @@ function renderStatsPorJugadorHtml(soloRepresentados){
       : '';
   }
 
+  // Orden alfabetico por nombre corto/alias.
+  entradas.sort((a,b)=>{
+    const na = (infoPorId[a[0]]||{}).nombreCorto || nombresPorId[a[0]] || '';
+    const nb = (infoPorId[b[0]]||{}).nombreCorto || nombresPorId[b[0]] || '';
+    return na.localeCompare(nb);
+  });
+
   return `
+    <div class="card-title" style="margin:12px 0 8px"><h3>Estadísticas por jugador</h3></div>
+    <div class="nba-cards-grid">
+      ${entradas.map(([jugadorId, stats])=>{
+        const info = infoPorId[jugadorId] || {};
+        const nombreCorto = info.nombreCorto || nombresPorId[jugadorId] || '—';
+        const resumen = resumenNBADeStats(stats);
+        return renderTarjetaEstadisticaNBA(nombreCorto, info.fotoCarnet, resumen, `abrirDetalleStatsJugadorPartido(${jugadorId})`);
+      }).join('')}
+    </div>
+  `;
+}
+
+function abrirDetalleStatsJugadorPartido(jugadorId){
+  const grupos = window._statsPartidoGrupos || {};
+  const nombresPorId = window._statsPartidoNombresPorId || {};
+  const stats = grupos[jugadorId] || [];
+  const html = `
+    <div class="sheet-head"><h2>${esc(nombresPorId[jugadorId]||'Jugador')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     <div class="card">
-      <div class="card-title"><h3>Estadísticas por jugador</h3></div>
-      ${entradas.map(([jugadorId, stats])=>`
-        <div style="padding:8px 0;border-bottom:1px solid var(--line)">
-          <div class="fl-value" style="margin-bottom:4px">${esc(nombresPorId[jugadorId]||'—')}</div>
-          <div style="color:var(--chalk-dim);font-size:13px">${stats.map(s=>esc(s.nombre)+': '+s.valor).join(' · ')}</div>
-        </div>
+      ${stats.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Sin estadísticas.</p>' : stats.map(s=>`
+        <div class="field-line"><div class="fl-label">${esc(s.nombre)}</div><div class="fl-value">${s.valor}</div></div>
       `).join('')}
     </div>
   `;
+  abrirSheet(html);
 }
 
 function rerenderStatsPorJugador(){

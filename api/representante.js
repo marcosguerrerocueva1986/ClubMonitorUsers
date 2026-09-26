@@ -165,7 +165,7 @@ async function cambiarClaveRepresentante(pool, representanteId, body) {
 
 async function listarMisJugadoresRepresentante(pool, representanteId) {
   const r = await pool.query(
-    `SELECT j.id, j.nombres, j.apellidos, j.estado, jr.descripcion
+    `SELECT j.id, j.nombres, j.apellidos, j.estado, j.alias, jr.descripcion
      FROM sport_control.jugador_representante jr
      JOIN sport_control.jugadores j ON j.id = jr.jugador_id
      WHERE jr.representante_id = $1 ORDER BY j.nombres`,
