@@ -170,6 +170,27 @@ if ('serviceWorker' in navigator) {
   .cap-jugadoras{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
   .cap-btn-jugadora{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;position:relative;}
   .cap-badge-faltas{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 0 0 2px var(--pitch-1);}
+
+  /* ---- Graficas del equipo (aislado, nombres de clase propios) ---- */
+  .graf-ranking-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;}
+  .graf-panel-titulo{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-bottom:10px;}
+  .graf-fila-ranking{display:flex;align-items:center;gap:10px;padding:6px 0;}
+  .graf-puesto{width:28px;text-align:center;font-size:15px;font-weight:700;color:var(--chalk-dim);flex-shrink:0;}
+  .graf-info{flex:1;min-width:0;}
+  .graf-nombre-jugador{font-size:13px;font-weight:600;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .graf-barra-fondo{background:var(--pitch-3);border-radius:6px;height:10px;overflow:hidden;}
+  .graf-barra{background:var(--gold-dim, var(--gold));height:100%;border-radius:6px;transition:width .3s;}
+  .graf-barra-mvp{background:var(--gold);}
+  .graf-valor-total{width:44px;text-align:right;font-family:'Oswald',sans-serif;font-size:16px;font-weight:700;color:var(--gold);flex-shrink:0;}
+  .graf-mini-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+  @media (min-width:600px){ .graf-mini-grid{grid-template-columns:1fr 1fr;} }
+  .graf-mini-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:12px;padding:12px;}
+  .graf-mini-titulo{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--chalk-dim);margin-bottom:8px;}
+  .graf-mini-fila{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+  .graf-mini-nombre{width:60px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;}
+  .graf-mini-barra-fondo{flex:1;background:var(--pitch-3);border-radius:5px;height:7px;overflow:hidden;}
+  .graf-mini-barra{background:var(--red);height:100%;border-radius:5px;}
+  .graf-mini-valor{width:22px;text-align:right;font-size:11px;font-weight:700;flex-shrink:0;}
   .cap-jugadoras.modo-edicion-activo{outline:2px dashed var(--gold);outline-offset:6px;border-radius:10px;}
   .cap-jugadoras.modo-edicion-activo .cap-btn-jugadora{border-color:var(--gold);}
   .cap-btn-jugadora .num{font-size:18px;font-weight:700;color:var(--gold);display:block;}
@@ -1144,6 +1165,7 @@ async function cargarPantallaMiGrupo(cont){
       <button class="sm primary" onclick="abrirTomarAsistencia()">📋 Tomar asistencia de hoy</button>
       <button class="sm" onclick="abrirHistorialSesiones()">📊 Ver historial</button>
       <button class="sm" onclick="abrirPartidosGrupo()">🏆 Estadísticas de partidos</button>
+      <button class="sm" onclick="abrirGraficasEquipo(GRUPO_ACTUAL.id, GRUPO_ACTUAL.nombre)">📊 Gráficas</button>
     </div>
   `;
   }catch(e){
@@ -1377,6 +1399,74 @@ async function guardarCambiarGrupo(jugadorId){
 }
 
 /* ---------- Estadisticas de partidos del grupo ---------- */
+/* ============================================================
+   GRAFICAS DEL EQUIPO -- funcion nueva y totalmente aislada, no
+   reutiliza ni modifica pantallas existentes. Barras hechas con CSS
+   puro, sin ninguna libreria de graficos.
+   ============================================================ */
+async function abrirGraficasEquipo(grupoId, grupoNombre){
+  const data = await apiEnt('obtener_graficas_equipo_entrenador', {grupoId});
+  if(data===null) return;
+  mostrarGraficasEquipo(data, grupoNombre);
+}
+
+function mostrarGraficasEquipo(data, grupoNombre){
+  if(data.jugadores.length===0){
+    abrirSheet(`
+      <div class="sheet-head"><h2>📊 Gráficas — ${esc(grupoNombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+      <div class="empty"><span class="ic">📊</span>Todavía no hay estadísticas registradas para este grupo.</div>
+    `);
+    return;
+  }
+
+  const maxValorizacion = Math.max(...data.jugadores.map(j=>j.valorizacion), 1);
+  const medallas = ['🥇','🥈','🥉'];
+
+  // Top 3 de cada categoria de estadistica, para las mini-tablas de abajo.
+  const miniTablas = data.stats.map(nombreStat => {
+    const top = data.jugadores
+      .filter(j=>j.stats[nombreStat] > 0)
+      .sort((a,b)=>(b.stats[nombreStat]||0)-(a.stats[nombreStat]||0))
+      .slice(0,3);
+    if(top.length===0) return '';
+    const max = Math.max(...top.map(j=>j.stats[nombreStat]||0), 1);
+    return `
+      <div class="graf-mini-card">
+        <div class="graf-mini-titulo">${esc(nombreStat)}</div>
+        ${top.map(j=>`
+          <div class="graf-mini-fila">
+            <span class="graf-mini-nombre">${esc(j.nombreCorto)}</span>
+            <div class="graf-mini-barra-fondo"><div class="graf-mini-barra" style="width:${(j.stats[nombreStat]/max*100).toFixed(0)}%"></div></div>
+            <span class="graf-mini-valor">${j.stats[nombreStat]}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).filter(Boolean).join('');
+
+  const html = `
+    <div class="sheet-head"><h2>📊 Gráficas — ${esc(grupoNombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:12px;margin-top:-6px">Acumulado histórico de todos los partidos registrados. La "valorización" combina puntos, aportes (rebotes, asistencias, tapones...) y descuenta faltas -- entre más alto, mayor aporte integral al equipo.</p>
+
+    <div class="graf-ranking-card">
+      <div class="graf-panel-titulo">🏆 Ranking de valorización</div>
+      ${data.jugadores.map((j,i)=>`
+        <div class="graf-fila-ranking">
+          <div class="graf-puesto">${medallas[i]||('#'+(i+1))}</div>
+          <div class="graf-info">
+            <div class="graf-nombre-jugador">${esc(j.nombreCorto)}</div>
+            <div class="graf-barra-fondo"><div class="graf-barra ${i===0?'graf-barra-mvp':''}" style="width:${Math.max(4,(j.valorizacion/maxValorizacion*100)).toFixed(0)}%"></div></div>
+          </div>
+          <div class="graf-valor-total">${j.valorizacion.toFixed(1)}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    ${miniTablas ? `<div class="graf-mini-grid">${miniTablas}</div>` : ''}
+  `;
+  abrirSheet(html);
+}
+
 async function abrirPartidosGrupo(){
   const data = await apiEnt('listar_partidos_grupo_entrenador', {grupoId: GRUPO_ACTUAL.id});
   if(data===null) return;

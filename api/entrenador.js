@@ -517,6 +517,56 @@ async function listarCalendarioMes(pool, entrenadorId, body) {
   return { success: true, data: { sesiones: sesiones.rows, partidos: partidos.rows, horarios } };
 }
 
+// ============================================================
+// Graficas del equipo -- funcion NUEVA y aislada, no toca ninguna
+// consulta ni pantalla existente. Junta TODAS las estadisticas
+// historicas de los jugadores de un grupo (todos los partidos) y arma
+// un indice de "valorizacion" tipo NBA, mas rankings por categoria.
+// ============================================================
+async function obtenerGraficasEquipo(pool, body) {
+  const { grupoId } = body;
+
+  const jugadores = await pool.query(
+    `SELECT id, nombres, COALESCE(alias, nombres) AS "nombreCorto" FROM sport_control.jugadores WHERE grupo_id = $1 AND estado = 'activo'`,
+    [grupoId]
+  );
+  if (jugadores.rows.length === 0) return { success: true, data: { jugadores: [], stats: [], totalesEquipo: {} } };
+  const jugadorIds = jugadores.rows.map(j => j.id);
+
+  const filas = await pool.query(
+    `SELECT pe.jugador_id AS "jugadorId", te.nombre, te.puntos, SUM(pe.valor) AS total
+     FROM sport_control.partido_estadisticas pe
+     JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
+     WHERE pe.jugador_id = ANY($1::int[])
+     GROUP BY pe.jugador_id, te.id, te.nombre, te.puntos, te.orden
+     ORDER BY te.orden`,
+    [jugadorIds]
+  );
+
+  const nombresStats = [...new Set(filas.rows.map(f => f.nombre))];
+  const porJugador = {};
+  jugadores.rows.forEach(j => { porJugador[j.id] = { id: j.id, nombre: j.nombres, nombreCorto: j.nombreCorto, stats: {}, valorizacion: 0 }; });
+
+  const totalesEquipo = {};
+  filas.rows.forEach(f => {
+    const total = Number(f.total);
+    if (porJugador[f.jugadorId]) porJugador[f.jugadorId].stats[f.nombre] = total;
+    totalesEquipo[f.nombre] = (totalesEquipo[f.nombre] || 0) + total;
+
+    // Indice de valorizacion, estilo "eficiencia" de la NBA: lo que ya
+    // anota (usa los puntos configurados por tipo) suma directo; el
+    // resto de estadisticas positivas (rebotes, asistencias, tapones,
+    // etc.) suman 1 por unidad; las faltas restan medio punto -- para
+    // que el ranking no solo premie anotar, sino el aporte completo.
+    const esFalta = /falta/i.test(f.nombre);
+    const peso = f.puntos > 0 ? f.puntos : (esFalta ? -0.5 : 1);
+    if (porJugador[f.jugadorId]) porJugador[f.jugadorId].valorizacion += total * peso;
+  });
+
+  const jugadoresConStats = Object.values(porJugador).sort((a, b) => b.valorizacion - a.valorizacion);
+  return { success: true, data: { jugadores: jugadoresConStats, stats: nombresStats, totalesEquipo } };
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Metodo no permitido' });
   const body = req.body || {};
@@ -560,6 +610,7 @@ module.exports = async (req, res) => {
     if (accion === 'listar_partidos_grupo_entrenador') return res.status(200).json(await listarPartidosGrupo(pool, body));
     if (accion === 'ver_detalle_partido_stats_entrenador') return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
     if (accion === 'ver_foto_partido_entrenador') return res.status(200).json(await verFotoPartidoAdmin(pool, body));
+    if (accion === 'obtener_graficas_equipo_entrenador') return res.status(200).json(await obtenerGraficasEquipo(pool, body));
     if (accion === 'ver_historial_torneos_entrenador') return res.status(200).json(await verHistorialTorneosJugadorEntrenador(pool, body.jugadorId));
     if (accion === 'listar_horario_semanal_entrenador') return res.status(200).json(await listarHorarioSemanal(pool, entrenadorId));
     if (accion === 'listar_calendario_mes_entrenador') return res.status(200).json(await listarCalendarioMes(pool, entrenadorId, body));
