@@ -323,7 +323,8 @@ async function listarPartidosActivosPlanillero(pool) {
 async function abrirCapturaPartido(pool, body) {
   const { partidoId } = body;
   const partido = await pool.query(
-    `SELECT p.id, p.alias, p.rival_nombre, p.marcador_propio, p.marcador_rival, p.disciplina_id AS "disciplinaId", p.evento_id AS "eventoId"
+    `SELECT p.id, p.alias, p.rival_nombre, p.marcador_propio, p.marcador_rival, p.disciplina_id AS "disciplinaId", p.evento_id AS "eventoId",
+       p.faltas_equipo_propio AS "faltasPropio", p.faltas_equipo_rival AS "faltasRival"
      FROM sport_control.partidos p WHERE p.id = $1`,
     [partidoId]
   );
@@ -394,6 +395,7 @@ async function registrarEventoPartido(pool, planilleroId, body) {
     [partidoId, esRival ? null : (jugadorId || null), esRival ? null : (tipoEstadisticaId || null), !!esRival, puntosNum, planilleroId]
   );
 
+  let faltasPropio = null;
   if (esRival) {
     await pool.query(`UPDATE sport_control.partidos SET marcador_rival = COALESCE(marcador_rival, 0) + $1 WHERE id = $2`, [puntosNum, partidoId]);
   } else {
@@ -407,10 +409,19 @@ async function registrarEventoPartido(pool, planilleroId, body) {
          ON CONFLICT (partido_id, tipo_estadistica_id, jugador_id) DO UPDATE SET valor = sport_control.partido_estadisticas.valor + 1, actualizado_en = NOW()`,
         [partidoId, tipoEstadisticaId, jugadorId]
       );
+      // Toda falta personal tambien suma al contador de faltas de
+      // equipo -- es una cuenta viva que va subiendo, como en la vida
+      // real, y se reinicia manualmente con el boton "Reset" al
+      // terminar un periodo.
+      const tipo = await pool.query(`SELECT nombre FROM sport_control.tipos_estadistica WHERE id = $1`, [tipoEstadisticaId]);
+      if (tipo.rows[0] && /falta/i.test(tipo.rows[0].nombre)) {
+        const upd = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = faltas_equipo_propio + 1 WHERE id = $1 RETURNING faltas_equipo_propio`, [partidoId]);
+        faltasPropio = upd.rows[0].faltas_equipo_propio;
+      }
     }
   }
 
-  return { success: true, data: { id: ins.rows[0].id, creadoEn: ins.rows[0].creadoEn } };
+  return { success: true, data: { id: ins.rows[0].id, creadoEn: ins.rows[0].creadoEn, faltasPropio } };
 }
 
 // Corrige un registro sin borrarlo: revierte lo que ese registro habia
@@ -429,11 +440,17 @@ async function editarEventoPartido(pool, body) {
   if (l.puntos > 0) {
     await pool.query(`UPDATE sport_control.partidos SET marcador_propio = GREATEST(0, COALESCE(marcador_propio, 0) - $1) WHERE id = $2`, [l.puntos, l.partido_id]);
   }
+  let faltasPropio = null;
   if (l.jugador_id && l.tipo_estadistica_id) {
     await pool.query(
       `UPDATE sport_control.partido_estadisticas SET valor = GREATEST(0, valor - 1) WHERE partido_id = $1 AND jugador_id = $2 AND tipo_estadistica_id = $3`,
       [l.partido_id, l.jugador_id, l.tipo_estadistica_id]
     );
+    const tipoViejo = await pool.query(`SELECT nombre FROM sport_control.tipos_estadistica WHERE id = $1`, [l.tipo_estadistica_id]);
+    if (tipoViejo.rows[0] && /falta/i.test(tipoViejo.rows[0].nombre)) {
+      const upd = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = GREATEST(0, faltas_equipo_propio - 1) WHERE id = $1 RETURNING faltas_equipo_propio`, [l.partido_id]);
+      faltasPropio = upd.rows[0].faltas_equipo_propio;
+    }
   }
 
   // Aplicar lo nuevo
@@ -452,6 +469,10 @@ async function editarEventoPartido(pool, body) {
      ON CONFLICT (partido_id, tipo_estadistica_id, jugador_id) DO UPDATE SET valor = sport_control.partido_estadisticas.valor + 1, actualizado_en = NOW()`,
     [l.partido_id, tipoEstadisticaId, jugadorId]
   );
+  if (/falta/i.test(tipo.rows[0].nombre)) {
+    const upd2 = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = faltas_equipo_propio + 1 WHERE id = $1 RETURNING faltas_equipo_propio`, [l.partido_id]);
+    faltasPropio = upd2.rows[0].faltas_equipo_propio;
+  }
 
   // Devuelve el partido actualizado para refrescar el marcador en pantalla
   const partido = await pool.query(`SELECT marcador_propio, marcador_rival FROM sport_control.partidos WHERE id = $1`, [l.partido_id]);
@@ -464,6 +485,7 @@ async function editarEventoPartido(pool, body) {
       puntos: nuevosPuntos,
       jugadorNombre: jugador.rows[0] ? jugador.rows[0].nombre : '',
       tipoNombre: tipo.rows[0].nombre,
+      faltasPropio,
     },
   };
 }
@@ -474,6 +496,7 @@ async function eliminarEventoPartido(pool, body) {
   if (!log.rows[0]) return { success: false, error: 'Ese registro ya no existe.' };
   const l = log.rows[0];
 
+  let faltasPropio = null;
   if (l.es_rival) {
     await pool.query(`UPDATE sport_control.partidos SET marcador_rival = GREATEST(0, COALESCE(marcador_rival, 0) - $1) WHERE id = $2`, [l.puntos, l.partido_id]);
   } else {
@@ -486,11 +509,16 @@ async function eliminarEventoPartido(pool, body) {
          WHERE partido_id = $1 AND jugador_id = $2 AND tipo_estadistica_id = $3`,
         [l.partido_id, l.jugador_id, l.tipo_estadistica_id]
       );
+      const tipo = await pool.query(`SELECT nombre FROM sport_control.tipos_estadistica WHERE id = $1`, [l.tipo_estadistica_id]);
+      if (tipo.rows[0] && /falta/i.test(tipo.rows[0].nombre)) {
+        const upd = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = GREATEST(0, faltas_equipo_propio - 1) WHERE id = $1 RETURNING faltas_equipo_propio`, [l.partido_id]);
+        faltasPropio = upd.rows[0].faltas_equipo_propio;
+      }
     }
   }
 
   await pool.query(`DELETE FROM sport_control.partido_stats_log WHERE id = $1`, [logId]);
-  return { success: true };
+  return { success: true, data: { faltasPropio } };
 }
 
 module.exports = async (req, res) => {
@@ -521,6 +549,23 @@ module.exports = async (req, res) => {
     if (accion === 'editar_numero_alias_jugador_planillero') {
       const { jugadorId, numeroCamiseta, alias } = body;
       await pool.query(`UPDATE sport_control.jugadores SET numero_camiseta = $1, alias = $2 WHERE id = $3`, [numeroCamiseta || null, alias || null, jugadorId]);
+      return res.status(200).json({ success: true });
+    }
+    if (accion === 'registrar_falta_rival_planillero') {
+      const r = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_rival = faltas_equipo_rival + 1 WHERE id = $1 RETURNING faltas_equipo_rival`, [body.partidoId]);
+      return res.status(200).json({ success: true, data: { faltasRival: r.rows[0].faltas_equipo_rival } });
+    }
+    if (accion === 'resetear_faltas_equipo_planillero') {
+      const r = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = 0, faltas_equipo_rival = 0 WHERE id = $1 RETURNING faltas_equipo_propio AS "faltasPropio", faltas_equipo_rival AS "faltasRival"`, [body.partidoId]);
+      return res.status(200).json({ success: true, data: r.rows[0] });
+    }
+    if (accion === 'ajustar_faltas_equipo_planillero') {
+      // Ajuste manual, solo disponible en modo edicion -- para
+      // emergencias donde el conteo automatico no coincide con lo
+      // que realmente paso en la cancha.
+      const campo = body.equipo === 'rival' ? 'faltas_equipo_rival' : 'faltas_equipo_propio';
+      const valor = Math.max(0, parseInt(body.valor) || 0);
+      await pool.query(`UPDATE sport_control.partidos SET ${campo} = $1 WHERE id = $2`, [valor, body.partidoId]);
       return res.status(200).json({ success: true });
     }
 

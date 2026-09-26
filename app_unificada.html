@@ -146,6 +146,9 @@ if ('serviceWorker' in navigator) {
   .cap-salir{position:sticky;top:0;z-index:5;background:var(--pitch-1);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;}
 
   .cap-marcador{display:flex;justify-content:space-around;align-items:center;background:var(--pitch-2);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px;}
+  .cap-faltas-box{background:var(--pitch-3);border:1px solid var(--line);border-radius:8px;padding:4px 8px;text-align:center;cursor:pointer;min-width:44px;}
+  .cap-faltas-label{font-size:9px;color:var(--chalk-dim);text-transform:uppercase;}
+  .cap-faltas-num{font-size:18px;font-weight:700;color:var(--red);}
   .cap-marcador .equipo{text-align:center;}
   .cap-marcador .equipo .etq{font-size:11px;color:var(--chalk-dim);text-transform:uppercase;}
   .cap-marcador .equipo .pts{font-size:28px;font-weight:700;color:var(--gold);font-family:'Oswald',sans-serif;}
@@ -3237,8 +3240,19 @@ function renderCapturaPartido(cont){
 
     <div class="cap-marcador">
       <div class="equipo"><div class="etq">Nuestro equipo</div><div class="pts" id="capMarcadorPropio">${p.marcador_propio||0}</div></div>
+      <div class="cap-faltas-box" onclick="tocarFaltasEquipo('propio')">
+        <div class="cap-faltas-label">Faltas</div>
+        <div class="cap-faltas-num" id="capFaltasPropio">${p.faltasPropio||0}</div>
+      </div>
       <div style="color:var(--chalk-dim)">VS</div>
+      <div class="cap-faltas-box" onclick="tocarFaltasEquipo('rival')">
+        <div class="cap-faltas-label">Faltas</div>
+        <div class="cap-faltas-num" id="capFaltasRival">${p.faltasRival||0}</div>
+      </div>
       <div class="equipo"><div class="etq">${esc(p.rival_nombre||'Rival')}</div><div class="pts" id="capMarcadorRival" style="color:var(--chalk)">${p.marcador_rival||0}</div></div>
+    </div>
+    <div style="text-align:center;margin:-4px 0 8px">
+      <button onclick="resetearFaltasEquipoCaptura()" style="background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer">↺ Reset faltas (fin de período)</button>
     </div>
 
     <div class="cap-grid">
@@ -3254,6 +3268,9 @@ function renderCapturaPartido(cont){
             <button onclick="registrarPuntosRival(1)">+1 Rival</button>
             <button onclick="registrarPuntosRival(2)">+2 Rival</button>
             <button onclick="registrarPuntosRival(3)">+3 Rival</button>
+          </div>
+          <div class="cap-btn-rival">
+            <button onclick="registrarFaltaRivalCaptura()" style="grid-column:span 3">🚫 Falta Rival</button>
           </div>
         </div>
       </div>
@@ -3356,6 +3373,10 @@ async function guardarEditarEventoCaptura(logId){
   item.tipoNombre = res.tipoNombre;
   CAPTURA_DATA.partido.marcador_propio = res.marcadorPropio;
   document.getElementById('capMarcadorPropio').textContent = res.marcadorPropio;
+  if(res.faltasPropio!=null){
+    CAPTURA_DATA.partido.faltasPropio = res.faltasPropio;
+    document.getElementById('capFaltasPropio').textContent = res.faltasPropio;
+  }
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
   actualizarBadgesFaltas();
   cerrarSheet();
@@ -3425,6 +3446,10 @@ async function registrarAccionJugadora(jugadorId, nombreJugadora, nombreCorto, n
     CAPTURA_DATA.partido.marcador_propio = (CAPTURA_DATA.partido.marcador_propio||0) + ACCION_SELECCIONADA.puntos;
     document.getElementById('capMarcadorPropio').textContent = CAPTURA_DATA.partido.marcador_propio;
   }
+  if(res.faltasPropio!=null){
+    CAPTURA_DATA.partido.faltasPropio = res.faltasPropio;
+    document.getElementById('capFaltasPropio').textContent = res.faltasPropio;
+  }
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
   actualizarBadgesFaltas();
   document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('activa'));
@@ -3443,6 +3468,43 @@ async function registrarPuntosRival(puntos){
   actualizarBadgesFaltas();
 }
 
+async function registrarFaltaRivalCaptura(){
+  const res = await apiPlan('registrar_falta_rival_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
+  if(res===null) return;
+  CAPTURA_DATA.partido.faltasRival = res.faltasRival;
+  document.getElementById('capFaltasRival').textContent = res.faltasRival;
+  toast('Falta del rival registrada');
+}
+
+async function resetearFaltasEquipoCaptura(){
+  if(!confirm('¿Reiniciar el contador de faltas de ambos equipos a 0? (usar al terminar un período)')) return;
+  const res = await apiPlan('resetear_faltas_equipo_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
+  if(res===null) return;
+  CAPTURA_DATA.partido.faltasPropio = res.faltasPropio;
+  CAPTURA_DATA.partido.faltasRival = res.faltasRival;
+  document.getElementById('capFaltasPropio').textContent = res.faltasPropio;
+  document.getElementById('capFaltasRival').textContent = res.faltasRival;
+  toast('Faltas reiniciadas');
+}
+
+function tocarFaltasEquipo(equipo){
+  if(!MODO_EDICION_JUGADORAS) return;
+  const actual = equipo==='rival' ? CAPTURA_DATA.partido.faltasRival : CAPTURA_DATA.partido.faltasPropio;
+  const nuevo = prompt('Ajustar faltas de '+(equipo==='rival' ? (CAPTURA_DATA.partido.rival_nombre||'rival') : 'nuestro equipo')+':', actual||0);
+  if(nuevo===null) return;
+  const valor = parseInt(nuevo);
+  if(isNaN(valor) || valor<0){ toast('Escribe un número válido', true); return; }
+  ajustarFaltasEquipoCaptura(equipo, valor);
+}
+
+async function ajustarFaltasEquipoCaptura(equipo, valor){
+  const res = await apiPlan('ajustar_faltas_equipo_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL, equipo, valor});
+  if(res===null) return;
+  if(equipo==='rival'){ CAPTURA_DATA.partido.faltasRival = valor; document.getElementById('capFaltasRival').textContent = valor; }
+  else { CAPTURA_DATA.partido.faltasPropio = valor; document.getElementById('capFaltasPropio').textContent = valor; }
+  toast('Faltas ajustadas');
+}
+
 async function borrarEventoCaptura(logId){
   if(!confirm('¿Borrar este evento? Esto ajusta el marcador si corresponde.')) return;
   const item = CAPTURA_DATA.log.find(l=>l.id===logId);
@@ -3458,6 +3520,10 @@ async function borrarEventoCaptura(logId){
     }
   }
   CAPTURA_DATA.log = CAPTURA_DATA.log.filter(l=>l.id!==logId);
+  if(res.faltasPropio!=null){
+    CAPTURA_DATA.partido.faltasPropio = res.faltasPropio;
+    document.getElementById('capFaltasPropio').textContent = res.faltasPropio;
+  }
   document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
   actualizarBadgesFaltas();
   toast('Evento borrado');
