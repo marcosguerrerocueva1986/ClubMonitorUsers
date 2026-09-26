@@ -3405,7 +3405,7 @@ function abrirEditarNumeroAliasJugador(jugadorId, nombreCorto, numeroActual){
 async function guardarNumeroAliasJugadorPlan(jugadorId){
   const numeroCamiseta = document.getElementById('editNumJugPlan').value.trim();
   const alias = document.getElementById('editAliasJugPlan').value.trim();
-  const res = await apiPlan('editar_numero_alias_jugador_planillero', {jugadorId, numeroCamiseta, alias});
+  const res = await apiPlan('editar_numero_alias_jugador_planillero', {jugadorId, numeroCamiseta, alias, partidoId: PARTIDO_CAPTURA_ACTUAL});
   if(res===null) return;
   toast('Jugadora actualizada');
   cerrarSheet();

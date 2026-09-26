@@ -1328,7 +1328,8 @@ async function guardarEstadisticasPartido(partidoId){
     toast('Estadísticas guardadas');
     cerrarSheet();
   } catch(e) {
-    toast('No se pudo guardar. Intenta de nuevo.', true);
+    console.error('Error al guardar estadísticas del partido:', e);
+    toast('No se pudo guardar: ' + (e && e.message ? e.message : String(e)), true);
     btn.disabled = false;
     btn.textContent = 'Guardar estadísticas';
   }
@@ -1850,6 +1851,8 @@ function abrirEditarJugador(j){
     <input id="editApellidos" value="${esc(j.apellidos)}">
     <label>Alias (nombre corto de camiseta)</label>
     <input id="editAlias" value="${esc(j.alias || '')}" placeholder="Ej: PEPE">
+    <label>Número de camiseta (por defecto -- se puede sobreescribir por torneo desde Cuotas)</label>
+    <input id="editNumeroCamiseta" value="${esc(j.numero_camiseta || '')}" placeholder="Ej: 10">
     <label>Fecha de nacimiento</label>
     <input id="editFechaNacimiento" type="date" value="${esc(j.fecha_nacimiento ? String(j.fecha_nacimiento).slice(0,10) : '')}">
     <label>Fecha de inscripción (define desde cuándo se le cuenta la mensualidad -- vacío = no se le hace seguimiento financiero)</label>
@@ -1898,6 +1901,7 @@ async function guardarEditarJugador(id){
     nombres: document.getElementById('editNombres').value.trim(),
     apellidos: document.getElementById('editApellidos').value.trim(),
     alias: document.getElementById('editAlias').value.trim(),
+    numeroCamiseta: document.getElementById('editNumeroCamiseta').value.trim(),
     fechaNacimiento: document.getElementById('editFechaNacimiento').value,
     fechaInscripcion: document.getElementById('editFechaInscripcion').value,
     esExento: document.getElementById('editEsExento').checked,

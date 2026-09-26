@@ -5,6 +5,7 @@ async function listarJugadores(pool, body) {
   const r = await pool.query(
     `SELECT COALESCE(json_agg(json_build_object(
        'id', j.id, 'nombres', j.nombres, 'apellidos', j.apellidos, 'telefono', j.telefono, 'cedula', j.cedula, 'correo', j.correo, 'alias', j.alias, 'fecha_nacimiento', j.fecha_nacimiento,
+       'numero_camiseta', j.numero_camiseta,
        'fecha_inscripcion', j.fecha_inscripcion, 'es_exento', j.es_exento, 'exento_desde', j.exento_desde, 'exento_hasta', j.exento_hasta,
        'grupoNombre', g.nombre,
        'estado', j.estado, 'es_admin', j.es_admin, 'es_controlador', j.es_controlador, 'autorizado_excepcion_pago', j.autorizado_excepcion_pago,
@@ -28,6 +29,7 @@ async function actualizarJugador(pool, body) {
   if (body.nombres !== undefined) campo('nombres', body.nombres);
   if (body.apellidos !== undefined) campo('apellidos', body.apellidos);
   if (body.alias !== undefined) campo('alias', body.alias || null);
+  if (body.numeroCamiseta !== undefined) campo('numero_camiseta', body.numeroCamiseta || null);
   if (body.fechaNacimiento !== undefined) campo('fecha_nacimiento', body.fechaNacimiento || null);
   if (body.fechaInscripcion !== undefined) campo('fecha_inscripcion', body.fechaInscripcion || null);
   if (body.esExento !== undefined) campo('es_exento', !!body.esExento);

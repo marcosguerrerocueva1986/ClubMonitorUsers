@@ -547,8 +547,23 @@ module.exports = async (req, res) => {
     }
     if (accion === 'eliminar_evento_partido_planillero') return res.status(200).json(await eliminarEventoPartido(pool, body));
     if (accion === 'editar_numero_alias_jugador_planillero') {
-      const { jugadorId, numeroCamiseta, alias } = body;
+      const { jugadorId, numeroCamiseta, alias, partidoId } = body;
       await pool.query(`UPDATE sport_control.jugadores SET numero_camiseta = $1, alias = $2 WHERE id = $3`, [numeroCamiseta || null, alias || null, jugadorId]);
+      // Si este partido pertenece a un evento y esa jugadora tiene un
+      // numero especifico para ese torneo (que tiene prioridad sobre
+      // el numero base), se actualiza tambien -- si no, el cambio no
+      // se veria reflejado en la captura de ESTE partido aunque el
+      // numero base ya haya quedado bien guardado.
+      if (partidoId) {
+        const partido = await pool.query(`SELECT evento_id FROM sport_control.partidos WHERE id = $1`, [partidoId]);
+        const eventoId = partido.rows[0] ? partido.rows[0].evento_id : null;
+        if (eventoId) {
+          await pool.query(
+            `UPDATE sport_control.evento_cuota_jugador SET numero_camiseta = $1 WHERE evento_id = $2 AND jugador_id = $3`,
+            [numeroCamiseta || null, eventoId, jugadorId]
+          );
+        }
+      }
       return res.status(200).json({ success: true });
     }
     if (accion === 'registrar_falta_rival_planillero') {
