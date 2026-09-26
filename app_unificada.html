@@ -166,6 +166,8 @@ if ('serviceWorker' in navigator) {
 
   .cap-jugadoras{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
   .cap-btn-jugadora{background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:8px 2px;text-align:center;}
+  .cap-jugadoras.modo-edicion-activo{outline:2px dashed var(--gold);outline-offset:6px;border-radius:10px;}
+  .cap-jugadoras.modo-edicion-activo .cap-btn-jugadora{border-color:var(--gold);}
   .cap-btn-jugadora .num{font-size:18px;font-weight:700;color:var(--gold);display:block;}
 
   /* Pantallas grandes (tablet/laptop): todo se agranda para aprovechar
@@ -3228,6 +3230,7 @@ function renderCapturaPartido(cont){
     <div class="cap-salir">
       <button class="sm" onclick="cambiarPartidoCaptura()">✕ Salir</button>
       <span style="color:var(--chalk-dim);flex:1">${esc(p.alias||'Partido')}</span>
+      <button class="sm" id="btnModoEdicionJugadoras" onclick="toggleModoEdicionJugadoras()">✏️</button>
       <button class="sm" onclick="mostrarCapturaPartido(document.getElementById('pantallasContainer'))">🔄</button>
     </div>
 
@@ -3258,9 +3261,7 @@ function renderCapturaPartido(cont){
         <div class="cap-panel-title">2. Toca a la jugadora</div>
         <div class="cap-jugadoras" id="capJugadorasGrid">
           ${d.jugadores.map(j=>`
-            <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'
-              onpointerdown='iniciarPresionLargaJugadora(${j.id}, ${JSON.stringify(j.nombreCorto).replace(/"/g,"&quot;")}, ${JSON.stringify(j.numeroCamiseta||'').replace(/"/g,"&quot;")}, event)'
-              onpointerup='cancelarPresionLargaJugadora()' onpointerleave='cancelarPresionLargaJugadora()' onpointercancel='cancelarPresionLargaJugadora()'>
+            <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")}, ${JSON.stringify(j.nombreCorto).replace(/"/g,"&quot;")}, ${JSON.stringify(j.numeroCamiseta||'').replace(/"/g,"&quot;")})'>
               <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombreCorto)}</span>
             </button>
           `).join('')}
@@ -3276,6 +3277,12 @@ function renderCapturaPartido(cont){
       </div>
     </div>
   `;
+  if(MODO_EDICION_JUGADORAS){
+    const btn = document.getElementById('btnModoEdicionJugadoras');
+    if(btn) btn.classList.add('primary');
+    const grid = document.getElementById('capJugadorasGrid');
+    if(grid) grid.classList.add('modo-edicion-activo');
+  }
 }
 
 function renderLogCapturaHtml(log){
@@ -3333,22 +3340,6 @@ function seleccionarAccionCaptura(tipoId, puntos, nombre, btnEl){
   btnEl.classList.add('activa');
 }
 
-let _timerPresionLargaJugadora = null;
-let _presionLargaActivada = false;
-
-function iniciarPresionLargaJugadora(jugadorId, nombreCorto, numeroActual, ev){
-  _presionLargaActivada = false;
-  _timerPresionLargaJugadora = setTimeout(()=>{
-    _presionLargaActivada = true;
-    if(navigator.vibrate) navigator.vibrate(40);
-    abrirEditarNumeroAliasJugador(jugadorId, nombreCorto, numeroActual);
-  }, 3000);
-}
-
-function cancelarPresionLargaJugadora(){
-  clearTimeout(_timerPresionLargaJugadora);
-}
-
 function abrirEditarNumeroAliasJugador(jugadorId, nombreCorto, numeroActual){
   const html = `
     <div class="sheet-head"><h2>Editar jugadora</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
@@ -3373,8 +3364,22 @@ async function guardarNumeroAliasJugadorPlan(jugadorId){
   await mostrarCapturaPartido(document.getElementById('pantallasContainer'));
 }
 
-async function registrarAccionJugadora(jugadorId, nombreJugadora){
-  if(_presionLargaActivada){ _presionLargaActivada = false; return; }
+let MODO_EDICION_JUGADORAS = false;
+
+function toggleModoEdicionJugadoras(){
+  MODO_EDICION_JUGADORAS = !MODO_EDICION_JUGADORAS;
+  const btn = document.getElementById('btnModoEdicionJugadoras');
+  if(btn) btn.classList.toggle('primary', MODO_EDICION_JUGADORAS);
+  const grid = document.getElementById('capJugadorasGrid');
+  if(grid) grid.classList.toggle('modo-edicion-activo', MODO_EDICION_JUGADORAS);
+  toast(MODO_EDICION_JUGADORAS ? 'Modo edición activado -- toca una jugadora para corregirla' : 'Modo edición desactivado');
+}
+
+async function registrarAccionJugadora(jugadorId, nombreJugadora, nombreCorto, numeroActual){
+  if(MODO_EDICION_JUGADORAS){
+    abrirEditarNumeroAliasJugador(jugadorId, nombreCorto, numeroActual);
+    return;
+  }
   if(!ACCION_SELECCIONADA){
     toast('Primero toca una acción (arriba) y luego a la jugadora', true);
     return;
