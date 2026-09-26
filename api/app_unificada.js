@@ -518,6 +518,11 @@ module.exports = async (req, res) => {
       return res.status(200).json(await registrarEventoPartido(pool, info.planillero ? info.planillero.id : null, body));
     }
     if (accion === 'eliminar_evento_partido_planillero') return res.status(200).json(await eliminarEventoPartido(pool, body));
+    if (accion === 'editar_numero_alias_jugador_planillero') {
+      const { jugadorId, numeroCamiseta, alias } = body;
+      await pool.query(`UPDATE sport_control.jugadores SET numero_camiseta = $1, alias = $2 WHERE id = $3`, [numeroCamiseta || null, alias || null, jugadorId]);
+      return res.status(200).json({ success: true });
+    }
 
     if (accion === 'listar_rubros_club_financiero') return res.status(200).json(await listarRubros(pool));
     if (accion === 'crear_rubro_club_financiero') return res.status(200).json(await crearRubro(pool, body));

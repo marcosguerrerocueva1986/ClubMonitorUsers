@@ -3258,7 +3258,9 @@ function renderCapturaPartido(cont){
         <div class="cap-panel-title">2. Toca a la jugadora</div>
         <div class="cap-jugadoras" id="capJugadorasGrid">
           ${d.jugadores.map(j=>`
-            <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'>
+            <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")})'
+              onpointerdown='iniciarPresionLargaJugadora(${j.id}, ${JSON.stringify(j.nombreCorto).replace(/"/g,"&quot;")}, ${JSON.stringify(j.numeroCamiseta||'').replace(/"/g,"&quot;")}, event)'
+              onpointerup='cancelarPresionLargaJugadora()' onpointerleave='cancelarPresionLargaJugadora()' onpointercancel='cancelarPresionLargaJugadora()'>
               <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombreCorto)}</span>
             </button>
           `).join('')}
@@ -3331,7 +3333,48 @@ function seleccionarAccionCaptura(tipoId, puntos, nombre, btnEl){
   btnEl.classList.add('activa');
 }
 
+let _timerPresionLargaJugadora = null;
+let _presionLargaActivada = false;
+
+function iniciarPresionLargaJugadora(jugadorId, nombreCorto, numeroActual, ev){
+  _presionLargaActivada = false;
+  _timerPresionLargaJugadora = setTimeout(()=>{
+    _presionLargaActivada = true;
+    if(navigator.vibrate) navigator.vibrate(40);
+    abrirEditarNumeroAliasJugador(jugadorId, nombreCorto, numeroActual);
+  }, 3000);
+}
+
+function cancelarPresionLargaJugadora(){
+  clearTimeout(_timerPresionLargaJugadora);
+}
+
+function abrirEditarNumeroAliasJugador(jugadorId, nombreCorto, numeroActual){
+  const html = `
+    <div class="sheet-head"><h2>Editar jugadora</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Corrección de último momento -- esto actualiza el número y el alias reales de la jugadora en el club, no solo para este partido.</p>
+    <label>Número de camiseta</label>
+    <input id="editNumJugPlan" value="${esc(numeroActual)}" placeholder="Ej: 10">
+    <label>Alias (nombre corto)</label>
+    <input id="editAliasJugPlan" value="${esc(nombreCorto)}" placeholder="Ej: PEPE">
+    <button class="primary block" style="margin-top:16px" onclick="guardarNumeroAliasJugadorPlan(${jugadorId})">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarNumeroAliasJugadorPlan(jugadorId){
+  const numeroCamiseta = document.getElementById('editNumJugPlan').value.trim();
+  const alias = document.getElementById('editAliasJugPlan').value.trim();
+  const res = await apiPlan('editar_numero_alias_jugador_planillero', {jugadorId, numeroCamiseta, alias});
+  if(res===null) return;
+  toast('Jugadora actualizada');
+  cerrarSheet();
+  // Refresca la captura para que la tarjeta muestre el numero/alias nuevos.
+  await mostrarCapturaPartido(document.getElementById('pantallasContainer'));
+}
+
 async function registrarAccionJugadora(jugadorId, nombreJugadora){
+  if(_presionLargaActivada){ _presionLargaActivada = false; return; }
   if(!ACCION_SELECCIONADA){
     toast('Primero toca una acción (arriba) y luego a la jugadora', true);
     return;
