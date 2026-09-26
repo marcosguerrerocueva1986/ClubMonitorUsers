@@ -219,8 +219,18 @@ async function editarPartidoCompleto(pool, body) {
     tipoPartidoId = t.rows[0] ? t.rows[0].id : null;
   }
 
+  // Si no viene disciplinaId (pasa cuando el club tiene una sola
+  // disciplina activa y por eso el selector no se muestra), se
+  // conserva la disciplina que el partido ya tenia -- nunca se debe
+  // borrar solo por no haber venido en el formulario.
+  let disciplinaIdFinal = disciplinaId || null;
+  if (!disciplinaIdFinal) {
+    const actual = await pool.query(`SELECT disciplina_id FROM sport_control.partidos WHERE id = $1`, [id]);
+    disciplinaIdFinal = actual.rows[0] ? actual.rows[0].disciplina_id : null;
+  }
+
   const sets = ['fecha = $1::date', 'hora = $2::time', 'lugar = $3', 'lugar_id = $4', 'alias = $5', 'disciplina_id = $6', 'evento_id = $7', 'evento_fecha_id = $8'];
-  const vals = [fecha, hora, lugarNombre, lugarId, (alias || '').trim() || null, disciplinaId || null, eventoId || null, eventoFechaId || null];
+  const vals = [fecha, hora, lugarNombre, lugarId, (alias || '').trim() || null, disciplinaIdFinal, eventoId || null, eventoFechaId || null];
   let i = vals.length + 1;
   if (tipoPartidoId) { sets.push(`tipo_partido_id = $${i++}`); vals.push(tipoPartidoId); }
   if (costo !== undefined && costo !== null && costo !== '') { sets.push(`costo_inscripcion = $${i++}`); vals.push(costo); }

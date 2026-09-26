@@ -346,11 +346,19 @@ async function abrirCapturaPartido(pool, body) {
 
   // Tipos de estadistica activos para la disciplina de este partido
   // (nivel jugador -- las de nivel equipo no aplican a este flujo de
-  // "toco jugador").
+  // "toco jugador"). Si el partido no tiene disciplina asignada (no
+  // deberia pasar, pero por seguridad de cara a un partido en vivo no
+  // se puede dejar al planillero sin botones), se usa la disciplina
+  // activa por defecto del club como respaldo.
+  let disciplinaIdParaTipos = p.disciplinaId;
+  if (!disciplinaIdParaTipos) {
+    const activas = await pool.query(`SELECT id FROM sport_control.disciplinas WHERE activo = true ORDER BY id LIMIT 1`);
+    disciplinaIdParaTipos = activas.rows[0] ? activas.rows[0].id : null;
+  }
   const tipos = await pool.query(
     `SELECT id, nombre, clave, puntos FROM sport_control.tipos_estadistica
      WHERE disciplina_id = $1 AND nivel = 'jugador' AND activo = true ORDER BY orden, nombre`,
-    [p.disciplinaId]
+    [disciplinaIdParaTipos]
   );
 
   // Bitacora reciente -- para reconstruir el estado si el planillero
