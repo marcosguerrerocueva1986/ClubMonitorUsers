@@ -208,7 +208,13 @@ async function toggleAsistencia(pool, body) {
 
 async function enviarRecordatorioPartido(pool, config, body) {
   const r = await pool.query(
-    `SELECT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado, sport_control.lista_confirmados_partido(p.id) AS lista FROM sport_control.partidos p WHERE p.id = $1`,
+    `SELECT p.id, p.alias, p.fecha, p.hora, p.lugar, p.rival_nombre, p.estado,
+       ev.nombre AS "eventoNombre", lg.latitud, lg.longitud,
+       sport_control.lista_confirmados_partido(p.id) AS lista
+     FROM sport_control.partidos p
+     LEFT JOIN sport_control.eventos ev ON ev.id = p.evento_id
+     LEFT JOIN sport_control.lugares lg ON lg.id = p.lugar_id
+     WHERE p.id = $1`,
     [body.partidoId]
   );
   const p = r.rows[0];
@@ -217,14 +223,71 @@ async function enviarRecordatorioPartido(pool, config, body) {
   const lista = p.lista || [];
   const lineas = lista.map((item, i) => item.tipo === 'invitado' ? `${i + 1}. 🎟️ ${item.nombre} (invitado de ${item.anfitrion})` : `${i + 1}. ${item.nombre}`);
   const { fechaCorta, enviarWhatsAppGrupo } = require('./_admin_partidos');
-  const texto = '⏰ *Recordatorio: ' + titulo + '*\n📅 ' + fechaCorta(p.fecha) + '  🕐 ' + (p.hora || '') + '\n📍 ' + (p.lugar || '') + '\n\nConfirmados (' + lista.length + '):\n\n' + (lineas.length > 0 ? lineas.join('\n') : 'Nadie confirmado todavía.') + '\n\nResponde *voy* o *no voy* para confirmar tu asistencia.';
+
+  const lineaEvento = p.eventoNombre ? `🎒 ${p.eventoNombre}\\n` : '';
+  const lineaRival = p.rival_nombre ? `⚔️ Rival: ${p.rival_nombre}\\n` : '';
+  const linkMaps = (p.latitud && p.longitud) ? `\\n🗺️ Cómo llegar: https://www.google.com/maps/search/?api=1&query=${p.latitud},${p.longitud}\\n` : '';
+
+  const texto = '⏰ *Recordatorio: ' + titulo + '*\\n'
+    + lineaEvento
+    + lineaRival
+    + '📅 ' + fechaCorta(p.fecha) + '  🕐 ' + (p.hora ? p.hora.slice(0, 5) : '') + '\\n'
+    + '📍 ' + (p.lugar || '')
+    + linkMaps
+    + '\\n\\nConfirmados (' + lista.length + '):\\n\\n' + (lineas.length > 0 ? lineas.join('\\n') : 'Nadie confirmado todavía.');
   const diagnostico = await enviarWhatsAppGrupo(config, texto);
   if (!diagnostico.enviado) {
     // Temporal: devolvemos el motivo real en vez de fallar en silencio,
     // para diagnosticar por que no llegaba el mensaje.
     return { success: false, error: 'No se pudo enviar al grupo: ' + JSON.stringify(diagnostico) };
   }
+
+  await enviarPushRecordatorioPartido(pool, p, titulo);
+
   return { success: true };
+}
+
+// Push corto a los representantes de los jugadores confirmados -- no
+// bloquea el resultado si falla, igual que el resto de push del sistema.
+async function enviarPushRecordatorioPartido(pool, p, titulo) {
+  try {
+    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
+    const c = cfg.rows[0];
+    if (!c || !c.onesignal_app_id) return;
+
+    const representantes = await pool.query(
+      `SELECT DISTINCT jr.representante_id
+       FROM sport_control.confirmaciones_partido cp
+       JOIN sport_control.jugador_representante jr ON jr.jugador_id = cp.jugador_id
+       WHERE cp.partido_id = $1 AND cp.estado = 'confirmado'`,
+      [p.id]
+    );
+    if (representantes.rows.length === 0) return;
+
+    const filters = [];
+    representantes.rows.forEach((r, i) => {
+      if (i > 0) filters.push({ operator: 'OR' });
+      filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
+    });
+
+    const { fechaCorta } = require('./_admin_partidos');
+    const cuerpo = `${fechaCorta(p.fecha)} · ${p.hora ? p.hora.slice(0, 5) : ''} · ${p.lugar || ''}`;
+
+    await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}` },
+      body: JSON.stringify({
+        app_id: c.onesignal_app_id,
+        filters,
+        target_channel: 'push',
+        headings: { en: `⏰ Recordatorio: ${titulo}` },
+        contents: { en: cuerpo },
+        url: c.sitio_url_representante || '',
+      }),
+    });
+  } catch (e) {
+    console.error('Push de recordatorio de partido falló (no bloquea el envío por WhatsApp):', e);
+  }
 }
 
 async function enviarRecordatorioMorosos(pool, config) {
