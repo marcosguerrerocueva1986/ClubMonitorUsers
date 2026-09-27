@@ -221,20 +221,20 @@ async function enviarRecordatorioPartido(pool, config, body) {
   if (!p) return { success: false, error: 'No se encontro el partido (partidoId=' + body.partidoId + ')' };
   const titulo = p.alias ? p.alias : 'Partido';
   const lista = p.lista || [];
-  const lineas = lista.map((item, i) => item.tipo === 'invitado' ? `${i + 1}. 🎟️ ${item.nombre} (invitado de ${item.anfitrion})` : `${i + 1}. ${item.nombre}`);
+  const lineas = lista.map((item, i) => item.tipo === 'invitado' ? `${i + 1}. 🎟️ ${item.nombre} (invitado de ${item.anfitrion})` : `${i + 1}. ${item.numero ? '#' + item.numero + ' ' : ''}${item.nombre}`);
   const { fechaCorta, enviarWhatsAppGrupo } = require('./_admin_partidos');
 
-  const lineaEvento = p.eventoNombre ? `🎒 ${p.eventoNombre}\\n` : '';
-  const lineaRival = p.rival_nombre ? `⚔️ Rival: ${p.rival_nombre}\\n` : '';
-  const linkMaps = (p.latitud && p.longitud) ? `\\n🗺️ Cómo llegar: https://www.google.com/maps/search/?api=1&query=${p.latitud},${p.longitud}\\n` : '';
+  const lineaEvento = p.eventoNombre ? `🎒 ${p.eventoNombre}\n` : '';
+  const lineaRival = p.rival_nombre ? `⚔️ Rival: ${p.rival_nombre}\n` : '';
+  const linkMaps = (p.latitud && p.longitud) ? `\n🗺️ Cómo llegar: https://www.google.com/maps/search/?api=1&query=${p.latitud},${p.longitud}\n` : '';
 
-  const texto = '⏰ *Recordatorio: ' + titulo + '*\\n'
+  const texto = '⏰ *Recordatorio: ' + titulo + '*\n'
     + lineaEvento
     + lineaRival
-    + '📅 ' + fechaCorta(p.fecha) + '  🕐 ' + (p.hora ? p.hora.slice(0, 5) : '') + '\\n'
+    + '📅 ' + fechaCorta(p.fecha) + '  🕐 ' + (p.hora ? p.hora.slice(0, 5) : '') + '\n'
     + '📍 ' + (p.lugar || '')
     + linkMaps
-    + '\\n\\nConfirmados (' + lista.length + '):\\n\\n' + (lineas.length > 0 ? lineas.join('\\n') : 'Nadie confirmado todavía.');
+    + '\n\nConfirmados (' + lista.length + '):\n\n' + (lineas.length > 0 ? lineas.join('\n') : 'Nadie confirmado todavía.');
   const diagnostico = await enviarWhatsAppGrupo(config, texto);
   if (!diagnostico.enviado) {
     // Temporal: devolvemos el motivo real en vez de fallar en silencio,
