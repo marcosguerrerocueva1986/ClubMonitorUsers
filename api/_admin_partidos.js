@@ -96,7 +96,7 @@ async function listarPartidos(pool) {
     `SELECT COALESCE(json_agg(t.*), '[]'::json) AS partidos FROM (
        SELECT id, alias, fecha, hora, lugar, estado, costo_inscripcion
        FROM sport_control.partidos WHERE estado != 'cancelado'
-       ORDER BY fecha DESC LIMIT 5
+       ORDER BY fecha DESC, hora DESC NULLS LAST, id DESC LIMIT 5
      ) t`
   );
   return { success: true, data: r.rows[0].partidos };
