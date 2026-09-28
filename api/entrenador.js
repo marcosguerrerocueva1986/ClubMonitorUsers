@@ -8,6 +8,7 @@
 // asignados (entrenador_grupo); un 'director' ve TODOS los grupos del
 // club, sin necesidad de asignacion explicita.
 
+const { pesoDeTipo, valoracionPartido, valoracionEvento } = require('./_valoracion');
 const bcrypt = require('bcryptjs');
 const { getPool } = require('./_db');
 const { verDetallePartidoStatsJugador, verFotoPartidoAdmin, verHistorialTorneosJugadorEntrenador } = require('./jugador');
@@ -386,12 +387,15 @@ async function listarGruposParaCambio(pool) {
 async function listarPartidosGrupo(pool, body) {
   const { grupoId } = body;
   const r = await pool.query(
-    `SELECT DISTINCT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado,
+    `SELECT p.id, p.alias, p.fecha, p.hora, p.lugar, p.estado, p.evento_id AS "eventoId", ev.nombre AS "eventoNombre",
        (p.marcador_propio IS NOT NULL OR EXISTS(SELECT 1 FROM sport_control.partido_estadisticas pe WHERE pe.partido_id = p.id)) AS "tieneEstadisticas"
      FROM sport_control.partidos p
-     JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.estado = 'confirmado'
-     JOIN sport_control.jugadores j ON j.id = cp.jugador_id
-     WHERE j.grupo_id = $1
+     LEFT JOIN sport_control.eventos ev ON ev.id = p.evento_id
+     WHERE EXISTS (
+       SELECT 1 FROM sport_control.confirmaciones_partido cp
+       JOIN sport_control.jugadores j ON j.id = cp.jugador_id
+       WHERE cp.partido_id = p.id AND cp.estado = 'confirmado' AND j.grupo_id = $1
+     )
      ORDER BY (p.estado = 'finalizado') ASC,
               CASE WHEN p.estado != 'finalizado' THEN p.fecha END ASC,
               CASE WHEN p.estado != 'finalizado' THEN p.hora END ASC,
@@ -534,11 +538,11 @@ async function obtenerGraficasEquipo(pool, body) {
   const jugadorIds = jugadores.rows.map(j => j.id);
 
   const filas = await pool.query(
-    `SELECT pe.jugador_id AS "jugadorId", te.nombre, te.puntos, SUM(pe.valor) AS total
+    `SELECT pe.jugador_id AS "jugadorId", te.nombre, te.puntos, te.peso_valoracion AS "pesoValoracion", SUM(pe.valor) AS total
      FROM sport_control.partido_estadisticas pe
      JOIN sport_control.tipos_estadistica te ON te.id = pe.tipo_estadistica_id
-     WHERE pe.jugador_id = ANY($1::int[])
-     GROUP BY pe.jugador_id, te.id, te.nombre, te.puntos, te.orden
+     WHERE pe.jugador_id = ANY($1::int[]) AND te.nivel = 'jugador'
+     GROUP BY pe.jugador_id, te.id, te.nombre, te.puntos, te.peso_valoracion, te.orden
      ORDER BY te.orden`,
     [jugadorIds]
   );
@@ -553,18 +557,46 @@ async function obtenerGraficasEquipo(pool, body) {
     if (porJugador[f.jugadorId]) porJugador[f.jugadorId].stats[f.nombre] = total;
     totalesEquipo[f.nombre] = (totalesEquipo[f.nombre] || 0) + total;
 
-    // Indice de valorizacion, estilo "eficiencia" de la NBA: lo que ya
-    // anota (usa los puntos configurados por tipo) suma directo; el
-    // resto de estadisticas positivas (rebotes, asistencias, tapones,
-    // etc.) suman 1 por unidad; las faltas restan medio punto -- para
-    // que el ranking no solo premie anotar, sino el aporte completo.
-    const esFalta = /falta/i.test(f.nombre);
-    const peso = f.puntos > 0 ? f.puntos : (esFalta ? -0.5 : 1);
+    // Valoracion FIBA -- metodo unico y generico (ver _valoracion.js),
+    // el mismo que usan las pantallas de partido y de torneo.
+    const peso = pesoDeTipo({ puntos: f.puntos, pesoValoracion: f.pesoValoracion });
     if (porJugador[f.jugadorId]) porJugador[f.jugadorId].valorizacion += total * peso;
   });
 
   const jugadoresConStats = Object.values(porJugador).sort((a, b) => b.valorizacion - a.valorizacion);
   return { success: true, data: { jugadores: jugadoresConStats, stats: nombresStats, totalesEquipo } };
+}
+
+// ============================================================
+// Valoracion por partido / por torneo (metodo generico FIBA)
+// ============================================================
+async function verValoracionPartido(pool, body) {
+  const ranking = await valoracionPartido(pool, body.partidoId);
+  return { success: true, data: { ranking } };
+}
+
+async function listarEventosGrupo(pool, body) {
+  const r = await pool.query(
+    `SELECT e.id, e.nombre, e.fecha_inicio AS "fechaInicio", e.estado,
+       (SELECT COUNT(*)::int FROM sport_control.partidos p
+         WHERE p.evento_id = e.id AND (p.estado = 'finalizado' OR EXISTS (SELECT 1 FROM sport_control.partido_estadisticas x WHERE x.partido_id = p.id))) AS "partidosJugados"
+     FROM sport_control.eventos e
+     WHERE EXISTS (
+       SELECT 1 FROM sport_control.partidos p
+       JOIN sport_control.confirmaciones_partido cp ON cp.partido_id = p.id AND cp.estado = 'confirmado'
+       JOIN sport_control.jugadores j ON j.id = cp.jugador_id
+       WHERE p.evento_id = e.id AND j.grupo_id = $1
+     )
+     ORDER BY e.fecha_inicio DESC NULLS LAST, e.id DESC`,
+    [body.grupoId]
+  );
+  return { success: true, data: r.rows };
+}
+
+async function verValoracionEvento(pool, body) {
+  const res = await valoracionEvento(pool, body.eventoId, body.grupoId);
+  const evento = await pool.query(`SELECT nombre FROM sport_control.eventos WHERE id = $1`, [body.eventoId]);
+  return { success: true, data: { eventoNombre: evento.rows[0] ? evento.rows[0].nombre : '', ...res } };
 }
 
 module.exports = async (req, res) => {
@@ -610,7 +642,22 @@ module.exports = async (req, res) => {
     if (accion === 'listar_partidos_grupo_entrenador') return res.status(200).json(await listarPartidosGrupo(pool, body));
     if (accion === 'ver_detalle_partido_stats_entrenador') return res.status(200).json(await verDetallePartidoStatsJugador(pool, body));
     if (accion === 'ver_foto_partido_entrenador') return res.status(200).json(await verFotoPartidoAdmin(pool, body));
-    if (accion === 'obtener_graficas_equipo_entrenador') return res.status(200).json(await obtenerGraficasEquipo(pool, body));
+    if (accion === 'obtener_graficas_equipo_entrenador') {
+      const tieneAcceso = await verificarAccesoGrupo(pool, entrenadorId, body.grupoId);
+      if (!tieneAcceso) return res.status(200).json({ success: false, error: 'No tienes acceso a ese grupo.' });
+      return res.status(200).json(await obtenerGraficasEquipo(pool, body));
+    }
+    if (accion === 'ver_valoracion_partido_entrenador') return res.status(200).json(await verValoracionPartido(pool, body));
+    if (accion === 'listar_eventos_grupo_entrenador') {
+      const tieneAcceso = await verificarAccesoGrupo(pool, entrenadorId, body.grupoId);
+      if (!tieneAcceso) return res.status(200).json({ success: false, error: 'No tienes acceso a ese grupo.' });
+      return res.status(200).json(await listarEventosGrupo(pool, body));
+    }
+    if (accion === 'ver_valoracion_evento_entrenador') {
+      const tieneAcceso = await verificarAccesoGrupo(pool, entrenadorId, body.grupoId);
+      if (!tieneAcceso) return res.status(200).json({ success: false, error: 'No tienes acceso a ese grupo.' });
+      return res.status(200).json(await verValoracionEvento(pool, body));
+    }
     if (accion === 'ver_historial_torneos_entrenador') return res.status(200).json(await verHistorialTorneosJugadorEntrenador(pool, body.jugadorId));
     if (accion === 'listar_horario_semanal_entrenador') return res.status(200).json(await listarHorarioSemanal(pool, entrenadorId));
     if (accion === 'listar_calendario_mes_entrenador') return res.status(200).json(await listarCalendarioMes(pool, entrenadorId, body));

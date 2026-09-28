@@ -11,7 +11,7 @@
 
 const { getPool, cargarConfig, listarPartidos, crearPartido, cancelarPartido, eliminarPartido, editarPartido, finalizarPartido, marcarEnJuego, cerrarPartido, reabrirPartido, listarTiposPartido, verVinculoEventoPartido, vincularPartidoEvento, obtenerDetallePartidoParaEditar, editarPartidoCompleto, listarEntrenadoresParaAsignar, obtenerProfesoresPartido, guardarProfesoresPartido } = require('./_admin_partidos');
 const { obtenerEstadisticasApps, listarUsuariosJugadoresAdmin, listarUsuariosRepresentantesAdmin } = require('./_admin_estadisticas');
-const { listarDisciplinas, listarDisciplinasActivas, crearDisciplina, editarDisciplina, toggleDisciplina, listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica, editarPuntosTipoEstadistica } = require('./_admin_disciplinas');
+const { listarDisciplinas, listarDisciplinasActivas, crearDisciplina, editarDisciplina, toggleDisciplina, listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica, editarPuntosTipoEstadistica, editarPesoValoracionTipoEstadistica } = require('./_admin_disciplinas');
 const { verEstadisticasPartidoAdmin, guardarEstadisticasPartidoAdmin, verFotoPartidoAdmin } = require('./_admin_partido_estadisticas');
 const {
   listarGrupos, crearGrupo, editarGrupo, toggleGrupo, verDetalleGrupo,
@@ -93,6 +93,7 @@ module.exports = async (req, res) => {
       case 'crear_tipo_estadistica_admin': return res.status(200).json(await crearTipoEstadistica(pool, body));
       case 'toggle_tipo_estadistica_admin': return res.status(200).json(await toggleTipoEstadistica(pool, body));
       case 'editar_puntos_tipo_estadistica_admin': return res.status(200).json(await editarPuntosTipoEstadistica(pool, body));
+      case 'editar_peso_valoracion_tipo_estadistica_admin': return res.status(200).json(await editarPesoValoracionTipoEstadistica(pool, body));
       case 'ver_estadisticas_partido_admin': return res.status(200).json(await verEstadisticasPartidoAdmin(pool, body));
       case 'guardar_estadisticas_partido_admin': return res.status(200).json(await guardarEstadisticasPartidoAdmin(pool, body));
       case 'ver_foto_partido_admin': return res.status(200).json(await verFotoPartidoAdmin(pool, body));

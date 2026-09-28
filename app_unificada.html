@@ -164,6 +164,14 @@ if ('serviceWorker' in navigator) {
   .cap-btn-accion.puntos{border-color:var(--green-ok);}
   .cap-btn-accion.falta{border-color:var(--red);color:var(--red);}
   .cap-btn-accion.activa{border-color:var(--gold);background:rgba(255,210,63,.12);color:var(--gold);}
+  .cap-sync{font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;background:var(--pitch-3);color:var(--chalk-dim);}
+  .cap-sync-alerta{background:rgba(232,93,76,.15);color:var(--red);}
+  .cap-rival-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
+  .cap-rival-grid.modo-edicion-activo{outline:2px dashed var(--gold);outline-offset:6px;border-radius:10px;}
+  .cap-btn-rival-num{position:relative;background:var(--pitch-3);border:2px solid var(--line);border-radius:8px;padding:10px 2px;text-align:center;font-weight:700;font-size:14px;color:var(--chalk);}
+  .cap-btn-rival-num:active{transform:scale(.96);}
+  .cap-btn-rival-mas{color:var(--chalk-dim);border-style:dashed;}
+  .cap-badge-fuera{background:#111 !important;color:#ffd54a !important;box-shadow:0 0 0 2px var(--red) !important;}
   .cap-btn-rival{grid-column:span 2;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:2px;}
   .cap-btn-rival button{background:rgba(232,93,76,.12);border:2px solid rgba(232,93,76,.35);color:var(--red);border-radius:8px;font-weight:700;font-size:13px;padding:10px 2px;}
 
@@ -192,6 +200,15 @@ if ('serviceWorker' in navigator) {
   .graf-mini-barra{background:var(--red);height:100%;border-radius:5px;}
   .graf-mini-valor{width:22px;text-align:right;font-size:11px;font-weight:700;flex-shrink:0;}
 
+  /* ---- Valoracion FIBA: ranking por partido / torneo ---- */
+  .graf-foto{width:26px;height:26px;border-radius:50%;object-fit:cover;background:var(--pitch-3);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;overflow:hidden;}
+  .graf-barra-neg{background:var(--red) !important;}
+  .graf-fila-click{cursor:pointer;}
+  .graf-desglose{background:var(--pitch-3);border-radius:8px;padding:8px 10px;margin:2px 0 8px 38px;font-size:12px;}
+  .graf-desglose-fila{display:flex;justify-content:space-between;padding:2px 0;color:var(--chalk-dim);}
+  .graf-desglose-fila b{color:var(--chalk);}
+  .graf-toggle{display:flex;gap:6px;margin:6px 0 10px;}
+  .graf-sub{color:var(--chalk-dim);font-size:11px;font-weight:400;}
   /* ---- Tarjetas NBA de estadisticas por jugador (aislado) ---- */
   .nba-cards-grid{display:grid;grid-template-columns:1fr;gap:10px;}
   @media (min-width:600px){ .nba-cards-grid{grid-template-columns:1fr 1fr;} }
@@ -1487,11 +1504,12 @@ async function abrirPartidosGrupo(){
   if(data===null) return;
   const html = `
     <div class="sheet-head"><h2>Partidos del grupo</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <button class="sm primary block" style="margin-bottom:10px" onclick="abrirValoracionTorneos()">🏆 Valoración por torneo</button>
     ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Sin partidos registrados para jugadores de este grupo todavía.</p>' : data.map(p=>`
       <div class="field-line" style="cursor:pointer" onclick="verEstadisticasPartidoEnt(${p.id})">
         <div>
           <div class="fl-value">${esc(p.alias || 'Partido')} ${p.estado==='finalizado' ? '<span class="badge finalizado">Finalizado</span>' : ''}</div>
-          <div class="fl-label">${fechaCortaEnt(p.fecha)} · 📍 ${esc(p.lugar||'')}</div>
+          <div class="fl-label">${fechaCortaEnt(p.fecha)} · 📍 ${esc(p.lugar||'')}${p.eventoNombre ? ' · 🎒 '+esc(p.eventoNombre) : ''}</div>
         </div>
         ${p.tieneEstadisticas ? '<span style="font-size:18px">📊</span>' : ''}
       </div>
@@ -1520,6 +1538,7 @@ function mostrarEstadisticasPartidoEnt(data){
   const html = `
     <div class="sheet-head"><h2>${p.disciplinaIcono ? esc(p.disciplinaIcono)+' ' : ''}${esc(p.alias || 'Partido')}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
     ${p.eventoNombre ? `<p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">🎒 Parte de: ${esc(p.eventoNombre)}</p>` : ''}
+    <div id="valoracionPartidoEnt"></div>
     ${p.marcador_propio!==null && p.marcador_rival!==null ? `
       <div class="card" style="text-align:center">
         <div class="fl-label">${fechaCortaEnt(p.fecha)}</div>
@@ -1556,6 +1575,122 @@ function mostrarEstadisticasPartidoEnt(data){
     ${equipoStats.length===0 && jugadorStats.length===0 && p.marcador_propio===null ? '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas cargadas para este partido.</p>' : ''}
   `;
   abrirSheet(html);
+  if(jugadorStats.length>0) cargarValoracionPartidoEnt(p.id);
+}
+
+/* ============================================================
+   VALORACION FIBA -- graficas por partido y por torneo.
+   El calculo lo hace el backend con UN solo metodo generico
+   (api/_valoracion.js, pesos editables en Admin); aqui solo se dibuja.
+   ============================================================ */
+function fmtValoracion(n){
+  const x = Number(n) || 0;
+  return Number.isInteger(x) ? String(x) : x.toFixed(1);
+}
+
+// ranking: [{jugadorId,nombreCorto,fotoCarnet,valoracion,promedio,partidosJugados,desglose}]
+// ctx: prefijo unico para ids del desglose desplegable.
+function renderRankingValoracionHtml(ranking, ctx, usarPromedio){
+  if(ranking.length===0) return '<p style="color:var(--chalk-dim);font-size:13px">Todavía no hay estadísticas suficientes para calcular la valoración.</p>';
+  const medallas = ['🥇','🥈','🥉'];
+  const valorDe = j => usarPromedio ? (j.promedio||0) : j.valoracion;
+  const maxAbs = Math.max(...ranking.map(j=>Math.abs(valorDe(j))), 1);
+  return ranking.map((j,i)=>{
+    const v = valorDe(j);
+    const pct = Math.max(4, Math.abs(v)/maxAbs*100);
+    return `
+      <div class="graf-fila-ranking graf-fila-click" onclick="toggleDesgloseValoracion('${ctx}',${i})">
+        <div class="graf-puesto">${medallas[i]||('#'+(i+1))}</div>
+        <div class="graf-foto">${j.fotoCarnet ? `<img src="data:image/jpeg;base64,${j.fotoCarnet}" style="width:100%;height:100%;object-fit:cover">` : '👤'}</div>
+        <div class="graf-info">
+          <div class="graf-nombre-jugador">${j.numeroCamiseta ? '#'+esc(j.numeroCamiseta)+' ' : ''}${esc(j.nombreCorto)}${usarPromedio!==undefined && j.partidosJugados ? ` <span class="graf-sub">· ${j.partidosJugados} PJ</span>` : ''}</div>
+          <div class="graf-barra-fondo"><div class="graf-barra ${i===0?'graf-barra-mvp':''} ${v<0?'graf-barra-neg':''}" style="width:${pct.toFixed(0)}%"></div></div>
+        </div>
+        <div class="graf-valor-total" style="width:52px">${fmtValoracion(v)}</div>
+      </div>
+      <div class="graf-desglose" id="dv-${ctx}-${i}" style="display:none">
+        <div class="graf-desglose-fila"><span>Puntos anotados</span><b>${fmtValoracion(j.puntos)}</b></div>
+        ${(j.desglose||[]).map(d=>`
+          <div class="graf-desglose-fila"><span>${esc(d.nombre)} · ${d.valor} × ${d.peso>0?'+':''}${d.peso}</span><b style="color:${d.aporte>=0?'var(--green-ok)':'var(--red)'}">${d.aporte>0?'+':''}${fmtValoracion(d.aporte)}</b></div>
+        `).join('')}
+        <div class="graf-desglose-fila" style="border-top:1px solid var(--line);margin-top:4px;padding-top:4px"><span>Valoración total</span><b>${fmtValoracion(j.valoracion)}</b></div>
+        ${usarPromedio!==undefined && j.promedio!==null ? `<div class="graf-desglose-fila"><span>Promedio por partido (${j.partidosJugados} PJ)</span><b>${fmtValoracion(j.promedio)}</b></div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function toggleDesgloseValoracion(ctx, i){
+  const el = document.getElementById('dv-'+ctx+'-'+i);
+  if(el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+async function cargarValoracionPartidoEnt(partidoId){
+  const cont = document.getElementById('valoracionPartidoEnt');
+  if(!cont) return;
+  cont.innerHTML = '<div class="spinner"></div>';
+  const data = await apiEnt('ver_valoracion_partido_entrenador', {partidoId});
+  if(data===null){ cont.innerHTML = ''; return; }
+  if(data.ranking.length===0){ cont.innerHTML = ''; return; }
+  cont.innerHTML = `
+    <div class="graf-ranking-card">
+      <div class="graf-panel-titulo">🏆 Valoración del partido</div>
+      <p class="graf-sub" style="margin:-4px 0 8px">Criterio FIBA: puntos + rebotes + asistencias + recuperaciones + tapones − fallos − pérdidas − faltas. Toca una jugadora para ver el detalle.</p>
+      ${renderRankingValoracionHtml(data.ranking, 'p'+partidoId)}
+    </div>`;
+}
+
+async function abrirValoracionTorneos(){
+  const data = await apiEnt('listar_eventos_grupo_entrenador', {grupoId: GRUPO_ACTUAL.id});
+  if(data===null) return;
+  abrirSheet(`
+    <div class="sheet-head"><h2>🏆 Valoración por torneo</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    ${data.length===0 ? '<p style="color:var(--chalk-dim);font-size:14px">Este grupo todavía no ha participado en ningún torneo.</p>' : data.map(e=>`
+      <div class="field-line" style="cursor:pointer" onclick="verValoracionTorneo(${e.id})">
+        <div>
+          <div class="fl-value">🎒 ${esc(e.nombre)} ${e.estado==='finalizado' ? '<span class="badge finalizado">Finalizado</span>' : ''}</div>
+          <div class="fl-label">${e.partidosJugados} partido(s) jugado(s)${e.fechaInicio ? ' · desde '+fechaCortaEnt(e.fechaInicio) : ''}</div>
+        </div>
+        <span style="font-size:18px">📈</span>
+      </div>
+    `).join('')}
+  `);
+}
+
+let _valoracionTorneoActual = null;
+
+async function verValoracionTorneo(eventoId){
+  const data = await apiEnt('ver_valoracion_evento_entrenador', {eventoId, grupoId: GRUPO_ACTUAL.id});
+  if(data===null) return;
+  _valoracionTorneoActual = { data, modo: 'total' };
+  abrirSheet(`
+    <div class="sheet-head"><h2>🏆 ${esc(data.eventoNombre)}</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p class="graf-sub" style="margin-top:-6px">${GRUPO_ACTUAL ? esc(GRUPO_ACTUAL.nombre)+' · ' : ''}${data.totalPartidos} partido(s) disputado(s) en el torneo. Criterio FIBA. Toca una jugadora para ver el detalle.</p>
+    <div class="graf-toggle">
+      <button class="sm primary" id="btnValTotal" onclick="cambiarModoValoracionTorneo('total')">Total del torneo</button>
+      <button class="sm" id="btnValProm" onclick="cambiarModoValoracionTorneo('promedio')">Promedio por partido</button>
+    </div>
+    <div class="graf-ranking-card" id="valoracionTorneoLista"></div>
+  `);
+  pintarValoracionTorneo();
+}
+
+function cambiarModoValoracionTorneo(modo){
+  if(!_valoracionTorneoActual) return;
+  _valoracionTorneoActual.modo = modo;
+  const bt = document.getElementById('btnValTotal'), bp = document.getElementById('btnValProm');
+  if(bt) bt.classList.toggle('primary', modo==='total');
+  if(bp) bp.classList.toggle('primary', modo==='promedio');
+  pintarValoracionTorneo();
+}
+
+function pintarValoracionTorneo(){
+  const { data, modo } = _valoracionTorneoActual;
+  const usarPromedio = modo==='promedio';
+  const orden = [...data.ranking].sort((a,b)=> usarPromedio
+    ? ((b.promedio||0)-(a.promedio||0)) || (b.valoracion-a.valoracion)
+    : (b.valoracion-a.valoracion));
+  const cont = document.getElementById('valoracionTorneoLista');
+  if(cont) cont.innerHTML = renderRankingValoracionHtml(orden, 't', usarPromedio);
 }
 
 async function verFotoPartidoEnt(partidoId, tipo){
@@ -3427,6 +3562,14 @@ async function seleccionarPartidoCaptura(partidoId){
 }
 
 async function mostrarCapturaPartido(cont){
+  // Primero se asegura de que todo lo pendiente ya llego al servidor
+  // (incluye lo que haya quedado guardado en el celular de una sesion anterior).
+  recuperarColaLocal();
+  if(!(await vaciarColaCaptura(8000))){
+    toast('Hay registros sin enviar; se reintentan solos. Vuelve a actualizar en unos segundos.', true);
+    if(!document.getElementById('capLog')) cont.innerHTML = '<div class="empty">⚠️ Sin conexión: hay registros por enviar. Se reintentan solos; toca 🔄 cuando vuelva la señal.</div>';
+    return;
+  }
   cont.innerHTML = '<div class="spinner"></div>';
   const data = await apiPlan('abrir_captura_partido_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
   if(data===null){ cont.innerHTML = '<div class="empty">❌ No se pudo cargar. Desliza para reintentar.</div>'; return; }
@@ -3437,12 +3580,14 @@ async function mostrarCapturaPartido(cont){
 
 function renderCapturaPartido(cont){
   document.body.classList.add('modo-captura');
+  prepararRivalFaltas();
   const d = CAPTURA_DATA;
   const p = d.partido;
   cont.innerHTML = `
     <div class="cap-salir">
       <button class="sm" onclick="cambiarPartidoCaptura()">✕ Salir</button>
       <span style="color:var(--chalk-dim);flex:1">${esc(p.alias||'Partido')}</span>
+      <span id="capSyncEstado" class="cap-sync" style="display:none"></span>
       <button class="sm" id="btnModoEdicionJugadoras" onclick="toggleModoEdicionJugadoras()">✏️</button>
       <button class="sm" onclick="mostrarCapturaPartido(document.getElementById('pantallasContainer'))">🔄</button>
     </div>
@@ -3498,6 +3643,8 @@ function renderCapturaPartido(cont){
       </div>
     </div>
 
+    ${renderRivalFaltasHtml()}
+
     <div class="cap-panel" style="margin-top:8px">
       <div class="cap-panel-title">Últimos eventos</div>
       <div id="capLog" class="cap-log">
@@ -3508,10 +3655,11 @@ function renderCapturaPartido(cont){
   if(MODO_EDICION_JUGADORAS){
     const btn = document.getElementById('btnModoEdicionJugadoras');
     if(btn) btn.classList.add('primary');
-    const grid = document.getElementById('capJugadorasGrid');
-    if(grid) grid.classList.add('modo-edicion-activo');
+    ['capJugadorasGrid','capRivalGrid'].forEach(id=>{ const g = document.getElementById(id); if(g) g.classList.add('modo-edicion-activo'); });
   }
   actualizarBadgesFaltas();
+  pintarRivalFaltas();
+  actualizarIndicadorCola();
 }
 
 // IDs de tipos de estadistica que cuentan como "falta" para este
@@ -3535,18 +3683,29 @@ function actualizarBadgesFaltas(){
     const n = conteos[j.id] || 0;
     el.textContent = n;
     el.style.display = n>0 ? 'flex' : 'none';
+    el.classList.toggle('cap-badge-fuera', n>=5);
   });
 }
 
 function renderLogCapturaHtml(log){
   if(log.length===0) return '<div class="cap-log-item"><span style="color:var(--chalk-dim)">Sistema listo. Selecciona una acción.</span></div>';
-  return log.map(item=>`
-    <div class="cap-log-item" ${item.esRival ? '' : `style="cursor:pointer" onclick="abrirEditarEventoCaptura(${item.id})"`}>
+  const visibles = log.slice(0, 40);
+  const filas = visibles.map(item=>{
+    const pend = !!item.pendiente;
+    const clic = pend
+      ? `style="cursor:default;opacity:.75"`
+      : (item.esRival ? '' : `style="cursor:pointer" onclick="abrirEditarEventoCaptura(${item.id})"`);
+    const borrar = pend
+      ? '<span title="Enviando al servidor..." style="font-size:13px">⏳</span>'
+      : `<button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" onclick="event.stopPropagation(); borrarEventoCaptura(${item.id})">🗑️</button>`;
+    return `
+    <div class="cap-log-item" ${clic}>
       <span style="color:var(--chalk-dim)">${new Date(item.creadoEn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
       <span style="flex:1;margin:0 8px">${item.esRival ? 'Rival (+'+item.puntos+')' : esc(item.jugadorNombre)+' → '+esc(item.tipoNombre)+(item.puntos>0?' (+'+item.puntos+')':'')}</span>
-      <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px" onclick="event.stopPropagation(); borrarEventoCaptura(${item.id})">🗑️</button>
-    </div>
-  `).join('');
+      ${borrar}
+    </div>`;
+  }).join('');
+  return filas + (log.length>40 ? `<div class="cap-log-item"><span style="color:var(--chalk-dim);font-size:11px">Mostrando los últimos 40 de ${log.length} registros</span></div>` : '');
 }
 
 function abrirEditarEventoCaptura(logId){
@@ -3569,6 +3728,7 @@ function abrirEditarEventoCaptura(logId){
 }
 
 async function guardarEditarEventoCaptura(logId){
+  if(!(await vaciarColaCaptura(8000))){ toast('Hay registros sin enviar todavía; intenta en unos segundos.', true); return; }
   const jugadorId = parseInt(document.getElementById('editLogJugador').value);
   const tipoEstadisticaId = parseInt(document.getElementById('editLogTipo').value);
   const res = await apiPlan('editar_evento_partido_planillero', {logId, jugadorId, tipoEstadisticaId});
@@ -3628,9 +3788,120 @@ function toggleModoEdicionJugadoras(){
   MODO_EDICION_JUGADORAS = !MODO_EDICION_JUGADORAS;
   const btn = document.getElementById('btnModoEdicionJugadoras');
   if(btn) btn.classList.toggle('primary', MODO_EDICION_JUGADORAS);
-  const grid = document.getElementById('capJugadorasGrid');
-  if(grid) grid.classList.toggle('modo-edicion-activo', MODO_EDICION_JUGADORAS);
-  toast(MODO_EDICION_JUGADORAS ? 'Modo edición activado -- toca una jugadora para corregirla' : 'Modo edición desactivado');
+  ['capJugadorasGrid','capRivalGrid'].forEach(id=>{ const g = document.getElementById(id); if(g) g.classList.toggle('modo-edicion-activo', MODO_EDICION_JUGADORAS); });
+  toast(MODO_EDICION_JUGADORAS ? 'Modo edición: toca una jugadora para corregirla, o un número rival para restarle una falta' : 'Modo edición desactivado');
+}
+
+/* ============================================================
+   COLA DE ENVIO DE LA CAPTURA -- respuesta instantanea
+   Cada toque actualiza la pantalla AL MOMENTO y se envia al servidor
+   en segundo plano, de a uno y en orden. Si hay mala señal, reintenta
+   solo (cada envio lleva un clienteId, asi el servidor nunca lo cuenta
+   dos veces). Si la app se cierra con envios pendientes, quedan
+   guardados en el celular y se reenvian al volver a abrir la captura.
+   ============================================================ */
+const COLA_CAPTURA = [];
+let COLA_PROCESANDO = false;
+let COLA_SIN_RED = false;
+const COLA_LS_KEY = 'capturaColaPendiente_v1';
+
+function nuevoClienteId(){
+  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('c'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+}
+function setTxt(id, v){ const el = document.getElementById(id); if(el) el.textContent = v; }
+
+function guardarColaLocal(){
+  try{ localStorage.setItem(COLA_LS_KEY, JSON.stringify(COLA_CAPTURA.map(j=>({accion:j.accion, body:j.body})))); }catch(e){}
+}
+function recuperarColaLocal(){
+  let guardados = [];
+  try{ guardados = JSON.parse(localStorage.getItem(COLA_LS_KEY) || '[]'); }catch(e){}
+  guardados.forEach(j=>{
+    const cid = j.body && j.body.clienteId;
+    if(cid && !COLA_CAPTURA.some(x=>x.body.clienteId===cid)) COLA_CAPTURA.push({accion:j.accion, body:j.body});
+  });
+  if(COLA_CAPTURA.length){ actualizarIndicadorCola(); procesarColaCaptura(); }
+}
+
+async function enviarSinAlerta(accion, body){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), 20000);
+  try{
+    const res = await fetch('/api/app_unificada', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({token: TOKEN, accion}, body)), signal: ctrl.signal
+    });
+    const data = await res.json();
+    if(data.success) return {ok:true, data: data.data};
+    return {ok:false, red:false, error: data.error || 'Error'};
+  }catch(e){
+    return {ok:false, red:true, error:'sin conexión'};
+  }finally{ clearTimeout(t); }
+}
+
+function actualizarIndicadorCola(){
+  const n = COLA_CAPTURA.length;
+  const el = document.getElementById('capSyncEstado');
+  if(el){
+    if(n===0){ el.style.display = 'none'; }
+    else {
+      el.style.display = 'inline-block';
+      el.textContent = COLA_SIN_RED ? '⚠️ Sin conexión · '+n+' por enviar' : '⏳ '+n;
+      el.classList.toggle('cap-sync-alerta', COLA_SIN_RED);
+    }
+  }
+  window.onbeforeunload = n>0 ? (e)=>{ e.preventDefault(); e.returnValue = ''; return ''; } : null;
+}
+
+function encolarCaptura(accion, body, hooks){
+  COLA_CAPTURA.push(Object.assign({accion, body}, hooks || {}));
+  guardarColaLocal();
+  actualizarIndicadorCola();
+  procesarColaCaptura();
+}
+
+async function procesarColaCaptura(){
+  if(COLA_PROCESANDO) return;
+  COLA_PROCESANDO = true;
+  try{
+    while(COLA_CAPTURA.length){
+      const job = COLA_CAPTURA[0];
+      let r = await enviarSinAlerta(job.accion, job.body);
+      let espera = 1000;
+      // Sin señal: se reintenta solo (es seguro, el servidor ignora repetidos).
+      while(!r.ok && r.red){
+        COLA_SIN_RED = true; actualizarIndicadorCola();
+        await new Promise(res=>setTimeout(res, espera));
+        espera = Math.min(espera*1.6, 6000);
+        r = await enviarSinAlerta(job.accion, job.body);
+      }
+      COLA_SIN_RED = false;
+      COLA_CAPTURA.shift();
+      guardarColaLocal();
+      if(r.ok){ try{ if(job.onOk) job.onOk(r.data); }catch(e){ console.error(e); } }
+      else { try{ if(job.onFail) job.onFail(r.error); }catch(e){ console.error(e); } toast('No se pudo guardar: '+r.error, true); }
+      actualizarIndicadorCola();
+    }
+  } finally { COLA_PROCESANDO = false; }
+}
+
+// Espera a que se envie todo lo pendiente (maximo maxMs). true = quedo vacia.
+function vaciarColaCaptura(maxMs){
+  const limite = Date.now() + (maxMs || 8000);
+  return new Promise(resolve=>{
+    const chk = ()=>{
+      if(COLA_CAPTURA.length===0 && !COLA_PROCESANDO) return resolve(true);
+      if(Date.now()>limite) return resolve(false);
+      setTimeout(chk, 120);
+    };
+    chk();
+  });
+}
+
+function refrescarLogCaptura(){
+  const el = document.getElementById('capLog');
+  if(el) el.innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
+  actualizarBadgesFaltas();
 }
 
 async function registrarAccionJugadora(jugadorId, nombreJugadora, nombreCorto, numeroActual){
@@ -3642,51 +3913,161 @@ async function registrarAccionJugadora(jugadorId, nombreJugadora, nombreCorto, n
     toast('Primero toca una acción (arriba) y luego a la jugadora', true);
     return;
   }
-  const res = await apiPlan('registrar_evento_partido_planillero', {
-    partidoId: PARTIDO_CAPTURA_ACTUAL, jugadorId,
-    tipoEstadisticaId: ACCION_SELECCIONADA.tipoId, esRival: false, puntos: ACCION_SELECCIONADA.puntos,
-  });
-  if(res===null) return;
-  CAPTURA_DATA.log.unshift({
-    id: res.id, jugadorId, tipoEstadisticaId: ACCION_SELECCIONADA.tipoId, esRival: false,
-    puntos: ACCION_SELECCIONADA.puntos, creadoEn: res.creadoEn, jugadorNombre: nombreJugadora, tipoNombre: ACCION_SELECCIONADA.nombre,
-  });
-  if(ACCION_SELECCIONADA.puntos>0){
-    CAPTURA_DATA.partido.marcador_propio = (CAPTURA_DATA.partido.marcador_propio||0) + ACCION_SELECCIONADA.puntos;
-    document.getElementById('capMarcadorPropio').textContent = CAPTURA_DATA.partido.marcador_propio;
-  }
-  if(res.faltasPropio!=null){
-    CAPTURA_DATA.partido.faltasPropio = res.faltasPropio;
-    document.getElementById('capFaltasPropio').textContent = res.faltasPropio;
-  }
-  document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
-  actualizarBadgesFaltas();
-  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('activa'));
+  const accion = ACCION_SELECCIONADA;
   ACCION_SELECCIONADA = null;
-}
+  document.querySelectorAll('#capAccionesGrid button').forEach(b=>b.classList.remove('activa'));
 
-async function registrarPuntosRival(puntos){
-  const res = await apiPlan('registrar_evento_partido_planillero', {
-    partidoId: PARTIDO_CAPTURA_ACTUAL, esRival: true, puntos,
+  const p = CAPTURA_DATA.partido;
+  const clienteId = nuevoClienteId();
+  const esFalta = /falta/i.test(accion.nombre || '');
+  const item = {
+    id: 'tmp_'+clienteId, clienteId, pendiente: true, jugadorId, tipoEstadisticaId: accion.tipoId, esRival: false,
+    puntos: accion.puntos, creadoEn: new Date().toISOString(), jugadorNombre: nombreJugadora, tipoNombre: accion.nombre,
+  };
+  // 1) La pantalla responde al instante...
+  CAPTURA_DATA.log.unshift(item);
+  if(accion.puntos>0){ p.marcador_propio = (p.marcador_propio||0) + accion.puntos; setTxt('capMarcadorPropio', p.marcador_propio); }
+  if(esFalta){ p.faltasPropio = (p.faltasPropio||0) + 1; setTxt('capFaltasPropio', p.faltasPropio); }
+  refrescarLogCaptura();
+
+  // 2) ...y se guarda en segundo plano.
+  encolarCaptura('registrar_evento_partido_planillero', {
+    partidoId: PARTIDO_CAPTURA_ACTUAL, jugadorId, tipoEstadisticaId: accion.tipoId, esRival: false, puntos: accion.puntos, clienteId,
+  }, {
+    onOk: (d)=>{
+      item.id = d.id; item.creadoEn = d.creadoEn; item.pendiente = false;
+      if(d.faltasPropio!=null && COLA_CAPTURA.length===0){ p.faltasPropio = d.faltasPropio; setTxt('capFaltasPropio', d.faltasPropio); }
+      refrescarLogCaptura();
+    },
+    onFail: ()=>{
+      const i = CAPTURA_DATA.log.indexOf(item); if(i>=0) CAPTURA_DATA.log.splice(i,1);
+      if(accion.puntos>0){ p.marcador_propio = Math.max(0,(p.marcador_propio||0) - accion.puntos); setTxt('capMarcadorPropio', p.marcador_propio); }
+      if(esFalta){ p.faltasPropio = Math.max(0,(p.faltasPropio||0) - 1); setTxt('capFaltasPropio', p.faltasPropio); }
+      refrescarLogCaptura();
+    },
   });
-  if(res===null) return;
-  CAPTURA_DATA.log.unshift({ id: res.id, esRival: true, puntos, creadoEn: res.creadoEn });
-  CAPTURA_DATA.partido.marcador_rival = (CAPTURA_DATA.partido.marcador_rival||0) + puntos;
-  document.getElementById('capMarcadorRival').textContent = CAPTURA_DATA.partido.marcador_rival;
-  document.getElementById('capLog').innerHTML = renderLogCapturaHtml(CAPTURA_DATA.log);
-  actualizarBadgesFaltas();
 }
 
-async function registrarFaltaRivalCaptura(){
-  const res = await apiPlan('registrar_falta_rival_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
-  if(res===null) return;
-  CAPTURA_DATA.partido.faltasRival = res.faltasRival;
-  document.getElementById('capFaltasRival').textContent = res.faltasRival;
-  toast('Falta del rival registrada');
+function registrarPuntosRival(puntos){
+  const p = CAPTURA_DATA.partido;
+  const clienteId = nuevoClienteId();
+  const item = { id: 'tmp_'+clienteId, clienteId, pendiente: true, esRival: true, puntos, creadoEn: new Date().toISOString() };
+  CAPTURA_DATA.log.unshift(item);
+  p.marcador_rival = (p.marcador_rival||0) + puntos; setTxt('capMarcadorRival', p.marcador_rival);
+  refrescarLogCaptura();
+  encolarCaptura('registrar_evento_partido_planillero', { partidoId: PARTIDO_CAPTURA_ACTUAL, esRival: true, puntos, clienteId }, {
+    onOk: (d)=>{ item.id = d.id; item.creadoEn = d.creadoEn; item.pendiente = false; refrescarLogCaptura(); },
+    onFail: ()=>{
+      const i = CAPTURA_DATA.log.indexOf(item); if(i>=0) CAPTURA_DATA.log.splice(i,1);
+      p.marcador_rival = Math.max(0,(p.marcador_rival||0) - puntos); setTxt('capMarcadorRival', p.marcador_rival);
+      refrescarLogCaptura();
+    },
+  });
+}
+
+function registrarFaltaRivalCaptura(){
+  const p = CAPTURA_DATA.partido;
+  p.faltasRival = (p.faltasRival||0) + 1; setTxt('capFaltasRival', p.faltasRival);
+  encolarCaptura('registrar_falta_rival_planillero', { partidoId: PARTIDO_CAPTURA_ACTUAL, clienteId: nuevoClienteId() }, {
+    onOk: (d)=>{ if(COLA_CAPTURA.length===0){ p.faltasRival = d.faltasRival; setTxt('capFaltasRival', d.faltasRival); } },
+    onFail: ()=>{ p.faltasRival = Math.max(0,(p.faltasRival||0) - 1); setTxt('capFaltasRival', p.faltasRival); },
+  });
+}
+
+/* ---------- Faltas de las jugadoras rivales (por numero de camiseta) ---------- */
+const NUMEROS_RIVAL_BASE = [4,5,6,7,8,9,10,11,12,13,14,15];
+let RIVAL_FALTAS = {};
+let RIVAL_NUMEROS = [];
+
+function prepararRivalFaltas(){
+  RIVAL_FALTAS = {};
+  ((CAPTURA_DATA && CAPTURA_DATA.rivalFaltas) || []).forEach(r=>{
+    const n = String(r.numero);
+    if(/^\d{1,3}$/.test(n)) RIVAL_FALTAS[n] = Number(r.faltas) || 0;
+  });
+  const set = new Set(NUMEROS_RIVAL_BASE.map(String));
+  Object.keys(RIVAL_FALTAS).forEach(n=>set.add(n));
+  RIVAL_NUMEROS = [...set].sort((a,b)=>Number(a)-Number(b));
+}
+
+function renderRivalFaltasHtml(){
+  return `
+    <div class="cap-panel" id="capRivalPanel" style="margin-top:8px">
+      <div class="cap-panel-title">3. Faltas de las rivales (toca su número)</div>
+      <div class="cap-rival-grid" id="capRivalGrid">
+        ${RIVAL_NUMEROS.map(n=>`
+          <button class="cap-btn-rival-num" onclick="tocarRivalNumero('${n}')">
+            <span>#${n}</span><span class="cap-badge-faltas" id="rf-${n}" style="display:none">0</span>
+          </button>`).join('')}
+        <button class="cap-btn-rival-num cap-btn-rival-mas" onclick="agregarNumeroRival()">＋</button>
+      </div>
+    </div>`;
+}
+
+function pintarRivalFaltas(){
+  RIVAL_NUMEROS.forEach(n=>{
+    const el = document.getElementById('rf-'+n);
+    if(!el) return;
+    const v = RIVAL_FALTAS[n] || 0;
+    el.textContent = v;
+    el.style.display = v>0 ? 'flex' : 'none';
+    el.classList.toggle('cap-badge-fuera', v>=5);
+  });
+}
+
+function repintarPanelRival(){
+  const panel = document.getElementById('capRivalPanel');
+  if(!panel) return;
+  panel.outerHTML = renderRivalFaltasHtml();
+  pintarRivalFaltas();
+  const g = document.getElementById('capRivalGrid');
+  if(g && MODO_EDICION_JUGADORAS) g.classList.add('modo-edicion-activo');
+}
+
+function agregarNumeroRival(){
+  const n = (prompt('Número de camiseta de la rival:') || '').replace('#','').trim();
+  if(!n) return;
+  if(!/^\d{1,3}$/.test(n)){ toast('Escribe solo el número (ej: 23)', true); return; }
+  const num = String(parseInt(n, 10));
+  if(!RIVAL_NUMEROS.includes(num)){ RIVAL_NUMEROS.push(num); RIVAL_NUMEROS.sort((a,b)=>Number(a)-Number(b)); }
+  repintarPanelRival();
+}
+
+function tocarRivalNumero(n){
+  const actual = RIVAL_FALTAS[n] || 0;
+  const delta = MODO_EDICION_JUGADORAS ? -1 : 1;
+  if(delta<0 && actual===0){ toast('Esa jugadora no tiene faltas registradas', true); return; }
+  registrarFaltaJugadorRival(n, delta);
+}
+
+function registrarFaltaJugadorRival(n, delta){
+  const p = CAPTURA_DATA.partido;
+  const previo = RIVAL_FALTAS[n] || 0;
+  const cambioEquipo = (delta<0 && previo===0) ? 0 : delta;   // misma regla que el servidor
+  RIVAL_FALTAS[n] = Math.max(0, previo + delta);
+  p.faltasRival = Math.max(0, (p.faltasRival||0) + cambioEquipo);
+  setTxt('capFaltasRival', p.faltasRival);
+  pintarRivalFaltas();
+  encolarCaptura('registrar_falta_jugador_rival_planillero', {
+    partidoId: PARTIDO_CAPTURA_ACTUAL, numeroRival: n, delta, clienteId: nuevoClienteId(),
+  }, {
+    onOk: (d)=>{
+      if(COLA_CAPTURA.length===0){
+        RIVAL_FALTAS[n] = d.faltas; p.faltasRival = d.faltasRival;
+        setTxt('capFaltasRival', d.faltasRival); pintarRivalFaltas();
+      }
+    },
+    onFail: ()=>{
+      RIVAL_FALTAS[n] = Math.max(0, (RIVAL_FALTAS[n]||0) - delta);
+      p.faltasRival = Math.max(0, (p.faltasRival||0) - cambioEquipo);
+      setTxt('capFaltasRival', p.faltasRival); pintarRivalFaltas();
+    },
+  });
 }
 
 async function resetearFaltasEquipoCaptura(){
   if(!confirm('¿Reiniciar el contador de faltas de ambos equipos a 0? (usar al terminar un período)')) return;
+  if(!(await vaciarColaCaptura(8000))){ toast('Hay registros sin enviar todavía; intenta en unos segundos.', true); return; }
   const res = await apiPlan('resetear_faltas_equipo_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
   if(res===null) return;
   CAPTURA_DATA.partido.faltasPropio = res.faltasPropio;
@@ -3707,6 +4088,7 @@ function tocarFaltasEquipo(equipo){
 }
 
 async function ajustarFaltasEquipoCaptura(equipo, valor){
+  if(!(await vaciarColaCaptura(8000))){ toast('Hay registros sin enviar todavía; intenta en unos segundos.', true); return; }
   const res = await apiPlan('ajustar_faltas_equipo_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL, equipo, valor});
   if(res===null) return;
   if(equipo==='rival'){ CAPTURA_DATA.partido.faltasRival = valor; document.getElementById('capFaltasRival').textContent = valor; }
@@ -3716,6 +4098,7 @@ async function ajustarFaltasEquipoCaptura(equipo, valor){
 
 async function borrarEventoCaptura(logId){
   if(!confirm('¿Borrar este evento? Esto ajusta el marcador si corresponde.')) return;
+  if(!(await vaciarColaCaptura(8000))){ toast('Hay registros sin enviar todavía; intenta en unos segundos.', true); return; }
   const item = CAPTURA_DATA.log.find(l=>l.id===logId);
   const res = await apiPlan('eliminar_evento_partido_planillero', {logId});
   if(res===null) return;
@@ -3739,6 +4122,7 @@ async function borrarEventoCaptura(logId){
 }
 
 function cambiarPartidoCaptura(){
+  if(COLA_CAPTURA.length>0 && !confirm('Hay '+COLA_CAPTURA.length+' registro(s) todavía sin enviar al servidor. Se reenviarán solos la próxima vez que abras la captura. ¿Salir de todos modos?')) return;
   safeSet('planillero_partido_actual', '');
   PARTIDO_CAPTURA_ACTUAL = null;
   cambiarPantalla('captura_estadisticas_planillero');

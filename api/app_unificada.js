@@ -370,7 +370,12 @@ async function abrirCapturaPartido(pool, body) {
      FROM sport_control.partido_stats_log l
      LEFT JOIN sport_control.jugadores j ON j.id = l.jugador_id
      LEFT JOIN sport_control.tipos_estadistica t ON t.id = l.tipo_estadistica_id
-     WHERE l.partido_id = $1 ORDER BY l.creado_en DESC LIMIT 50`,
+     WHERE l.partido_id = $1 ORDER BY l.creado_en DESC LIMIT 500`,
+    [partidoId]
+  );
+
+  const rivalFaltas = await pool.query(
+    `SELECT numero_rival AS numero, faltas FROM sport_control.partido_rival_faltas WHERE partido_id = $1 ORDER BY numero_rival`,
     [partidoId]
   );
 
@@ -381,54 +386,125 @@ async function abrirCapturaPartido(pool, body) {
       jugadores: jugadores.rows,
       tipos: tipos.rows,
       log: log.rows,
+      rivalFaltas: rivalFaltas.rows,
     },
   };
 }
 
+// Registro de un evento de captura en UNA sola consulta (antes eran 5
+// viajes seguidos a la base). Es atomica (todo o nada) e idempotente:
+// si el celular reintenta el mismo envio por mala señal, el `clienteId`
+// evita que se cuente dos veces.
 async function registrarEventoPartido(pool, planilleroId, body) {
-  const { partidoId, jugadorId, tipoEstadisticaId, esRival, puntos } = body;
+  const { partidoId, jugadorId, tipoEstadisticaId, esRival, puntos, clienteId } = body;
   const puntosNum = Number(puntos) || 0;
+  const rival = !!esRival;
+  const jug = rival ? null : (jugadorId || null);
+  const tipo = rival ? null : (tipoEstadisticaId || null);
 
-  const ins = await pool.query(
-    `INSERT INTO sport_control.partido_stats_log (partido_id, jugador_id, tipo_estadistica_id, es_rival, puntos, planillero_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, creado_en AS "creadoEn"`,
-    [partidoId, esRival ? null : (jugadorId || null), esRival ? null : (tipoEstadisticaId || null), !!esRival, puntosNum, planilleroId]
+  const r = await pool.query(
+    `WITH nuevo AS (
+       INSERT INTO sport_control.partido_stats_log (partido_id, jugador_id, tipo_estadistica_id, es_rival, puntos, planillero_id, cliente_id)
+       VALUES ($1::int, $2::int, $3::int, $4::boolean, $5::int, $6::int, $7::varchar)
+       ON CONFLICT (cliente_id) DO NOTHING
+       RETURNING id, creado_en
+     ),
+     es_falta AS (
+       SELECT (nombre ~* 'falta') AS v FROM sport_control.tipos_estadistica WHERE id = $3::int
+     ),
+     stat AS (
+       INSERT INTO sport_control.partido_estadisticas (partido_id, tipo_estadistica_id, jugador_id, valor, actualizado_en)
+       SELECT $1::int, $3::int, $2::int, 1, NOW()
+       WHERE EXISTS (SELECT 1 FROM nuevo) AND $4::boolean = false AND $2::int IS NOT NULL AND $3::int IS NOT NULL
+       ON CONFLICT (partido_id, tipo_estadistica_id, jugador_id)
+       DO UPDATE SET valor = sport_control.partido_estadisticas.valor + 1, actualizado_en = NOW()
+       RETURNING 1
+     ),
+     marcador AS (
+       UPDATE sport_control.partidos SET
+         marcador_propio = CASE WHEN $4::boolean = false AND $5::int > 0 THEN COALESCE(marcador_propio, 0) + $5::int ELSE marcador_propio END,
+         marcador_rival = CASE WHEN $4::boolean = true THEN COALESCE(marcador_rival, 0) + $5::int ELSE marcador_rival END,
+         faltas_equipo_propio = CASE WHEN $4::boolean = false AND $2::int IS NOT NULL AND COALESCE((SELECT v FROM es_falta), false)
+                                     THEN faltas_equipo_propio + 1 ELSE faltas_equipo_propio END
+       WHERE id = $1::int AND EXISTS (SELECT 1 FROM nuevo)
+       RETURNING faltas_equipo_propio
+     )
+     SELECT
+       COALESCE((SELECT id FROM nuevo), (SELECT id FROM sport_control.partido_stats_log WHERE cliente_id = $7::varchar)) AS id,
+       COALESCE((SELECT creado_en FROM nuevo), (SELECT creado_en FROM sport_control.partido_stats_log WHERE cliente_id = $7::varchar)) AS "creadoEn",
+       COALESCE((SELECT faltas_equipo_propio FROM marcador), (SELECT faltas_equipo_propio FROM sport_control.partidos WHERE id = $1::int)) AS "faltasPropio"`,
+    [partidoId, jug, tipo, rival, puntosNum, planilleroId, clienteId || null]
   );
-
-  let faltasPropio = null;
-  if (esRival) {
-    await pool.query(`UPDATE sport_control.partidos SET marcador_rival = COALESCE(marcador_rival, 0) + $1 WHERE id = $2`, [puntosNum, partidoId]);
-  } else {
-    if (puntosNum > 0) {
-      await pool.query(`UPDATE sport_control.partidos SET marcador_propio = COALESCE(marcador_propio, 0) + $1 WHERE id = $2`, [puntosNum, partidoId]);
-    }
-    if (jugadorId && tipoEstadisticaId) {
-      await pool.query(
-        `INSERT INTO sport_control.partido_estadisticas (partido_id, tipo_estadistica_id, jugador_id, valor, actualizado_en)
-         VALUES ($1, $2, $3, 1, NOW())
-         ON CONFLICT (partido_id, tipo_estadistica_id, jugador_id) DO UPDATE SET valor = sport_control.partido_estadisticas.valor + 1, actualizado_en = NOW()`,
-        [partidoId, tipoEstadisticaId, jugadorId]
-      );
-      // Toda falta personal tambien suma al contador de faltas de
-      // equipo -- es una cuenta viva que va subiendo, como en la vida
-      // real, y se reinicia manualmente con el boton "Reset" al
-      // terminar un periodo.
-      const tipo = await pool.query(`SELECT nombre FROM sport_control.tipos_estadistica WHERE id = $1`, [tipoEstadisticaId]);
-      if (tipo.rows[0] && /falta/i.test(tipo.rows[0].nombre)) {
-        const upd = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = faltas_equipo_propio + 1 WHERE id = $1 RETURNING faltas_equipo_propio`, [partidoId]);
-        faltasPropio = upd.rows[0].faltas_equipo_propio;
-      }
-    }
-  }
-
-  return { success: true, data: { id: ins.rows[0].id, creadoEn: ins.rows[0].creadoEn, faltasPropio } };
+  const row = r.rows[0];
+  return { success: true, data: { id: row.id, creadoEn: row.creadoEn, faltasPropio: row.faltasPropio } };
 }
 
-// Corrige un registro sin borrarlo: revierte lo que ese registro habia
-// aplicado (marcador + estadistica) y aplica de nuevo con los datos
-// corregidos. Solo aplica a eventos que NO son puntos del rival (esos
-// se corrigen borrando y volviendo a tocar el boton correcto, ya que
-// no dependen de una jugadora ni de un tipo).
+// Falta de un jugador rival identificado por su numero de camiseta.
+// delta = +1 (falta) o -1 (correccion en modo edicion). Tambien mueve el
+// contador de faltas de equipo del rival. Idempotente por clienteId.
+async function registrarFaltaJugadorRival(pool, body) {
+  const { partidoId, clienteId } = body;
+  const numero = String(body.numeroRival || '').replace('#', '').trim().slice(0, 4);
+  const delta = Number(body.delta) < 0 ? -1 : 1;
+  if (!numero) return { success: false, error: 'Falta el número del rival.' };
+
+  const r = await pool.query(
+    `WITH op AS (
+       INSERT INTO sport_control.captura_operaciones (cliente_id) VALUES (COALESCE($1::varchar, gen_random_uuid()::varchar))
+       ON CONFLICT DO NOTHING RETURNING 1
+     ),
+     previo AS (
+       SELECT COALESCE((SELECT faltas FROM sport_control.partido_rival_faltas WHERE partido_id = $2::int AND numero_rival = $3::varchar), 0) AS n
+     ),
+     rf AS (
+       INSERT INTO sport_control.partido_rival_faltas (partido_id, numero_rival, faltas)
+       SELECT $2::int, $3::varchar, GREATEST(0, $4::int) WHERE EXISTS (SELECT 1 FROM op)
+       ON CONFLICT (partido_id, numero_rival)
+       DO UPDATE SET faltas = GREATEST(0, sport_control.partido_rival_faltas.faltas + $4::int)
+       RETURNING faltas
+     ),
+     equipo AS (
+       UPDATE sport_control.partidos SET faltas_equipo_rival = GREATEST(0, faltas_equipo_rival +
+         CASE WHEN $4::int < 0 AND (SELECT n FROM previo) = 0 THEN 0 ELSE $4::int END)
+       WHERE id = $2::int AND EXISTS (SELECT 1 FROM op)
+       RETURNING faltas_equipo_rival
+     )
+     SELECT COALESCE((SELECT faltas FROM rf), (SELECT n FROM previo)) AS faltas,
+            COALESCE((SELECT faltas_equipo_rival FROM equipo), (SELECT faltas_equipo_rival FROM sport_control.partidos WHERE id = $2::int)) AS "faltasRival"`,
+    [clienteId || null, partidoId, numero, delta]
+  );
+  return { success: true, data: { numero, faltas: r.rows[0].faltas, faltasRival: r.rows[0].faltasRival } };
+}
+
+// Falta del equipo rival sin numero (cuando no se sabe quien fue). Idempotente.
+async function registrarFaltaEquipoRival(pool, body) {
+  const r = await pool.query(
+    `WITH op AS (
+       INSERT INTO sport_control.captura_operaciones (cliente_id) VALUES (COALESCE($1::varchar, gen_random_uuid()::varchar))
+       ON CONFLICT DO NOTHING RETURNING 1
+     ),
+     u AS (
+       UPDATE sport_control.partidos SET faltas_equipo_rival = faltas_equipo_rival + 1
+       WHERE id = $2::int AND EXISTS (SELECT 1 FROM op) RETURNING faltas_equipo_rival
+     )
+     SELECT COALESCE((SELECT faltas_equipo_rival FROM u), (SELECT faltas_equipo_rival FROM sport_control.partidos WHERE id = $2::int)) AS "faltasRival"`,
+    [body.clienteId || null, body.partidoId]
+  );
+  return { success: true, data: { faltasRival: r.rows[0].faltasRival } };
+}
+
+// Sesion + id de planillero en UN solo viaje (antes: resolverSesion +
+// detectarRoles con 5 consultas solo para sacar este id).
+async function resolverSesionConPlanillero(pool, token) {
+  const r = await pool.query(
+    `SELECT s.cedula,
+            (SELECT pl.id FROM sport_control.planilleros pl WHERE pl.cedula = s.cedula AND pl.activo = true LIMIT 1) AS "planilleroId"
+     FROM (SELECT 1 AS ancla) d LEFT JOIN sport_control.sesiones_app s ON s.token = $1 LIMIT 1`,
+    [token || '']
+  );
+  return r.rows[0] || {};
+}
+
 async function editarEventoPartido(pool, body) {
   const { logId, jugadorId, tipoEstadisticaId } = body;
   const log = await pool.query(`SELECT * FROM sport_control.partido_stats_log WHERE id = $1`, [logId]);
@@ -532,6 +608,16 @@ module.exports = async (req, res) => {
     if (accion === 'crear_clave_unificada') return res.status(200).json(await crearClaveUnificada(pool, body));
     if (accion === 'verificar_clave_unificada') return res.status(200).json(await verificarClaveUnificada(pool, body));
 
+    // Captura en vivo: acciones muy frecuentes, van por un camino corto
+    // (sesion + id de planillero en un solo viaje, sin detectarRoles).
+    if (accion === 'registrar_evento_partido_planillero' || accion === 'registrar_falta_rival_planillero' || accion === 'registrar_falta_jugador_rival_planillero') {
+      const s = await resolverSesionConPlanillero(pool, token);
+      if (!s.cedula) return res.status(200).json({ success: false, error: 'Sesion invalida o expirada' });
+      if (accion === 'registrar_evento_partido_planillero') return res.status(200).json(await registrarEventoPartido(pool, s.planilleroId || null, body));
+      if (accion === 'registrar_falta_rival_planillero') return res.status(200).json(await registrarFaltaEquipoRival(pool, body));
+      return res.status(200).json(await registrarFaltaJugadorRival(pool, body));
+    }
+
     const cedula = await resolverSesion(pool, token);
     if (!cedula) return res.status(200).json({ success: false, error: 'Sesion invalida o expirada' });
 
@@ -541,10 +627,6 @@ module.exports = async (req, res) => {
     if (accion === 'actualizar_perfil_unificado') return res.status(200).json(await actualizarPerfilUnificado(pool, cedula, body));
     if (accion === 'listar_partidos_activos_planillero') return res.status(200).json(await listarPartidosActivosPlanillero(pool));
     if (accion === 'abrir_captura_partido_planillero') return res.status(200).json(await abrirCapturaPartido(pool, body));
-    if (accion === 'registrar_evento_partido_planillero') {
-      const info = await detectarRoles(pool, cedula);
-      return res.status(200).json(await registrarEventoPartido(pool, info.planillero ? info.planillero.id : null, body));
-    }
     if (accion === 'eliminar_evento_partido_planillero') return res.status(200).json(await eliminarEventoPartido(pool, body));
     if (accion === 'editar_numero_alias_jugador_planillero') {
       const { jugadorId, numeroCamiseta, alias, partidoId } = body;
@@ -565,10 +647,6 @@ module.exports = async (req, res) => {
         }
       }
       return res.status(200).json({ success: true });
-    }
-    if (accion === 'registrar_falta_rival_planillero') {
-      const r = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_rival = faltas_equipo_rival + 1 WHERE id = $1 RETURNING faltas_equipo_rival`, [body.partidoId]);
-      return res.status(200).json({ success: true, data: { faltasRival: r.rows[0].faltas_equipo_rival } });
     }
     if (accion === 'resetear_faltas_equipo_planillero') {
       const r = await pool.query(`UPDATE sport_control.partidos SET faltas_equipo_propio = 0, faltas_equipo_rival = 0 WHERE id = $1 RETURNING faltas_equipo_propio AS "faltasPropio", faltas_equipo_rival AS "faltasRival"`, [body.partidoId]);

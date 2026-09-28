@@ -44,7 +44,7 @@ async function toggleDisciplina(pool, body) {
 
 async function listarTiposEstadistica(pool, body) {
   const r = await pool.query(
-    `SELECT id, nombre, clave, nivel, activo, orden, puntos FROM sport_control.tipos_estadistica WHERE disciplina_id = $1 ORDER BY orden, nombre`,
+    `SELECT id, nombre, clave, nivel, activo, orden, puntos, peso_valoracion AS "pesoValoracion" FROM sport_control.tipos_estadistica WHERE disciplina_id = $1 ORDER BY orden, nombre`,
     [body.disciplinaId]
   );
   return { success: true, data: r.rows };
@@ -62,15 +62,18 @@ async function crearTipoEstadistica(pool, body) {
   const { disciplinaId, nivel } = body;
   const nombre = (body.nombre || '').trim();
   const puntos = Number(body.puntos) || 0;
+  // Peso en la valoracion FIBA: si no se indica, queda vacio y se usa
+  // como respaldo los puntos que suma (0 para el resto).
+  const peso = (body.pesoValoracion === '' || body.pesoValoracion === undefined || body.pesoValoracion === null) ? null : Number(body.pesoValoracion);
   if (!nombre) return { success: false, error: 'El nombre no puede estar vacío.' };
   if (!['jugador', 'equipo'].includes(nivel)) return { success: false, error: 'Nivel inválido.' };
   const clave = generarClave(nombre);
   try {
     const r = await pool.query(
-      `INSERT INTO sport_control.tipos_estadistica (disciplina_id, nombre, clave, nivel, puntos, orden)
-       VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(orden),0)+1 FROM sport_control.tipos_estadistica WHERE disciplina_id = $1))
-       RETURNING id, nombre, clave, nivel, activo, orden, puntos`,
-      [disciplinaId, nombre, clave, nivel, puntos]
+      `INSERT INTO sport_control.tipos_estadistica (disciplina_id, nombre, clave, nivel, puntos, peso_valoracion, orden)
+       VALUES ($1, $2, $3, $4, $5, $6, (SELECT COALESCE(MAX(orden),0)+1 FROM sport_control.tipos_estadistica WHERE disciplina_id = $1))
+       RETURNING id, nombre, clave, nivel, activo, orden, puntos, peso_valoracion AS "pesoValoracion"`,
+      [disciplinaId, nombre, clave, nivel, puntos, peso]
     );
     return { success: true, data: r.rows[0] };
   } catch (err) {
@@ -84,6 +87,13 @@ async function editarPuntosTipoEstadistica(pool, body) {
   return { success: true };
 }
 
+async function editarPesoValoracionTipoEstadistica(pool, body) {
+  const v = (body.peso === '' || body.peso === null || body.peso === undefined) ? null : Number(body.peso);
+  if (v !== null && isNaN(v)) return { success: false, error: 'Escribe un número válido.' };
+  await pool.query(`UPDATE sport_control.tipos_estadistica SET peso_valoracion = $1 WHERE id = $2`, [v, body.tipoEstadisticaId]);
+  return { success: true };
+}
+
 async function toggleTipoEstadistica(pool, body) {
   await pool.query(`UPDATE sport_control.tipos_estadistica SET activo = $1 WHERE id = $2`, [!!body.activo, body.tipoEstadisticaId]);
   return { success: true };
@@ -91,5 +101,5 @@ async function toggleTipoEstadistica(pool, body) {
 
 module.exports = {
   listarDisciplinas, listarDisciplinasActivas, crearDisciplina, editarDisciplina, toggleDisciplina,
-  listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica, editarPuntosTipoEstadistica,
+  listarTiposEstadistica, crearTipoEstadistica, toggleTipoEstadistica, editarPuntosTipoEstadistica, editarPesoValoracionTipoEstadistica,
 };
