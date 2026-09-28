@@ -22,12 +22,12 @@ async function verEstadisticasPartidoAdmin(pool, body) {
   if (!partido.disciplina_id) return { success: false, error: 'Este partido no tiene una disciplina asignada. Revisa Catálogos → Disciplinas.' };
 
   const tipos = await pool.query(
-    `SELECT id, nombre, clave, nivel FROM sport_control.tipos_estadistica WHERE disciplina_id = $1 AND activo = true ORDER BY orden, nombre`,
+    `SELECT id, nombre, clave, nivel, puntos FROM sport_control.tipos_estadistica WHERE disciplina_id = $1 AND activo = true ORDER BY orden, nombre`,
     [partido.disciplina_id]
   );
 
   const jugadores = await pool.query(
-    `SELECT j.id, j.nombres || ' ' || j.apellidos AS nombre
+    `SELECT j.id, j.nombres || ' ' || j.apellidos AS nombre, COALESCE(j.alias, j.nombres) AS "nombreCorto", j.foto_carnet AS "fotoCarnet"
      FROM sport_control.confirmaciones_partido cp
      JOIN sport_control.jugadores j ON j.id = cp.jugador_id
      WHERE cp.partido_id = $1 AND cp.estado = 'confirmado'

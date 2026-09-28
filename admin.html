@@ -246,6 +246,22 @@ if ('serviceWorker' in navigator) {
 
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
   .stat-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;text-align:center;}
+  /* ---- Tarjetas estilo NBA de estadisticas por jugador ---- */
+  .nba-cards-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+  .nba-item{background:var(--pitch-2);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .nba-card{display:flex;align-items:center;gap:10px;padding:10px;cursor:pointer;}
+  .nba-card:active{background:var(--pitch-3);}
+  .nba-card-foto{width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--pitch-3);display:flex;align-items:center;justify-content:center;}
+  .nba-card-foto img{width:100%;height:100%;object-fit:cover;}
+  .nba-card-foto-vacia{font-size:20px;color:var(--chalk-dim);}
+  .nba-card-info{flex:1;min-width:0;}
+  .nba-card-nombre{font-size:13px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nba-card-stats{display:flex;gap:12px;}
+  .nba-stat{text-align:center;}
+  .nba-stat-num{font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;color:var(--gold);line-height:1;}
+  .nba-stat-lbl{font-size:9px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.02em;}
+  .nba-card-toggle{flex-shrink:0;font-size:11px;font-weight:700;color:var(--chalk-dim);white-space:nowrap;}
+  .nba-detalle{padding:4px 12px 12px;border-top:1px solid var(--line);background:var(--pitch-1, var(--pitch-2));}
   .stat-card .num{font-family:'Oswald',sans-serif;font-size:26px;font-weight:700;color:var(--gold);line-height:1.1;}
   .stat-card .lbl{font-size:11px;color:var(--chalk-dim);text-transform:uppercase;letter-spacing:.04em;margin-top:4px;}
   .bar-row{margin-bottom:12px;}
@@ -1196,6 +1212,90 @@ async function abrirEstadisticasPartido(partidoId){
   mostrarEstadisticasPartido();
 }
 
+// Resume una lista de estadisticas [{nombre, puntos, valor}] en los 4 numeros
+// de la tarjeta. Generico: busca por nombre, no depende de un catalogo fijo.
+function resumenNBADeStats(stats){
+  let puntos = 0, asistencias = 0, rebotes = 0, faltas = 0;
+  stats.forEach(s=>{
+    const nombre = (s.nombre||'').toLowerCase();
+    const valor = Number(s.valor)||0;
+    if(s.puntos>0) puntos += valor * s.puntos;
+    if(/asistencia/.test(nombre)) asistencias += valor;
+    if(/rebote/.test(nombre)) rebotes += valor;
+    if(/falta/.test(nombre)) faltas += valor;
+  });
+  return {puntos, asistencias, rebotes, faltas};
+}
+
+function fmtNBA(n){
+  const x = Number(n) || 0;
+  return Number.isInteger(x) ? String(x) : x.toFixed(1);
+}
+
+// Resumen de una jugadora leyendo lo que hay ahora mismo en sus campos
+// (guardado o recien escrito, todavia sin guardar).
+function resumenNBAJugadorAdmin(jugadorId, leerCampos){
+  const d = estadisticasPartidoActual;
+  const stats = d.tipos.filter(t=>t.nivel==='jugador').map(t=>{
+    const el = leerCampos ? document.querySelector('.est-jugador[data-jugador="'+jugadorId+'"][data-tipo="'+t.id+'"]') : null;
+    return { nombre: t.nombre, puntos: t.puntos, valor: el ? (parseFloat(el.value)||0) : valorGuardado(t.id, jugadorId) };
+  });
+  return resumenNBADeStats(stats);
+}
+
+function actualizarTarjetaNBAAdmin(jugadorId){
+  const r = resumenNBAJugadorAdmin(jugadorId, true);
+  [['pts', r.puntos], ['ast', r.asistencias], ['reb', r.rebotes], ['pf', r.faltas]].forEach(([k, v])=>{
+    const el = document.getElementById('nba-'+k+'-'+jugadorId);
+    if(el) el.textContent = fmtNBA(v);
+  });
+}
+
+// Toca la tarjeta -> se despliega el detalle de siempre (los campos editables).
+function toggleDetalleNBAAdmin(jugadorId){
+  const det = document.getElementById('nba-det-'+jugadorId);
+  const tog = document.getElementById('nba-tog-'+jugadorId);
+  if(!det) return;
+  const abrir = det.style.display === 'none';
+  det.style.display = abrir ? 'block' : 'none';
+  if(tog) tog.textContent = abrir ? 'Cerrar ▴' : 'Detalles ▾';
+}
+
+function renderTarjetasNBAAdmin(jugadores, porJugador){
+  // Orden alfabetico por alias / nombre corto
+  const orden = [...jugadores].sort((a,b)=>(a.nombreCorto||a.nombre).localeCompare(b.nombreCorto||b.nombre));
+  return `<div class="nba-cards-grid">` + orden.map(j=>{
+    const r = resumenNBAJugadorAdmin(j.id, false);
+    return `
+      <div class="nba-item">
+        <div class="nba-card" onclick="toggleDetalleNBAAdmin(${j.id})">
+          <div class="nba-card-foto">${j.fotoCarnet ? `<img src="data:image/jpeg;base64,${j.fotoCarnet}">` : '<div class="nba-card-foto-vacia">👤</div>'}</div>
+          <div class="nba-card-info">
+            <div class="nba-card-nombre">${esc(j.nombreCorto || j.nombre)}</div>
+            <div class="nba-card-stats">
+              <div class="nba-stat"><div class="nba-stat-num" id="nba-pts-${j.id}">${fmtNBA(r.puntos)}</div><div class="nba-stat-lbl">PTS</div></div>
+              <div class="nba-stat"><div class="nba-stat-num" id="nba-ast-${j.id}">${fmtNBA(r.asistencias)}</div><div class="nba-stat-lbl">AST</div></div>
+              <div class="nba-stat"><div class="nba-stat-num" id="nba-reb-${j.id}">${fmtNBA(r.rebotes)}</div><div class="nba-stat-lbl">REB</div></div>
+              <div class="nba-stat"><div class="nba-stat-num" id="nba-pf-${j.id}">${fmtNBA(r.faltas)}</div><div class="nba-stat-lbl">PF</div></div>
+            </div>
+          </div>
+          <span class="nba-card-toggle" id="nba-tog-${j.id}">Detalles ▾</span>
+        </div>
+        <div class="nba-detalle" id="nba-det-${j.id}" style="display:none">
+          <div class="fl-label" style="margin:8px 0">${esc(j.nombre)}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${porJugador.map(t=>`
+              <div style="flex:1;min-width:90px">
+                <label style="font-size:10px">${esc(t.nombre)}</label>
+                <input type="number" class="est-jugador" data-tipo="${t.id}" data-jugador="${j.id}" value="${valorGuardado(t.id, j.id)}" oninput="actualizarTarjetaNBAAdmin(${j.id})" style="margin-bottom:0">
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>`;
+  }).join('') + `</div>`;
+}
+
 function valorGuardado(tipoEstadisticaId, jugadorId){
   const v = estadisticasPartidoActual.valores.find(x => x.tipoEstadisticaId===tipoEstadisticaId && x.jugadorId===jugadorId);
   return v ? v.valor : 0;
@@ -1257,19 +1357,8 @@ function mostrarEstadisticasPartido(){
     ${porJugador.length>0 && d.jugadores.length>0 ? `
     <div class="card">
       <div class="card-title"><h3>Estadísticas por jugador</h3></div>
-      ${d.jugadores.map(j=>`
-        <div style="padding:10px 0;border-bottom:1px solid var(--line)">
-          <div class="fl-value" style="margin-bottom:8px">${esc(j.nombre)}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${porJugador.map(t=>`
-              <div style="flex:1;min-width:90px">
-                <label style="font-size:10px">${esc(t.nombre)}</label>
-                <input type="number" class="est-jugador" data-tipo="${t.id}" data-jugador="${j.id}" value="${valorGuardado(t.id, j.id)}" style="margin-bottom:0">
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `).join('')}
+      <p style="color:var(--chalk-dim);font-size:12px;margin:-4px 0 10px">Toca una tarjeta para ver y editar su detalle. Los números se actualizan mientras escribes; todo se guarda con el botón de abajo.</p>
+      ${renderTarjetasNBAAdmin(d.jugadores, porJugador)}
     </div>` : ''}
     ${d.jugadores.length===0 ? '<p style="color:var(--chalk-dim);font-size:13px">Nadie ha confirmado asistencia a este partido todavía, así que no hay a quién asignarle estadísticas por jugador. Las de equipo sí se pueden guardar igual.</p>' : ''}
 
