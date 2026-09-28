@@ -308,6 +308,7 @@ if ('serviceWorker' in navigator) {
         <button class="sm" id="btnSubtabCatEventos" onclick="cambiarSubtabParametros('cat_eventos')">🎒 Rubros de eventos</button>
         <button class="sm" id="btnSubtabDisciplinas" onclick="cambiarSubtabParametros('disciplinas')">🏅 Disciplinas y estadísticas</button>
         <button class="sm" id="btnSubtabPermisos" onclick="cambiarSubtabParametros('permisos')">🔐 Permisos por rol</button>
+        <button class="sm" id="btnSubtabNotificaciones" onclick="cambiarSubtabParametros('notificaciones')">🔔 Notificaciones</button>
       </div>
       <div id="parametrosList"><div class="spinner"></div></div>
     </div>
@@ -1551,7 +1552,10 @@ async function guardarCrearPartido(){
   if(eventoFechaSelect && eventoFechaSelect.value) body.eventoFechaId = parseInt(eventoFechaSelect.value);
   if(!body.hora || (!body.lugarId && !body.lugar)){ toast('Completa hora y lugar', true); return; }
   const res = await api('crear_partido', body);
-  if(res!==null){ toast('Partido creado y anunciado al grupo'); cerrarSheet(); cargarPartidos(); }
+  if(res!==null){
+    toast(res && res.anuncioOmitido ? 'Partido creado (WhatsApp desactivado: no se anunció al grupo)' : 'Partido creado y anunciado al grupo');
+    cerrarSheet(); cargarPartidos();
+  }
 }
 
 let buscarTimer = null;
@@ -2082,8 +2086,8 @@ let subtabParametrosActual = 'generales';
 
 function cambiarSubtabParametros(sub){
   subtabParametrosActual = sub;
-  ['generales','exentos','cat_multas','cat_relacion','cat_eventos','disciplinas','permisos'].forEach(s=>{
-    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion', cat_eventos:'CatEventos', disciplinas:'Disciplinas', permisos:'Permisos'}[s]);
+  ['generales','exentos','cat_multas','cat_relacion','cat_eventos','disciplinas','permisos','notificaciones'].forEach(s=>{
+    const btn = document.getElementById('btnSubtab' + {generales:'Generales', exentos:'Exentos', cat_multas:'CatMultas', cat_relacion:'CatRelacion', cat_eventos:'CatEventos', disciplinas:'Disciplinas', permisos:'Permisos', notificaciones:'Notificaciones'}[s]);
     if(btn) btn.classList.toggle('primary', s===sub);
   });
   if(sub==='generales') cargarParametros();
@@ -2093,6 +2097,63 @@ function cambiarSubtabParametros(sub){
   if(sub==='cat_eventos') cargarCatalogoEventos();
   if(sub==='disciplinas') cargarDisciplinas();
   if(sub==='permisos') cargarPermisosPantallas();
+  if(sub==='notificaciones') cargarNotificaciones();
+}
+
+/* ---------- Notificaciones a representantes: interruptores maestros ---------- */
+async function cargarNotificaciones(){
+  const list = document.getElementById('parametrosList');
+  list.innerHTML = '<div class="spinner"></div>';
+  const sw = await api('obtener_interruptores_notificaciones_admin');
+  if(sw===null) return;
+  mostrarNotificaciones(sw);
+}
+
+function tarjetaInterruptorNotif(canal, icono, titulo, activo, cubre){
+  return `
+    <div class="card" style="border-left:4px solid ${activo ? 'var(--green-ok)' : 'var(--red)'}">
+      <div class="card-title">
+        <h3>${icono} ${titulo}</h3>
+        <span class="badge ${activo ? 'confirmando' : 'cancelado'}">${activo ? 'ENCENDIDO' : 'APAGADO'}</span>
+      </div>
+      <p class="meta">${activo
+        ? 'Se están enviando. Apágalo para pausar TODO lo de abajo de un solo golpe.'
+        : 'Pausado: el sistema NO enviará nada de lo de abajo, ni lo actual ni lo que se agregue a futuro.'}</p>
+      <ul style="margin:8px 0 0 18px;padding:0;font-size:12px;color:var(--chalk-dim);line-height:1.5">${cubre.map(x=>`<li>${x}</li>`).join('')}</ul>
+      <button class="block ${activo ? 'danger' : 'primary'}" style="margin-top:12px" onclick="toggleNotificacionRepresentantes('${canal}', ${!activo})">${activo ? 'Apagar ' + titulo.toLowerCase() : 'Encender ' + titulo.toLowerCase()}</button>
+    </div>`;
+}
+
+function mostrarNotificaciones(sw){
+  document.getElementById('parametrosList').innerHTML = `
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:0">Interruptores maestros de los avisos automáticos del club. Cada canal se controla por separado y el cambio aplica al instante.</p>
+    ${tarjetaInterruptorNotif('push', '📲', 'Notificaciones push', sw.push, [
+      'Recordatorio de partido',
+      'Llegada / falta a los entrenamientos',
+      'Novedades del entrenador',
+      'Pagos y gastos de eventos (torneos)',
+      'Cualquier push a representantes que se agregue más adelante',
+    ])}
+    ${tarjetaInterruptorNotif('whatsapp', '💬', 'WhatsApp', sw.whatsapp, [
+      'Mensajes al grupo: nuevo partido, cambios, cancelación, partido finalizado y recordatorio',
+      'Lista de confirmados que se actualiza cuando alguien confirma o cancela desde la app',
+      'Resumen de multas y pendientes (al grupo y a cada jugador)',
+      'Recordatorio de pago a morosos',
+      'Reenvío del código QR de asistencia',
+      'Cualquier mensaje de WhatsApp que se agregue más adelante',
+    ])}
+    <div class="card">
+      <p class="meta" style="margin:0"><b>No se ven afectados:</b> los avisos que recibe el Admin y las respuestas del bot cuando un jugador escribe por WhatsApp (esas las maneja el flujo de n8n).</p>
+    </div>`;
+}
+
+async function toggleNotificacionRepresentantes(canal, activo){
+  const nombre = canal==='push' ? 'las notificaciones push' : 'los mensajes de WhatsApp';
+  if(!activo && !confirm('¿Apagar ' + nombre + ' a representantes? El sistema dejará de enviarlos hasta que lo vuelvas a encender.')) return;
+  const sw = await api('toggle_notificacion_representantes_admin', {canal, activo});
+  if(sw===null) return;
+  toast(activo ? 'Encendido' : 'Apagado');
+  mostrarNotificaciones(sw);
 }
 
 async function cargarCatalogoEventos(){
@@ -2423,7 +2484,7 @@ async function cargarParametros(){
       <button class="block" onclick="abrirSelectorTemaAdmin()">Cambiar estilo (oscuro / claro / del club)</button>
     </div>
     <div class="card" id="adminPushCard">
-      <div class="card-title"><h3>🔔 Notificaciones del Admin</h3></div>
+      <div class="card-title"><h3>🔔 Mis avisos (solo este dispositivo)</h3></div>
       <p class="meta" id="adminPushEstadoTexto">Revisando el estado...</p>
       <button class="primary block" id="adminPushBtn" style="margin-top:10px;display:none" onclick="activarNotificacionesAdmin()">Activar notificaciones</button>
     </div>
@@ -3186,7 +3247,12 @@ async function confirmarMarcarEnJuego(partidoId){
 async function confirmarRecordatorio(partidoId){
   if(!confirm('¿Enviar recordatorio con la lista actual al grupo de WhatsApp?')) return;
   const res = await api('enviar_recordatorio_app', {partidoId});
-  if(res!==null){ toast('Recordatorio enviado al grupo'); }
+  if(res!==null){
+    const partes = [];
+    partes.push('WhatsApp: ' + ({enviado:'enviado', desactivado:'desactivado', error:'con error'}[res.whatsapp] || '—'));
+    partes.push('Push: ' + ({enviado:'enviado', desactivado:'desactivado', sin_envio:'sin destinatarios'}[res.push] || '—'));
+    toast('Recordatorio → ' + partes.join(' · '));
+  }
 }
 
 let multasEnRevision = { partidoId: null, jugadores: [] };
@@ -3257,14 +3323,18 @@ async function enviarAJugadoresSeleccionados(){
   if(!confirm('¿Enviar WhatsApp y notificación push a ' + jugadorIds.length + ' jugador(es)?')) return;
   const res = await api('enviar_multas_jugadores_app', {partidoId: multasEnRevision.partidoId, jugadorIds});
   if(res===null) return;
-  toast('Enviado a ' + (res.enviados||jugadorIds.length) + ' jugador(es)');
+  toast(res.whatsappOmitido
+    ? 'Push enviado a ' + (res.enviados||jugadorIds.length) + ' jugador(es). WhatsApp NO se envió (desactivado en Parámetros → Notificaciones).'
+    : 'Enviado a ' + (res.enviados||jugadorIds.length) + ' jugador(es)');
 }
 
 async function enviarResumenGrupoMultas(){
   if(!confirm('¿Enviar el resumen completo de multas y pendientes al grupo de WhatsApp?')) return;
   const res = await api('enviar_resumen_multas_grupo_app', {partidoId: multasEnRevision.partidoId});
   if(res===null) return;
-  toast('Resumen enviado al grupo');
+  toast(res && res.whatsappOmitido
+    ? 'Multas aprobadas. El resumen NO se envió al grupo (WhatsApp desactivado en Parámetros → Notificaciones).'
+    : 'Resumen enviado al grupo');
   cerrarSheet();
   cargarPartidos();
 }
@@ -4545,7 +4615,7 @@ async function confirmarRecordatorioMorosos(){
   if(!dashboardCache || dashboardCache.total_morosos===0){ toast('No hay jugadores morosos ahora mismo', true); return; }
   if(!confirm('¿Enviar recordatorio de pago por WhatsApp a los ' + dashboardCache.total_morosos + ' jugadores morosos?')) return;
   const res = await api('enviar_recordatorio_morosos_app');
-  if(res!==null){ toast('Recordatorios enviados: ' + (res.enviados ?? 0)); }
+  if(res!==null){ toast('Recordatorios enviados: ' + (res.enviados ?? 0) + (res.total!==undefined && res.enviados<res.total ? ' de ' + res.total : '')); }
 }
 
 /* ---------- DEUDA DEL JUGADOR ---------- */

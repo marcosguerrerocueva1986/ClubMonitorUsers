@@ -51,12 +51,15 @@ async function avisarGrupo(pool, partidoId) {
               sport_control.lista_confirmados_partido(p.id) AS lista,
               (SELECT grupo_jid FROM sport_control.configuracion_club WHERE id = 1) AS grupo_jid,
               (SELECT instance_evolutionapi FROM sport_control.configuracion_club WHERE id = 1) AS instance_evolutionapi,
-              (SELECT evolution_api_base_url FROM sport_control.configuracion_club WHERE id = 1) AS evolution_api_base_url
+              (SELECT evolution_api_base_url FROM sport_control.configuracion_club WHERE id = 1) AS evolution_api_base_url,
+              (SELECT notif_whatsapp_representantes FROM sport_control.configuracion_club WHERE id = 1) AS notif_whatsapp_representantes
        FROM sport_control.partidos p WHERE p.id = $1`,
       [partidoId]
     );
     const p = info.rows[0];
     if (!p || !p.grupo_jid || !p.instance_evolutionapi || !p.evolution_api_base_url) return;
+    // Interruptor maestro de WhatsApp a representantes (Parametros -> Notificaciones).
+    if (p.notif_whatsapp_representantes === false) return;
 
     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     const d = new Date(p.fecha);

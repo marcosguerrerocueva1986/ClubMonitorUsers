@@ -114,16 +114,18 @@ async function enviarMultasJugadoresApp(pool, config, body) {
   const titulo = p.alias ? p.alias : ('Partido #' + partidoId);
 
   let enviados = 0;
+  let whatsappOmitido = false;
   for (const jugadorId of jugadorIds) {
     const j = jugadores.find((x) => Number(x.jugadorId) === Number(jugadorId));
     if (!j) continue;
     const lineas = j.items.map((it) => `• ${it.motivo}: $${it.monto}`);
     const texto = `⚠️ Hola ${j.nombre.split(' ')[0]}, tienes pendientes del partido *${titulo}* (${fechaCorta(p.fecha)}):\n\n${lineas.join('\n')}\n\nTotal: $${j.total.toFixed(2)}\n\nPor favor usa la app del club para registrar tu pago. ¡Gracias! ⚽`;
-    await enviarWhatsAppPrivado(config, j.telefono, texto);
+    const wa = await enviarWhatsAppPrivado(config, j.telefono, texto);
+    if (wa && wa.omitido) whatsappOmitido = true;
     await enviarPushPendiente(config, jugadorId, j.total);
     enviados++;
   }
-  return { success: true, data: { enviados } };
+  return { success: true, data: { enviados, whatsappOmitido } };
 }
 
 async function enviarResumenMultasGrupoApp(pool, config, body) {
@@ -134,8 +136,8 @@ async function enviarResumenMultasGrupoApp(pool, config, body) {
   const titulo = p.alias ? p.alias : ('Partido #' + partidoId);
 
   if (jugadores.length === 0) {
-    await enviarWhatsAppGrupo(config, `📢 *Resumen de pendientes: ${titulo}*\n${fechaCorta(p.fecha)}\n\n✅ No hay multas ni pendientes de invitados. ¡Todo en orden!`);
-    return { success: true };
+    const av = await enviarWhatsAppGrupo(config, `📢 *Resumen de pendientes: ${titulo}*\n${fechaCorta(p.fecha)}\n\n✅ No hay multas ni pendientes de invitados. ¡Todo en orden!`);
+    return { success: true, data: { whatsappOmitido: !!av.omitido } };
   }
 
   const bloques = jugadores.map((j) => {
@@ -145,9 +147,11 @@ async function enviarResumenMultasGrupoApp(pool, config, body) {
   const granTotal = jugadores.reduce((s, j) => s + j.total, 0);
   const texto = `📢 *Resumen de pendientes: ${titulo}*\n📅 ${fechaCorta(p.fecha)}\n\n${bloques.join('\n\n')}\n\n💰 Total general: $${granTotal.toFixed(2)}\n\nPor favor usen la app del club para registrar sus pagos. ¡Gracias! ⚽`;
 
-  await enviarWhatsAppGrupo(config, texto);
+  const aviso = await enviarWhatsAppGrupo(config, texto);
+  // Aprobar las multas es una accion de negocio: se hace aunque el
+  // interruptor de WhatsApp este apagado (solo se avisa que no se anuncio).
   await pool.query(`UPDATE sport_control.multas SET estado = 'aprobada', aprobada_en = NOW() WHERE partido_id = $1 AND estado = 'pendiente_aprobacion'`, [partidoId]);
-  return { success: true };
+  return { success: true, data: { whatsappOmitido: !!aviso.omitido } };
 }
 
 module.exports = { revisarMultasPartido, enviarMultasJugadoresApp, enviarResumenMultasGrupoApp };

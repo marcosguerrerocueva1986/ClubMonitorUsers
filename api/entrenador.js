@@ -9,6 +9,7 @@
 // club, sin necesidad de asignacion explicita.
 
 const { pesoDeTipo, valoracionPartido, valoracionEvento } = require('./_valoracion');
+const { enviarPushRepresentantes, representantesDeJugador } = require('./_notificaciones');
 const bcrypt = require('bcryptjs');
 const { getPool } = require('./_db');
 const { verDetallePartidoStatsJugador, verFotoPartidoAdmin, verHistorialTorneosJugadorEntrenador } = require('./jugador');
@@ -190,24 +191,11 @@ async function obtenerOCrearSesionDia(pool, entrenadorId, body) {
 
 async function enviarPushAsistencia(pool, jugadorId, asistio, sesionInfo) {
   try {
-    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
-    const c = cfg.rows[0];
-    if (!c || !c.onesignal_app_id) return;
-
     const jugador = await pool.query(`SELECT nombres FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
     const nombreJugador = jugador.rows[0] ? jugador.rows[0].nombres : 'Tu representado';
 
-    const representantes = await pool.query(
-      `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
-      [jugadorId]
-    );
-    if (representantes.rows.length === 0) return;
-
-    const filters = [];
-    representantes.rows.forEach((r, i) => {
-      if (i > 0) filters.push({ operator: 'OR' });
-      filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
-    });
+    const representanteIds = await representantesDeJugador(pool, jugadorId);
+    if (representanteIds.length === 0) return;
 
     // Los push no permiten controlar el color del texto (eso lo decide
     // el sistema operativo, no quien envia) -- se usa un emoji como
@@ -218,21 +206,7 @@ async function enviarPushAsistencia(pool, jugadorId, asistio, sesionInfo) {
       : '';
     const cuerpo = `${nombreJugador}${sesionInfo.grupo ? ' (' + sesionInfo.grupo + ')' : ''}${fechaHoraCorta ? ' · ' + fechaHoraCorta : ''}`;
 
-    await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
-      },
-      body: JSON.stringify({
-        app_id: c.onesignal_app_id,
-        filters,
-        target_channel: 'push',
-        headings: { en: titulo },
-        contents: { en: cuerpo },
-        url: c.sitio_url_representante || '',
-      }),
-    });
+    await enviarPushRepresentantes(pool, { representanteIds, titulo, cuerpo });
   } catch (e) {
     console.error('Push de asistencia falló (no bloquea el registro):', e);
   }
@@ -306,45 +280,17 @@ async function listarNovedadesJugador(pool, body) {
 
 async function enviarPushNovedadRepresentante(pool, jugadorId, tipo) {
   try {
-    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
-    const c = cfg.rows[0];
-    if (!c || !c.onesignal_app_id) return { enviado: false, motivo: 'Falta configurar onesignal_app_id en el club.' };
-
     const jugador = await pool.query(`SELECT nombres FROM sport_control.jugadores WHERE id = $1`, [jugadorId]);
     const nombreJugador = jugador.rows[0] ? jugador.rows[0].nombres : 'tu representado';
 
-    const representantes = await pool.query(
-      `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
-      [jugadorId]
-    );
-    if (representantes.rows.length === 0) return { enviado: false, motivo: 'Este jugador no tiene ningún representante vinculado.' };
+    const representanteIds = await representantesDeJugador(pool, jugadorId);
+    if (representanteIds.length === 0) return { enviado: false, motivo: 'Este jugador no tiene ningún representante vinculado.' };
 
-    // Filtro con "OR" entre todos los representantes vinculados -- un
-    // dispositivo puede quedar marcado con varios tags (incluso de
-    // distintos roles a la vez), asi que esto le llega a cada uno
-    // independientemente de que mas tenga marcado ese dispositivo.
-    const filters = [];
-    representantes.rows.forEach((r, i) => {
-      if (i > 0) filters.push({ operator: 'OR' });
-      filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
+    return await enviarPushRepresentantes(pool, {
+      representanteIds,
+      titulo: '📋 Nueva novedad de ' + nombreJugador,
+      cuerpo: `El entrenador registró una novedad (${tipo}). Toca para ver el detalle.`,
     });
-    const resp = await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
-      },
-      body: JSON.stringify({
-        app_id: c.onesignal_app_id,
-        filters,
-        target_channel: 'push',
-        headings: { en: '📋 Nueva novedad de ' + nombreJugador },
-        contents: { en: `El entrenador registró una novedad (${tipo}). Toca para ver el detalle.` },
-        url: c.sitio_url_representante || '',
-      }),
-    });
-    const data = await resp.json();
-    return { enviado: true, statusHttp: resp.status, respuestaOneSignal: data, representantesTag: representantes.rows.map(r => r.representante_id) };
   } catch (e) {
     return { enviado: false, motivo: 'Excepción: ' + e.message };
   }

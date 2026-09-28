@@ -8,6 +8,7 @@
 // propias 3 funciones al final de este archivo (tiene un campo extra
 // 'tipo' que no encaja en el CRUD generico de _admin_exentos_catalogos.js).
 
+const { enviarPushRepresentantes, representantesDeJugador } = require('./_notificaciones');
 async function crearEvento(pool, body) {
   const { nombre, descripcion, lugar, fechaInicio, fechaFin } = body;
   if (!nombre) return { success: false, error: 'El evento necesita un nombre.' };
@@ -186,15 +187,8 @@ async function quitarCuotaJugador(pool, body) {
 
 async function enviarPushMovimientoRepresentante(pool, jugadorId, monto, tipoDireccion, tipoNombre, eventoNombre) {
   try {
-    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
-    const c = cfg.rows[0];
-    if (!c || !c.onesignal_app_id) return;
-
-    const representantes = await pool.query(
-      `SELECT representante_id FROM sport_control.jugador_representante WHERE jugador_id = $1`,
-      [jugadorId]
-    );
-    if (representantes.rows.length === 0) return;
+    const representanteIds = await representantesDeJugador(pool, jugadorId);
+    if (representanteIds.length === 0) return;
 
     // Mensaje corto pero completo: monto, si fue pago o cargo, y el
     // evento -- pensado para caber comodo en una notificacion sin
@@ -204,7 +198,7 @@ async function enviarPushMovimientoRepresentante(pool, jugadorId, monto, tipoDir
     const montoFmt = Number(monto).toFixed(2);
     const cuerpo = `${esPago ? 'Se registró un pago de' : 'Se registró un cargo de'} $${montoFmt} (${tipoNombre}) en ${eventoNombre}.`;
 
-    await enviarPushPorRepresentantes(c, representantes.rows.map(r => r.representante_id), titulo, cuerpo);
+    await enviarPushRepresentantes(pool, { representanteIds, titulo, cuerpo });
   } catch (e) {
     console.error('Push de movimiento de evento falló (no bloquea el registro):', e);
   }
@@ -216,10 +210,6 @@ async function enviarPushMovimientoRepresentante(pool, jugadorId, monto, tipoDir
 // evento_cuota_jugador, sin importar si el monto de esa cuota es 0.
 async function enviarPushMovimientoGeneralRepresentantes(pool, eventoId, monto, tipoDireccion, tipoNombre, eventoNombre) {
   try {
-    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
-    const c = cfg.rows[0];
-    if (!c || !c.onesignal_app_id) return;
-
     const representantes = await pool.query(
       `SELECT DISTINCT jr.representante_id
        FROM sport_control.evento_cuota_jugador ecj
@@ -234,33 +224,10 @@ async function enviarPushMovimientoGeneralRepresentantes(pool, eventoId, monto, 
     const montoFmt = Number(monto).toFixed(2);
     const cuerpo = `${eventoNombre}: ${tipoNombre} — $${montoFmt}`;
 
-    await enviarPushPorRepresentantes(c, representantes.rows.map(r => r.representante_id), titulo, cuerpo);
+    await enviarPushRepresentantes(pool, { representanteIds: representantes.rows.map(r => r.representante_id), titulo, cuerpo });
   } catch (e) {
     console.error('Push general de movimiento de evento falló (no bloquea el registro):', e);
   }
-}
-
-async function enviarPushPorRepresentantes(config, representanteIds, titulo, cuerpo) {
-  const filters = [];
-  representanteIds.forEach((id, i) => {
-    if (i > 0) filters.push({ operator: 'OR' });
-    filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(id) });
-  });
-  await fetch('https://onesignal.com/api/v1/notifications', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}`,
-    },
-    body: JSON.stringify({
-      app_id: config.onesignal_app_id,
-      filters,
-      target_channel: 'push',
-      headings: { en: titulo },
-      contents: { en: cuerpo },
-      url: config.sitio_url_representante || '',
-    }),
-  });
 }
 
 async function registrarMovimientoEvento(pool, body) {

@@ -11,6 +11,7 @@
 // contra configuracion_club.clave_admin_app en CADA peticion.
 
 const { getPool } = require('./_db');
+const { whatsappRepresentantesActivo, resultadoWhatsAppApagado } = require('./_notificaciones');
 
 // ============================================================
 // Config compartida (clave, grupo, instancia de WhatsApp, multas)
@@ -19,7 +20,8 @@ async function cargarConfig(pool) {
   const r = await pool.query(
     `SELECT clave_admin_app, grupo_jid, valor_multa_inasistencia, valor_multa_invitado_no_show, instance_evolutionapi,
             tipo_multa_inasistencia_id, tipo_multa_invitado_id,
-            evolution_api_base_url, whatsapp_checkin_numero, onesignal_app_id, sitio_url_jugador, sitio_url_admin, nombre_club
+            evolution_api_base_url, whatsapp_checkin_numero, onesignal_app_id, sitio_url_jugador, sitio_url_admin, nombre_club,
+            notif_push_representantes, notif_whatsapp_representantes
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return r.rows[0];
@@ -32,6 +34,7 @@ function fechaCorta(f) {
 }
 
 async function enviarWhatsAppGrupo(config, texto) {
+  if (!whatsappRepresentantesActivo(config)) return resultadoWhatsAppApagado();
   if (!config.grupo_jid) return { enviado: false, razon: 'Falta grupo_jid en configuracion_club' };
   if (!config.instance_evolutionapi) return { enviado: false, razon: 'Falta instance_evolutionapi en configuracion_club' };
   try {
@@ -55,26 +58,32 @@ async function enviarWhatsAppGrupo(config, texto) {
 }
 
 async function enviarWhatsAppPrivado(config, numero, texto) {
+  if (!whatsappRepresentantesActivo(config)) return resultadoWhatsAppApagado();
   try {
-    await fetch(`${config.evolution_api_base_url}/message/sendText/${config.instance_evolutionapi}`, {
+    const resp = await fetch(`${config.evolution_api_base_url}/message/sendText/${config.instance_evolutionapi}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: numero, text: texto }),
     });
+    return { enviado: resp.ok !== false, status: resp.status };
   } catch (e) {
     console.error('Envio privado fallo:', e);
+    return { enviado: false, razon: String(e && e.message || e) };
   }
 }
 
 async function enviarWhatsAppMedia(config, numero, mediaUrl, caption) {
+  if (!whatsappRepresentantesActivo(config)) return resultadoWhatsAppApagado();
   try {
-    await fetch(`${config.evolution_api_base_url}/message/sendMedia/${config.instance_evolutionapi}`, {
+    const resp = await fetch(`${config.evolution_api_base_url}/message/sendMedia/${config.instance_evolutionapi}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY },
       body: JSON.stringify({ number: numero, mediatype: 'image', media: mediaUrl, caption }),
     });
+    return { enviado: resp.ok !== false, status: resp.status };
   } catch (e) {
     console.error('Envio de media fallo:', e);
+    return { enviado: false, razon: String(e && e.message || e) };
   }
 }
 
@@ -142,8 +151,8 @@ async function crearPartido(pool, config, body) {
   );
   const p = ins.rows[0];
   const titulo = p.alias ? p.alias : ('Partido #' + p.id);
-  await enviarWhatsAppGrupo(config, `📅 Nuevo partido: *${titulo}*\n📅 ${fechaCorta(p.fecha)}  🕐 ${p.hora}\n📍 ${p.lugar}\n\nResponde *voy* o *no voy* para confirmar tu asistencia.`);
-  return { success: true, data: p };
+  const aviso = await enviarWhatsAppGrupo(config, `📅 Nuevo partido: *${titulo}*\n📅 ${fechaCorta(p.fecha)}  🕐 ${p.hora}\n📍 ${p.lugar}\n\nResponde *voy* o *no voy* para confirmar tu asistencia.`);
+  return { success: true, data: { ...p, anunciado: !!aviso.enviado, anuncioOmitido: !!aviso.omitido } };
 }
 
 async function cancelarPartido(pool, config, body) {

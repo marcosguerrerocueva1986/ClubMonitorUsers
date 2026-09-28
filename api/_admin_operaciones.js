@@ -1,5 +1,6 @@
 // api/_admin_operaciones.js
 
+const { enviarPushRepresentantes, whatsappRepresentantesActivo, MOTIVO_WHATSAPP_APAGADO, obtenerInterruptores } = require('./_notificaciones');
 async function obtenerParametros(pool) {
   const r = await pool.query(
     `SELECT (SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1) AS cuota_mensual,
@@ -9,7 +10,7 @@ async function obtenerParametros(pool) {
             to_char(fecha_inicio_mensualidades, 'DD/MM/YYYY') AS fecha_inicio_mensualidades,
             eventos_habilitado_jugador, representantes_habilitado, icono_deporte,
             mis_exentos_habilitado_jugador, mi_cuenta_habilitado_jugador, movimientos_evento_solo_propios,
-            google_maps_api_key
+            google_maps_api_key, notif_push_representantes, notif_whatsapp_representantes
      FROM sport_control.configuracion_club WHERE id = 1`
   );
   return { success: true, data: r.rows[0] };
@@ -134,7 +135,8 @@ async function reenviarQrJugador(pool, config, body) {
   const waLink = `https://wa.me/${config.whatsapp_checkin_numero}?text=ASISTIO-` + row.token;
   const mediaUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=20&ecc=M&data=' + encodeURIComponent(waLink);
   const { enviarWhatsAppMedia } = require('./_admin_partidos');
-  await enviarWhatsAppMedia(config, row.telefono, mediaUrl, 'Tu codigo de asistencia para el partido.');
+  const envio = await enviarWhatsAppMedia(config, row.telefono, mediaUrl, 'Tu codigo de asistencia para el partido.');
+  if (envio && envio.omitido) return { success: false, error: MOTIVO_WHATSAPP_APAGADO };
   return { success: true };
 }
 
@@ -235,26 +237,25 @@ async function enviarRecordatorioPartido(pool, config, body) {
     + '📍 ' + (p.lugar || '')
     + linkMaps
     + '\n\nConfirmados (' + lista.length + '):\n\n' + (lineas.length > 0 ? lineas.join('\n') : 'Nadie confirmado todavía.');
-  const diagnostico = await enviarWhatsAppGrupo(config, texto);
-  if (!diagnostico.enviado) {
-    // Temporal: devolvemos el motivo real en vez de fallar en silencio,
-    // para diagnosticar por que no llegaba el mensaje.
-    return { success: false, error: 'No se pudo enviar al grupo: ' + JSON.stringify(diagnostico) };
+  // Cada canal es independiente: si uno esta apagado o falla, el otro igual sale.
+  const wa = await enviarWhatsAppGrupo(config, texto);
+  const push = await enviarPushRecordatorioPartido(pool, p, titulo);
+
+  if (!wa.enviado && !push.enviado) {
+    if (wa.omitido && push.omitido) return { success: false, error: 'Los dos interruptores están apagados (Parámetros → Notificaciones): no se envió nada.' };
+    return { success: false, error: 'No se pudo enviar. WhatsApp: ' + (wa.omitido ? 'desactivado' : JSON.stringify(wa)) + ' · Push: ' + (push.omitido ? 'desactivado' : (push.motivo || 'falló')) };
   }
-
-  await enviarPushRecordatorioPartido(pool, p, titulo);
-
-  return { success: true };
+  return { success: true, data: {
+    whatsapp: wa.enviado ? 'enviado' : (wa.omitido ? 'desactivado' : 'error'),
+    push: push.enviado ? 'enviado' : (push.omitido ? 'desactivado' : 'sin_envio'),
+    detalleWhatsApp: wa.enviado ? null : wa,
+  } };
 }
 
 // Push corto a los representantes de los jugadores confirmados -- no
 // bloquea el resultado si falla, igual que el resto de push del sistema.
 async function enviarPushRecordatorioPartido(pool, p, titulo) {
   try {
-    const cfg = await pool.query(`SELECT onesignal_app_id, sitio_url_representante FROM sport_control.configuracion_club WHERE id = 1`);
-    const c = cfg.rows[0];
-    if (!c || !c.onesignal_app_id) return;
-
     const representantes = await pool.query(
       `SELECT DISTINCT jr.representante_id
        FROM sport_control.confirmaciones_partido cp
@@ -262,31 +263,16 @@ async function enviarPushRecordatorioPartido(pool, p, titulo) {
        WHERE cp.partido_id = $1 AND cp.estado = 'confirmado'`,
       [p.id]
     );
-    if (representantes.rows.length === 0) return;
-
-    const filters = [];
-    representantes.rows.forEach((r, i) => {
-      if (i > 0) filters.push({ operator: 'OR' });
-      filters.push({ field: 'tag', key: 'representante_id', relation: '=', value: String(r.representante_id) });
-    });
-
     const { fechaCorta } = require('./_admin_partidos');
     const cuerpo = `${fechaCorta(p.fecha)} · ${p.hora ? p.hora.slice(0, 5) : ''} · ${p.lugar || ''}`;
-
-    await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${process.env.ONESIGNAL_REST_API_KEY}` },
-      body: JSON.stringify({
-        app_id: c.onesignal_app_id,
-        filters,
-        target_channel: 'push',
-        headings: { en: `⏰ Recordatorio: ${titulo}` },
-        contents: { en: cuerpo },
-        url: c.sitio_url_representante || '',
-      }),
+    return await enviarPushRepresentantes(pool, {
+      representanteIds: representantes.rows.map((r) => r.representante_id),
+      titulo: `⏰ Recordatorio: ${titulo}`,
+      cuerpo,
     });
   } catch (e) {
     console.error('Push de recordatorio de partido falló (no bloquea el envío por WhatsApp):', e);
+    return { enviado: false, motivo: 'Excepción: ' + e.message };
   }
 }
 
@@ -296,12 +282,15 @@ async function enviarRecordatorioMorosos(pool, config) {
             sport_control.meses_atraso(j.id) * COALESCE((SELECT valor FROM sport_control.catalogo_cobros WHERE tipo = 'mensualidad' AND activo = true ORDER BY prioridad ASC LIMIT 1), 0) AS deuda
      FROM sport_control.jugadores j WHERE j.estado = 'activo' AND sport_control.meses_atraso(j.id) > (SELECT meses_maximo_atraso FROM sport_control.configuracion_club WHERE id = 1) AND NOT j.autorizado_excepcion_pago`
   );
+  if (!whatsappRepresentantesActivo(config)) return { success: false, error: MOTIVO_WHATSAPP_APAGADO };
   const { enviarWhatsAppPrivado } = require('./_admin_partidos');
+  let enviados = 0;
   for (const j of r.rows) {
     const texto = `⚠️ Hola ${j.nombres}, este es un recordatorio de pago. Tienes ${j.meses_atraso} mes(es) de mensualidad pendiente (aprox. $${j.deuda}). Por favor regulariza tu pago cuando puedas. ¡Gracias! ⚽`;
-    await enviarWhatsAppPrivado(config, j.telefono, texto);
+    const res = await enviarWhatsAppPrivado(config, j.telefono, texto);
+    if (res && res.enviado) enviados++;
   }
-  return { success: true, data: { enviados: r.rows.length } };
+  return { success: true, data: { enviados, total: r.rows.length } };
 }
 
 async function marcarPagoInvitado(pool, body) {
@@ -317,6 +306,18 @@ async function marcarMultaPagada(pool, body) {
 async function toggleEventosJugador(pool, body) {
   await pool.query(`UPDATE sport_control.configuracion_club SET eventos_habilitado_jugador = $1 WHERE id = 1`, [!!body.habilitado]);
   return { success: true };
+}
+
+// Interruptores maestros de notificaciones a representantes (ver _notificaciones.js)
+async function obtenerInterruptoresNotificaciones(pool) {
+  return { success: true, data: await obtenerInterruptores(pool) };
+}
+
+async function toggleNotificacionRepresentantes(pool, body) {
+  const columna = { push: 'notif_push_representantes', whatsapp: 'notif_whatsapp_representantes' }[body.canal];
+  if (!columna) return { success: false, error: 'Canal inválido.' };
+  await pool.query(`UPDATE sport_control.configuracion_club SET ${columna} = $1 WHERE id = 1`, [!!body.activo]);
+  return { success: true, data: await obtenerInterruptores(pool) };
 }
 
 async function toggleRepresentantesClub(pool, body) {
@@ -368,4 +369,5 @@ module.exports = {
   toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios,
   listarPermisosPantallas, togglePermisoPantalla, diagnosticoCatalogoCobros,
   listarVigenciasCobro, agregarVigenciaCobro, eliminarVigenciaCobro,
+  obtenerInterruptoresNotificaciones, toggleNotificacionRepresentantes,
 };
