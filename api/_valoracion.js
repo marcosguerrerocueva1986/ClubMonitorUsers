@@ -15,6 +15,7 @@
 // el historico de un grupo) debe pasar por aqui -- una sola formula.
 // ============================================================
 
+const { minutosJugadosPartido } = require('./_reloj_partido');
 function pesoDeTipo(t) {
   if (t.pesoValoracion !== null && t.pesoValoracion !== undefined) return Number(t.pesoValoracion);
   return Number(t.puntos) > 0 ? Number(t.puntos) : 0;
@@ -42,7 +43,7 @@ const SQL_SELECT_TIPO = `te.nombre, te.puntos, te.peso_valoracion AS "pesoValora
 
 // Arma el ranking a partir de filas ya agrupadas por jugador y tipo:
 // [{ jugadorId, nombre, puntos, pesoValoracion, valor }]
-async function armarRanking(pool, filas, partidosPorJugador) {
+async function armarRanking(pool, filas, partidosPorJugador, minutosMap) {
   const porJugador = new Map();
   for (const f of filas) {
     if (!porJugador.has(f.jugadorId)) porJugador.set(f.jugadorId, []);
@@ -61,6 +62,7 @@ async function armarRanking(pool, filas, partidosPorJugador) {
   const ranking = info.rows.map((j) => {
     const r = calcularValoracion(porJugador.get(j.id) || []);
     const partidos = partidosPorJugador ? (partidosPorJugador.get(j.id) || 0) : null;
+    const segundos = minutosMap ? (minutosMap.get(j.id) || 0) : null;
     return {
       jugadorId: j.id,
       nombre: j.nombre,
@@ -72,6 +74,8 @@ async function armarRanking(pool, filas, partidosPorJugador) {
       partidosJugados: partidos,
       promedio: partidos ? r.valoracion / partidos : null,
       desglose: r.desglose,
+      minutosJugados: segundos === null ? null : Math.round(segundos / 60),
+      minutosFormato: segundos === null ? null : `${Math.floor(segundos / 60)}:${String(Math.floor(segundos % 60)).padStart(2, '0')}`,
     };
   });
   ranking.sort((a, b) => b.valoracion - a.valoracion || a.nombreCorto.localeCompare(b.nombreCorto));
@@ -87,7 +91,8 @@ async function valoracionPartido(pool, partidoId) {
      WHERE pe.partido_id = $1 AND pe.jugador_id IS NOT NULL AND te.nivel = 'jugador'`,
     [partidoId]
   );
-  return armarRanking(pool, f.rows, null);
+  const minutosMap = await minutosJugadosPartido(pool, partidoId);
+  return armarRanking(pool, f.rows, null, minutosMap);
 }
 
 // ---- Un torneo (evento), opcionalmente solo un grupo ----

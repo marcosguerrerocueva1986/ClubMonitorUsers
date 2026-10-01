@@ -165,6 +165,16 @@ if ('serviceWorker' in navigator) {
   .cap-btn-accion.falta{border-color:var(--red);color:var(--red);}
   .cap-btn-accion.activa{border-color:var(--gold);background:rgba(255,210,63,.12);color:var(--gold);}
   .cap-sync{font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;background:var(--pitch-3);color:var(--chalk-dim);}
+  .cap-reloj-card{background:var(--pitch-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+  .cap-reloj-tiempo{font-family:'Oswald',sans-serif;font-size:30px;font-weight:700;letter-spacing:.02em;min-width:92px;}
+  .cap-reloj-tiempo.corriendo{color:var(--green-ok);}
+  .cap-reloj-periodo{font-size:12px;color:var(--chalk-dim);text-align:center;}
+  .cap-reloj-periodo b{display:block;font-size:15px;color:var(--chalk);}
+  .cap-reloj-botones{display:flex;gap:6px;flex:1;justify-content:flex-end;}
+  .cap-reloj-botones button{padding:8px 10px;}
+  .cap-en-cancha-dot{position:absolute;top:-6px;left:-6px;width:14px;height:14px;border-radius:50%;background:var(--pitch-3);border:2px solid var(--line);}
+  .cap-en-cancha-dot.activo{background:var(--green-ok);border-color:var(--green-ok);}
+  .cap-btn-jugadora.en-banca{opacity:.55;}
   .cap-sync-alerta{background:rgba(232,93,76,.15);color:var(--red);}
   .cap-rival-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
   .cap-rival-grid.modo-edicion-activo{outline:2px dashed var(--gold);outline-offset:6px;border-radius:10px;}
@@ -1610,6 +1620,7 @@ function renderRankingValoracionHtml(ranking, ctx, usarPromedio){
       </div>
       <div class="graf-desglose" id="dv-${ctx}-${i}" style="display:none">
         <div class="graf-desglose-fila"><span>Puntos anotados</span><b>${fmtValoracion(j.puntos)}</b></div>
+        ${j.minutosFormato ? `<div class="graf-desglose-fila"><span>Minutos jugados</span><b>${j.minutosFormato}</b></div>` : ''}
         ${(j.desglose||[]).map(d=>`
           <div class="graf-desglose-fila"><span>${esc(d.nombre)} · ${d.valor} × ${d.peso>0?'+':''}${d.peso}</span><b style="color:${d.aporte>=0?'var(--green-ok)':'var(--red)'}">${d.aporte>0?'+':''}${fmtValoracion(d.aporte)}</b></div>
         `).join('')}
@@ -3589,7 +3600,18 @@ function renderCapturaPartido(cont){
       <span style="color:var(--chalk-dim);flex:1">${esc(p.alias||'Partido')}</span>
       <span id="capSyncEstado" class="cap-sync" style="display:none"></span>
       <button class="sm" id="btnModoEdicionJugadoras" onclick="toggleModoEdicionJugadoras()">✏️</button>
-      <button class="sm" onclick="mostrarCapturaPartido(document.getElementById('pantallasContainer'))">🔄</button>
+      <button class="sm" id="btnModoCambios" onclick="toggleModoCambiosCaptura()">🔄 Cambios</button>
+      <button class="sm" onclick="mostrarCapturaPartido(document.getElementById('pantallasContainer'))">↻</button>
+    </div>
+
+    <div class="cap-reloj-card">
+      <div class="cap-reloj-tiempo ${d.reloj.corriendo?'corriendo':''}" id="capRelojTiempo">${formatearRelojMMSS(d.reloj.segundosTranscurridos)}</div>
+      <div class="cap-reloj-periodo">Período<b id="capRelojPeriodo">${d.reloj.periodo}</b></div>
+      <div class="cap-reloj-botones">
+        <button class="sm" onclick="avanzarPeriodoCaptura()">+1 Periodo</button>
+        <button class="sm" onclick="abrirAjusteReloj()">✏️</button>
+        <button class="sm primary" id="btnRelojPlayPausa" onclick="toggleRelojCaptura()">${d.reloj.corriendo?'⏸️ Pausar':'▶️ Iniciar'}</button>
+      </div>
     </div>
 
     <div class="cap-marcador">
@@ -3633,7 +3655,8 @@ function renderCapturaPartido(cont){
         <div class="cap-panel-title">2. Toca a la jugadora</div>
         <div class="cap-jugadoras" id="capJugadorasGrid">
           ${d.jugadores.map(j=>`
-            <button class="cap-btn-jugadora" onclick='registrarAccionJugadora(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")}, ${JSON.stringify(j.nombreCorto).replace(/"/g,"&quot;")}, ${JSON.stringify(j.numeroCamiseta||'').replace(/"/g,"&quot;")})'>
+            <button class="cap-btn-jugadora ${j.enCancha?'':'en-banca'}" id="cap-jug-${j.id}" onclick='tocarJugadoraCaptura(${j.id}, ${JSON.stringify(j.nombres).replace(/"/g,"&quot;")}, ${JSON.stringify(j.nombreCorto).replace(/"/g,"&quot;")}, ${JSON.stringify(j.numeroCamiseta||'').replace(/"/g,"&quot;")})'>
+              <span class="cap-en-cancha-dot ${j.enCancha?'activo':''}" id="cancha-dot-${j.id}" title="En cancha"></span>
               <span class="cap-badge-faltas" id="faltas-${j.id}" style="display:none">0</span>
               <span class="num">#${esc(j.numeroCamiseta||'—')}</span><span class="nom">${esc(j.nombreCorto)}</span>
             </button>
@@ -3644,6 +3667,13 @@ function renderCapturaPartido(cont){
     </div>
 
     ${renderRivalFaltasHtml()}
+
+    <div class="cap-panel" style="margin-top:8px">
+      <div class="cap-panel-title">Cambios (entradas / salidas)</div>
+      <div id="capCambiosLog" class="cap-log">
+        ${renderCambiosLogHtml(d.cambiosLog)}
+      </div>
+    </div>
 
     <div class="cap-panel" style="margin-top:8px">
       <div class="cap-panel-title">Últimos eventos</div>
@@ -3660,6 +3690,7 @@ function renderCapturaPartido(cont){
   actualizarBadgesFaltas();
   pintarRivalFaltas();
   actualizarIndicadorCola();
+  iniciarTicRelojCaptura();
 }
 
 // IDs de tipos de estadistica que cuentan como "falta" para este
@@ -3790,6 +3821,176 @@ function toggleModoEdicionJugadoras(){
   if(btn) btn.classList.toggle('primary', MODO_EDICION_JUGADORAS);
   ['capJugadorasGrid','capRivalGrid'].forEach(id=>{ const g = document.getElementById(id); if(g) g.classList.toggle('modo-edicion-activo', MODO_EDICION_JUGADORAS); });
   toast(MODO_EDICION_JUGADORAS ? 'Modo edición: toca una jugadora para corregirla, o un número rival para restarle una falta' : 'Modo edición desactivado');
+}
+
+/* ============================================================
+   RELOJ DE JUEGO -- cronometro que SUMA (no cuenta regresiva).
+   Se dibuja al vuelo en el celular con un setInterval; el servidor
+   solo se entera cuando se Inicia, Pausa o se ajusta a mano.
+   ============================================================ */
+let TIC_RELOJ_INTERVALO = null;
+
+function formatearRelojMMSS(segundosTotales){
+  const s = Math.max(0, Math.floor(segundosTotales||0));
+  const mm = Math.floor(s/60), ss = s%60;
+  return String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+}
+
+function segundosRelojAhora(){
+  const r = CAPTURA_DATA.reloj;
+  if(!r) return 0;
+  if(!r.corriendo) return r.segundosTranscurridos;
+  const transcurridoDesdeAncla = (Date.now() - r.anclaMs) / 1000;
+  return r.segundosTranscurridos + transcurridoDesdeAncla;
+}
+
+function pintarRelojCaptura(){
+  const el = document.getElementById('capRelojTiempo');
+  if(el) el.textContent = formatearRelojMMSS(segundosRelojAhora());
+}
+
+function iniciarTicRelojCaptura(){
+  detenerTicRelojCaptura();
+  // ancla de tiempo REAL para calcular, en el celular, cuanto ha pasado
+  // desde que se cargo el reloj -- asi no hay que preguntarle al
+  // servidor cada segundo.
+  if(CAPTURA_DATA.reloj) CAPTURA_DATA.reloj.anclaMs = Date.now();
+  pintarRelojCaptura();
+  TIC_RELOJ_INTERVALO = setInterval(pintarRelojCaptura, 1000);
+}
+
+function detenerTicRelojCaptura(){
+  if(TIC_RELOJ_INTERVALO){ clearInterval(TIC_RELOJ_INTERVALO); TIC_RELOJ_INTERVALO = null; }
+}
+
+async function toggleRelojCaptura(){
+  const corriendoAntes = CAPTURA_DATA.reloj.corriendo;
+  const accion = corriendoAntes ? 'pausar_reloj_partido_planillero' : 'iniciar_reloj_partido_planillero';
+  // Optimista: cambia el boton y el color de inmediato.
+  CAPTURA_DATA.reloj.corriendo = !corriendoAntes;
+  if(!corriendoAntes) CAPTURA_DATA.reloj.anclaMs = Date.now();
+  else CAPTURA_DATA.reloj.segundosTranscurridos = segundosRelojAhora();
+  pintarBotonReloj();
+  iniciarTicRelojCaptura();
+  const res = await apiPlan(accion, {partidoId: PARTIDO_CAPTURA_ACTUAL});
+  if(res===null){
+    // revertir si fallo
+    CAPTURA_DATA.reloj.corriendo = corriendoAntes;
+    pintarBotonReloj();
+    iniciarTicRelojCaptura();
+    return;
+  }
+  CAPTURA_DATA.reloj.segundosTranscurridos = res.segundosTranscurridos;
+  CAPTURA_DATA.reloj.anclaMs = Date.now();
+  CAPTURA_DATA.reloj.periodo = res.periodo;
+  pintarBotonReloj();
+}
+
+function pintarBotonReloj(){
+  const btn = document.getElementById('btnRelojPlayPausa');
+  const tiempo = document.getElementById('capRelojTiempo');
+  if(btn) btn.textContent = CAPTURA_DATA.reloj.corriendo ? '⏸️ Pausar' : '▶️ Iniciar';
+  if(tiempo) tiempo.classList.toggle('corriendo', CAPTURA_DATA.reloj.corriendo);
+}
+
+async function avanzarPeriodoCaptura(){
+  const res = await apiPlan('avanzar_periodo_partido_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
+  if(res===null) return;
+  CAPTURA_DATA.reloj.periodo = res.periodo;
+  const el = document.getElementById('capRelojPeriodo'); if(el) el.textContent = res.periodo;
+  toast('Período '+res.periodo);
+}
+
+function abrirAjusteReloj(){
+  const actual = formatearRelojMMSS(segundosRelojAhora());
+  const html = `
+    <div class="sheet-head"><h2>Ajustar reloj</h2><button class="sheet-close" onclick="cerrarSheet()">✕</button></div>
+    <p style="color:var(--chalk-dim);font-size:13px;margin-top:-6px">Si hay jugadoras en cancha, sus minutos ya ganados hasta ahora no se pierden.</p>
+    <label>Tiempo (MM:SS)</label>
+    <input id="ajRelojTiempo" value="${actual}" placeholder="08:30">
+    <label>Período</label>
+    <input id="ajRelojPeriodo" type="number" min="1" value="${CAPTURA_DATA.reloj.periodo}">
+    <button class="primary block" style="margin-top:16px" onclick="guardarAjusteReloj()">Guardar</button>
+  `;
+  abrirSheet(html);
+}
+
+async function guardarAjusteReloj(){
+  const txt = document.getElementById('ajRelojTiempo').value.trim();
+  const m = txt.match(/^(\d{1,3}):([0-5]?\d)$/);
+  if(!m){ toast('Formato inválido. Usa MM:SS, ej: 08:30', true); return; }
+  const segundos = parseInt(m[1])*60 + parseInt(m[2]);
+  const periodo = parseInt(document.getElementById('ajRelojPeriodo').value) || 1;
+  const res = await apiPlan('ajustar_reloj_partido_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL, segundos, periodo});
+  if(res===null) return;
+  CAPTURA_DATA.reloj = Object.assign(CAPTURA_DATA.reloj||{}, res, {anclaMs: Date.now()});
+  const elP = document.getElementById('capRelojPeriodo'); if(elP) elP.textContent = res.periodo;
+  pintarBotonReloj();
+  pintarRelojCaptura();
+  toast('Reloj ajustado');
+  cerrarSheet();
+}
+
+/* ---------- Cambios de jugadoras (cancha / banca) ---------- */
+let MODO_CAMBIOS_CAPTURA = false;
+
+function toggleModoCambiosCaptura(){
+  MODO_CAMBIOS_CAPTURA = !MODO_CAMBIOS_CAPTURA;
+  const btn = document.getElementById('btnModoCambios');
+  if(btn) btn.classList.toggle('primary', MODO_CAMBIOS_CAPTURA);
+  toast(MODO_CAMBIOS_CAPTURA ? 'Modo cambios: toca una jugadora para meterla o sacarla de la cancha' : 'Modo cambios desactivado');
+}
+
+// Dispatcher del toque en la tarjeta de jugadora: segun el modo activo,
+// hace una cosa distinta -- pero el cuadro de jugadoras es el mismo de
+// siempre.
+function tocarJugadoraCaptura(jugadorId, nombreJugadora, nombreCorto, numeroActual){
+  if(MODO_CAMBIOS_CAPTURA){
+    toggleJugadoraCanchaCaptura(jugadorId);
+    return;
+  }
+  registrarAccionJugadora(jugadorId, nombreJugadora, nombreCorto, numeroActual);
+}
+
+async function toggleJugadoraCanchaCaptura(jugadorId){
+  const j = CAPTURA_DATA.jugadores.find(x=>x.id===jugadorId);
+  if(!j) return;
+  const entrabaAntes = j.enCancha;
+  j.enCancha = !entrabaAntes;
+  pintarEnCanchaJugadora(jugadorId, j.enCancha);
+
+  const res = await apiPlan('toggle_jugador_cancha_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL, jugadorId});
+  if(res===null){ j.enCancha = entrabaAntes; pintarEnCanchaJugadora(jugadorId, j.enCancha); return; }
+
+  // Aviso informativo nada mas -- nunca bloquea nada, como se pidio.
+  toast((res.enCancha ? 'Entra ' : 'Sale ') + (j.nombreCorto||j.nombres) + ' · '+res.totalEnCancha+' en cancha ahora');
+  await mostrarCamposCambiosLogActualizado();
+}
+
+function pintarEnCanchaJugadora(jugadorId, enCancha){
+  const btn = document.getElementById('cap-jug-'+jugadorId);
+  const dot = document.getElementById('cancha-dot-'+jugadorId);
+  if(btn) btn.classList.toggle('en-banca', !enCancha);
+  if(dot) dot.classList.toggle('activo', enCancha);
+}
+
+async function mostrarCamposCambiosLogActualizado(){
+  // Se trae el log de cambios fresco (es una lista chica, no vale la
+  // pena mantenerla optimista a mano con lo poco que se usa).
+  const data = await apiPlan('abrir_captura_partido_planillero', {partidoId: PARTIDO_CAPTURA_ACTUAL});
+  if(data===null) return;
+  CAPTURA_DATA.cambiosLog = data.cambiosLog;
+  const el = document.getElementById('capCambiosLog');
+  if(el) el.innerHTML = renderCambiosLogHtml(data.cambiosLog);
+}
+
+function renderCambiosLogHtml(log){
+  if(!log || log.length===0) return '<div class="cap-log-item"><span style="color:var(--chalk-dim)">Todavía no hay cambios registrados.</span></div>';
+  return log.map(item=>`
+    <div class="cap-log-item">
+      <span style="color:var(--chalk-dim)">P${item.periodo||1} · ${formatearRelojMMSS(item.segundosReloj)}</span>
+      <span style="flex:1;margin:0 8px">${item.entro ? '🟢 Entra' : '🔴 Sale'} ${esc(item.nombreCorto)}</span>
+    </div>`).join('');
 }
 
 /* ============================================================
@@ -4123,6 +4324,7 @@ async function borrarEventoCaptura(logId){
 
 function cambiarPartidoCaptura(){
   if(COLA_CAPTURA.length>0 && !confirm('Hay '+COLA_CAPTURA.length+' registro(s) todavía sin enviar al servidor. Se reenviarán solos la próxima vez que abras la captura. ¿Salir de todos modos?')) return;
+  detenerTicRelojCaptura();
   safeSet('planillero_partido_actual', '');
   PARTIDO_CAPTURA_ACTUAL = null;
   cambiarPantalla('captura_estadisticas_planillero');

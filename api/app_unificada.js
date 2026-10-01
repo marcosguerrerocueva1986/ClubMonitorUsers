@@ -9,6 +9,7 @@
 // login, y los roles se resuelven en vivo (nunca se cachean en la
 // sesion) para que un cambio de rol se refleje de inmediato.
 
+const { obtenerEstadoReloj, obtenerJugadoresEnCancha, iniciarReloj, pausarReloj, avanzarPeriodo, ajustarReloj, toggleJugadorCancha, minutosJugadosPartido } = require('./_reloj_partido');
 const bcrypt = require('bcryptjs');
 const {
   listarRubros, crearRubro, editarRubro, toggleRubro,
@@ -379,14 +380,27 @@ async function abrirCapturaPartido(pool, body) {
     [partidoId]
   );
 
+  const reloj = await obtenerEstadoReloj(pool, partidoId);
+  const enCanchaIds = await obtenerJugadoresEnCancha(pool, partidoId);
+  const minutosPorJugador = await minutosJugadosPartido(pool, partidoId);
+  const cambiosLog = await pool.query(
+    `SELECT pcl.id, pcl.jugador_id AS "jugadorId", COALESCE(j.alias, j.nombres) AS "nombreCorto", pcl.entro, pcl.periodo, pcl.segundos_reloj AS "segundosReloj", pcl.creado_en AS "creadoEn"
+     FROM sport_control.partido_cambios_log pcl
+     JOIN sport_control.jugadores j ON j.id = pcl.jugador_id
+     WHERE pcl.partido_id = $1 ORDER BY pcl.creado_en DESC LIMIT 100`,
+    [partidoId]
+  );
+
   return {
     success: true,
     data: {
       partido: p,
-      jugadores: jugadores.rows,
+      jugadores: jugadores.rows.map((j) => ({ ...j, enCancha: enCanchaIds.includes(j.id), segundosJugados: minutosPorJugador.get(j.id) || 0 })),
       tipos: tipos.rows,
       log: log.rows,
       rivalFaltas: rivalFaltas.rows,
+      reloj,
+      cambiosLog: cambiosLog.rows,
     },
   };
 }
@@ -610,12 +624,22 @@ module.exports = async (req, res) => {
 
     // Captura en vivo: acciones muy frecuentes, van por un camino corto
     // (sesion + id de planillero en un solo viaje, sin detectarRoles).
-    if (accion === 'registrar_evento_partido_planillero' || accion === 'registrar_falta_rival_planillero' || accion === 'registrar_falta_jugador_rival_planillero') {
+    const ACCIONES_CAPTURA_RAPIDA = [
+      'registrar_evento_partido_planillero', 'registrar_falta_rival_planillero', 'registrar_falta_jugador_rival_planillero',
+      'iniciar_reloj_partido_planillero', 'pausar_reloj_partido_planillero', 'avanzar_periodo_partido_planillero',
+      'ajustar_reloj_partido_planillero', 'toggle_jugador_cancha_planillero',
+    ];
+    if (ACCIONES_CAPTURA_RAPIDA.includes(accion)) {
       const s = await resolverSesionConPlanillero(pool, token);
       if (!s.cedula) return res.status(200).json({ success: false, error: 'Sesion invalida o expirada' });
       if (accion === 'registrar_evento_partido_planillero') return res.status(200).json(await registrarEventoPartido(pool, s.planilleroId || null, body));
       if (accion === 'registrar_falta_rival_planillero') return res.status(200).json(await registrarFaltaEquipoRival(pool, body));
-      return res.status(200).json(await registrarFaltaJugadorRival(pool, body));
+      if (accion === 'registrar_falta_jugador_rival_planillero') return res.status(200).json(await registrarFaltaJugadorRival(pool, body));
+      if (accion === 'iniciar_reloj_partido_planillero') return res.status(200).json(await iniciarReloj(pool, body));
+      if (accion === 'pausar_reloj_partido_planillero') return res.status(200).json(await pausarReloj(pool, body));
+      if (accion === 'avanzar_periodo_partido_planillero') return res.status(200).json(await avanzarPeriodo(pool, body));
+      if (accion === 'ajustar_reloj_partido_planillero') return res.status(200).json(await ajustarReloj(pool, body));
+      return res.status(200).json(await toggleJugadorCancha(pool, body));
     }
 
     const cedula = await resolverSesion(pool, token);
