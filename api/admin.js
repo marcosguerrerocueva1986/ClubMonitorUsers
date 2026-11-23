@@ -25,6 +25,7 @@ const { listarFinancieros, crearFinanciero, editarFinanciero, toggleFinanciero, 
 const { listarLugares, listarLugaresAdmin, crearLugar, editarLugar, toggleLugar, obtenerGoogleMapsApiKey } = require('./_admin_lugares');
 const { listarRubros, crearRubro, editarRubro, toggleRubro, listarMovimientosClub, registrarMovimientoClub, eliminarMovimientoClub, verMensualidadJugadorAdmin, dashboardMorososMensualidad } = require('./_admin_finanzas_club');
 const { listarJugadores, actualizarJugador, verDetalleJugador, verPendientesJugador, verPagosJugador, crearJugadorManual, verConfirmadosPartido, verCheckinPartido, verInvitadosPartido, listarRepresentantesJugadorAdmin, agregarRepresentanteAdmin, editarRepresentanteAdmin, eliminarRepresentanteAdmin, resetearClaveRepresentanteAdmin } = require('./_admin_jugadores');
+const { vistaPreviaCuotasEvento, enviarCuotasEvento } = require('./_admin_cuotas_mensaje');
 const { obtenerParametros, actualizarParametro, reenviarQrJugador, anularMulta, confirmarMultas, toggleAsistencia, enviarRecordatorioPartido, enviarRecordatorioMorosos, marcarPagoInvitado, marcarMultaPagada, toggleEventosJugador, actualizarLogoClub, toggleRepresentantesClub, toggleMisExentosJugador, toggleMiCuentaJugador, toggleMovimientosSoloPropios, listarPermisosPantallas, togglePermisoPantalla, diagnosticoCatalogoCobros, listarVigenciasCobro, agregarVigenciaCobro, eliminarVigenciaCobro, obtenerInterruptoresNotificaciones, toggleNotificacionRepresentantes } = require('./_admin_operaciones');
 const { crearEvento, editarEvento, listarEventos, crearEventoFecha, editarEventoFecha, eliminarEventoFecha, verDetalleEvento, guardarPresupuestoItem, eliminarPresupuestoItem, asignarCuotaJugador, aplicarCuotaATodos, quitarCuotaJugador, registrarMovimientoEvento, editarMovimientoEvento, eliminarMovimientoEvento, verComprobanteMovimiento, listarInformeConsolidadoEventos, listarTiposMovimientoEvento, crearTipoMovimientoEvento, toggleTipoMovimientoEvento, listarEventosSelector, listarFechasEventoSelector } = require('./_admin_eventos');
 const { registrarPagoEfectivo, marcarMesesPagados, registrarPagoCategorizado, verRecaudadoMes, listarInformeCompleto, obtenerDashboard, listarEstadoPagos, analizarComprobanteAdmin, registrarPagoComprobanteAdmin, aplicarPagoComprobanteAdmin, guardarSaldoFavorAdmin, verPendientesCategorizado } = require('./_admin_pagos');
@@ -76,6 +77,8 @@ module.exports = async (req, res) => {
       case 'anular_multa_app': return res.status(200).json(await anularMulta(pool, body));
       case 'confirmar_multas_app': return res.status(200).json(await confirmarMultas(pool, config, body));
       case 'toggle_asistencia_app': return res.status(200).json(await toggleAsistencia(pool, body));
+      case 'vista_previa_cuotas_evento_app': return res.status(200).json(await vistaPreviaCuotasEvento(pool, body));
+      case 'enviar_cuotas_evento_app': return res.status(200).json(await enviarCuotasEvento(pool, config, body));
       case 'enviar_recordatorio_app': return res.status(200).json(await enviarRecordatorioPartido(pool, config, body));
       case 'marcar_pago_invitado_app': return res.status(200).json(await marcarPagoInvitado(pool, body));
       case 'registrar_pago_efectivo_app': return res.status(200).json(await registrarPagoEfectivo(pool, body));
