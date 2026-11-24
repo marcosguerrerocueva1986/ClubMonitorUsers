@@ -31,18 +31,34 @@ async function cargarEstadoCuotas(pool, eventoId) {
      JOIN sport_control.jugadores j ON j.id = ec.jugador_id
      WHERE ec.evento_id = $1
      GROUP BY ec.jugador_id, j.alias, j.nombres, j.apellidos
-     HAVING SUM(ec.monto_cuota) > 0
      ORDER BY 2`,
     [eventoId]
   );
-  const jugadores = r.rows.map((x) => ({
+  const todos = r.rows.map((x) => ({
     jugadorId: x.jugadorId, nombre: x.nombre, numero: x.numero,
     esperado: Number(x.esperado), pagado: Number(x.pagado),
   }));
-  return { evento: ev.rows[0], jugadores };
+  const jugadores = todos.filter((j) => j.esperado > 0);
+  const refuerzos = todos.filter((j) => j.esperado <= 0);
+
+  // Presupuesto de gastos: presupuestado vs gastado, por rubro (suma todas las fechas).
+  const g = await pool.query(
+    `SELECT t.nombre,
+        COALESCE((SELECT SUM(p.monto_proyectado) FROM sport_control.evento_presupuesto p WHERE p.evento_id = $1 AND p.tipo_movimiento_id = t.id), 0) AS presupuestado,
+        COALESCE((SELECT SUM(m.monto) FROM sport_control.evento_movimientos m WHERE m.evento_id = $1 AND m.tipo_movimiento_id = t.id), 0) AS gastado
+     FROM sport_control.tipos_movimiento_evento t
+     WHERE t.tipo = 'gasto'
+     ORDER BY t.nombre`,
+    [eventoId]
+  );
+  const gastos = g.rows
+    .map((x) => ({ nombre: x.nombre, presupuestado: Number(x.presupuestado), gastado: Number(x.gastado) }))
+    .filter((x) => x.presupuestado > 0 || x.gastado > 0);
+  return { evento: ev.rows[0], jugadores, refuerzos, gastos };
 }
 
-function construirTexto(evento, jugadores, soloDeudores) {
+function construirTexto(evento, jugadores, soloDeudores, refuerzos, gastos) {
+  refuerzos = refuerzos || []; gastos = gastos || [];
   const linea = (j, icono) => `${icono} ${j.numero ? '#' + j.numero + ' ' : ''}${j.nombre} — ${fmt(j.esperado)}/${fmt(j.pagado)}`
     + (j.pagado < j.esperado ? ` (debe $${fmt(j.esperado - j.pagado)})` : '');
   const sinPagar = jugadores.filter((j) => j.pagado <= 0);
@@ -58,15 +74,26 @@ function construirTexto(evento, jugadores, soloDeudores) {
     t += '\n🎉 ¡Todos están al día!\n';
   }
   if (!soloDeudores && alDia.length) t += '\n✅ *Al día*\n' + alDia.map((j) => linea(j, '🟢')).join('\n') + '\n';
-  t += `\n📊 *Resumen*\nEsperado: $${fmt(totEsp)} · Pagado: $${fmt(totPag)} · Pendiente: $${fmt(totEsp - totPag)}\nAl día: ${alDia.length} de ${jugadores.length}`;
+  if (!soloDeudores && refuerzos.length) t += '\n🤝 *Refuerzo*\n' + refuerzos.map((j) => `⚪ ${j.numero ? '#' + j.numero + ' ' : ''}${j.nombre}`).join('\n') + '\n';
+  t += `\n📊 *Resumen de cuotas*\nEsperado: $${fmt(totEsp)} · Pagado: $${fmt(totPag)} · Pendiente: $${fmt(totEsp - totPag)}\nAl día: ${alDia.length} de ${jugadores.length}`;
+  if (gastos.length) {
+    const totPres = gastos.reduce((a, x) => a + x.presupuestado, 0);
+    const totGast = gastos.reduce((a, x) => a + x.gastado, 0);
+    const recaudado = jugadores.reduce((a, j) => a + j.pagado, 0);
+    const meta = totPres > 0 ? totPres : totGast; // si no hay presupuesto, se compara con lo gastado
+    t += '\n\n🧾 *Presupuesto de gastos* _(presupuestado / gastado)_\n'
+      + gastos.map((x) => `• ${x.nombre}: $${fmt(x.presupuestado)} / $${fmt(x.gastado)}${x.gastado > x.presupuestado && x.presupuestado > 0 ? ' ⚠️' : ''}`).join('\n')
+      + `\n━━━━━━━━━━\nTotal: $${fmt(totPres)} presupuestado · $${fmt(totGast)} gastado`
+      + `\n\n💵 Recaudado $${fmt(recaudado)} de $${fmt(meta)} → ` + (recaudado >= meta ? `cubierto (sobran $${fmt(recaudado - meta)})` : `faltan $${fmt(meta - recaudado)}`);
+  }
   return t;
 }
 
 async function vistaPreviaCuotasEvento(pool, body) {
   const est = await cargarEstadoCuotas(pool, body.eventoId);
   if (!est) return { success: false, error: 'No se encontró el evento.' };
-  if (est.jugadores.length === 0) return { success: false, error: 'Este evento no tiene cuotas con valor mayor a $0.' };
-  return { success: true, data: { texto: construirTexto(est.evento, est.jugadores, !!body.soloDeudores), cantidad: est.jugadores.length } };
+  if (est.jugadores.length === 0 && est.refuerzos.length === 0) return { success: false, error: 'Este evento no tiene jugadores inscritos.' };
+  return { success: true, data: { texto: construirTexto(est.evento, est.jugadores, !!body.soloDeudores, est.refuerzos, est.gastos), cantidad: est.jugadores.length } };
 }
 
 // Push: un aviso por representante con SUS jugadores que deben.
@@ -100,11 +127,11 @@ async function pushDeudoresEvento(pool, est) {
 async function enviarCuotasEvento(pool, config, body) {
   const est = await cargarEstadoCuotas(pool, body.eventoId);
   if (!est) return { success: false, error: 'No se encontró el evento.' };
-  if (est.jugadores.length === 0) return { success: false, error: 'Este evento no tiene cuotas con valor mayor a $0.' };
+  if (est.jugadores.length === 0 && est.refuerzos.length === 0) return { success: false, error: 'Este evento no tiene jugadores inscritos.' };
   const out = {};
   if (body.whatsapp !== false) {
     const { enviarWhatsAppGrupo } = require('./_admin_partidos');
-    const texto = (body.texto && String(body.texto).trim()) || construirTexto(est.evento, est.jugadores, !!body.soloDeudores);
+    const texto = (body.texto && String(body.texto).trim()) || construirTexto(est.evento, est.jugadores, !!body.soloDeudores, est.refuerzos, est.gastos);
     const wa = await enviarWhatsAppGrupo(config, texto);
     out.whatsapp = wa.enviado ? 'enviado' : (wa.omitido ? 'desactivado' : 'error');
     if (!wa.enviado && !wa.omitido) out.detalleWhatsApp = wa;
